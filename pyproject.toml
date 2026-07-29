@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "indi-nexus"
+version = "0.1.0"
+description = "A modern, typed Python framework for INDI instrument control: driver SDK, async client, and FastAPI web bridge."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Dan Avner" },
+]
+keywords = ["indi", "astronomy", "instrument-control", "asyncio", "fastapi"]
+dependencies = [
+    "pydantic>=2.6",
+    "lxml>=5.0",
+    "anyio>=4.3",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "typer>=0.12",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "lxml-stubs>=0.5",
+]
+
+[project.scripts]
+indi-nexus = "indi_nexus.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/mmtobservatory/indi-nexus"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/indi_nexus"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+plugins = ["pydantic.mypy"]
