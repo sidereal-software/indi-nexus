@@ -35,7 +35,7 @@ These were decided at project start; do not revisit them without explicit direct
 This project uses [uv](https://docs.astral.sh/uv/). Run everything through it.
 
 ```bash
-uv venv --python 3.10           # create the venv (first time)
+uv venv --python 3.12           # create the venv (first time)
 uv pip install -e ".[dev]"      # install package + dev deps
 
 uv run pytest                   # run tests
@@ -75,7 +75,7 @@ and the "accumulate stdin and retry `etree.fromstring`" framing loop.
 
 - `enums.py` - `IPState`, `IPerm`, `ISRule`, `ISState`. These mix in `str` so a member
   **is** its exact wire token (`IPState.OK == "Ok"`) and Pydantic serializes it directly.
-  (`enum.StrEnum` would be idiomatic but is 3.11+; we target 3.10.)
+  (each subclasses `enum.StrEnum`, so a member *is* its exact wire token.)
 - `models.py` - typed Pydantic models. Key design choices:
   - A **vector** (`NumberVector`, `TextVector`, `SwitchVector`, `LightVector`,
     `BLOBVector`) is the canonical in-memory representation of a property. Discriminated on
@@ -121,15 +121,26 @@ libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
 - `runtime.py` - `DriverRuntime` owns the stdio transport and an `anyio` structured task
   group (reader + writer + periodic jobs). It takes plain `read`/`write` callables, so
   tests drive it through in-memory byte streams exactly as `indiserver` would; `run()`
-  wires real stdin/stdout. Uses `anyio` (not `asyncio.TaskGroup`) to stay on the 3.10 floor.
+  wires real stdin/stdout. Plain `asyncio`: an outbox `asyncio.Queue`, a writer task, and
+  one task per periodic job, all driven by the reader until stdin EOF.
 
 `examples/demo_device.py` is the reference driver (one of each vector kind, an `@every`
 animation, and an `@on_new` handler).
 
 ## Conventions
 
-- Python 3.10+ floor. Line length 100. Ruff rules: `E,F,I,UP,B,SIM,ASYNC`.
-- Fully typed; `mypy --strict` must pass on `src`. Prefer PEP 604 unions (`X | Y`).
+- Python 3.12+ floor. Line length 100. Ruff rules: `E,F,I,UP,B,SIM,ASYNC`. Use the
+  stdlib directly (`enum.StrEnum`, `asyncio.TaskGroup`, `asyncio.timeout`, ...); no
+  back-compat shims or third-party async layers.
+- Fully typed; `mypy --strict` must pass on `src`. Every public signature carries full
+  type hints (params and return) - the annotations are the source of type truth, so
+  docstrings describe intent, not types.
+- Docstrings are **NumPy style** (Summary / Parameters / Returns / Raises / Examples) on
+  every public module, class, and function, so a future Sphinx + ReadTheDocs autodoc build
+  renders the API reference straight from the source. (We'll enable ruff's `D` rules with
+  `convention = "numpy"` when the docs site is wired up.)
+- Inline comments explain only what the code and docstring can't - the local "why" behind a
+  non-obvious line. Don't restate what the signature or docstring already says.
 - New wire behavior gets a round-trip test in `tests/test_protocol.py` (serialize ->
   parse -> assert), and streaming behavior gets a chunk-boundary test.
 - When touching the protocol, keep XML and JSON serialization consistent - the models are
