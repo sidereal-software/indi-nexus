@@ -1,17 +1,15 @@
 """Tests for the driver SDK, exercised the way ``indiserver`` would drive it.
 
 Each runtime test wires a :class:`DriverRuntime` to an in-memory byte
-reader/writer (:class:`_Harness`) and runs it under ``anyio.run``, then parses the
-captured output back into protocol messages with the M1 codec - the repo rule
+reader/writer (:class:`_Harness`) and runs it under ``asyncio.run``, then parses
+the captured output back into protocol messages with the M1 codec - the repo rule
 that new wire behaviour gets a round-trip test.
 """
 
 from __future__ import annotations
 
-import math
+import asyncio
 from typing import Any
-
-import anyio
 
 from indi_nexus.driver import BoundProperty, Device, DriverRuntime, every, on_new
 from indi_nexus.driver.scheduling import iter_periodic
@@ -35,20 +33,18 @@ class _Harness:
     """A controllable stdin (feed/eof) and a capturing stdout."""
 
     def __init__(self) -> None:
-        self._send, self._recv = anyio.create_memory_object_stream[bytes](math.inf)
+        # ``b""`` is the read-side EOF signal, matching a real closed pipe.
+        self._inbox: asyncio.Queue[bytes] = asyncio.Queue()
         self.outputs: list[bytes] = []
 
     def feed(self, data: str | bytes) -> None:
-        self._send.send_nowait(data.encode() if isinstance(data, str) else data)
+        self._inbox.put_nowait(data.encode() if isinstance(data, str) else data)
 
     def eof(self) -> None:
-        self._send.close()
+        self._inbox.put_nowait(b"")
 
     async def read(self) -> bytes:
-        try:
-            return await self._recv.receive()
-        except anyio.EndOfStream:
-            return b""
+        return await self._inbox.get()
 
     async def write(self, data: bytes) -> None:
         self.outputs.append(data)
@@ -142,7 +138,7 @@ def test_get_properties_runs_setup_once_and_defines() -> None:
         defs = [m for m in harness.messages() if isinstance(m, DefVector)]
         assert {d.vector.name for d in defs} == {"num", "sw"}
 
-    anyio.run(scenario)
+    asyncio.run(scenario())
 
 
 def test_second_get_properties_reannounces_without_rerunning_setup() -> None:
@@ -159,7 +155,7 @@ def test_second_get_properties_reannounces_without_rerunning_setup() -> None:
         # Two properties, announced on setup and re-announced on the 2nd request.
         assert len(defs) == 4
 
-    anyio.run(scenario)
+    asyncio.run(scenario())
 
 
 # --------------------------------------------------------------------------- #
@@ -170,14 +166,14 @@ def test_periodic_task_emits_updates() -> None:
         harness = _Harness()
         dev = _Poller()
         dev.stop = harness.eof  # the 3rd tick ends the session
-        with anyio.fail_after(5):
+        async with asyncio.timeout(5):
             await DriverRuntime(dev, harness.read, harness.write).serve()
 
         sets = [m for m in harness.messages() if isinstance(m, SetVector)]
         assert dev.count >= 3
         assert len(sets) == dev.count  # one emit per tick
 
-    anyio.run(scenario)
+    asyncio.run(scenario())
 
 
 def test_periodic_task_error_is_isolated() -> None:
@@ -185,7 +181,7 @@ def test_periodic_task_error_is_isolated() -> None:
         harness = _Harness()
         dev = _Boom()
         dev.stop = harness.eof
-        with anyio.fail_after(5):
+        async with asyncio.timeout(5):
             # A raising tick must not propagate out of serve().
             await DriverRuntime(dev, harness.read, harness.write).serve()
 
@@ -193,7 +189,7 @@ def test_periodic_task_error_is_isolated() -> None:
         assert msgs, "expected the failure to be surfaced as an INDI message"
         assert any("boom" in (m.message or "") for m in msgs)
 
-    anyio.run(scenario)
+    asyncio.run(scenario())
 
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +216,7 @@ def test_on_new_routes_to_handler_and_default() -> None:
         assert dev.fallback is not None
         assert dev.fallback.name == "other"
 
-    anyio.run(scenario)
+    asyncio.run(scenario())
 
 
 # --------------------------------------------------------------------------- #
