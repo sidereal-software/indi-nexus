@@ -1,28 +1,37 @@
 """INDI protocol enumerations.
 
-Each enum mixes in ``str`` so its members *are* the exact tokens used on the INDI
-wire (e.g. ``IPState.OK == "Ok"`` is ``True``) and Pydantic serializes them to
-those tokens directly. This replaces pyINDI's ``INDIEnumMember(int)`` trick,
+Each enum subclasses :class:`enum.StrEnum`, so a member *is* the exact token used
+on the INDI wire (e.g. ``IPState.OK == "Ok"`` is ``True``) and Pydantic serialises
+it to that token directly. This replaces pyINDI's ``INDIEnumMember(int)`` trick,
 which subclassed ``int`` and overloaded ``__eq__`` to compare against strings.
-
-(``enum.StrEnum`` would be the idiomatic choice but is only available on
-Python 3.11+; the ``str, Enum`` mixin is the equivalent for our 3.10 floor.)
 """
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class _StrEnum(str, Enum):
-    """A string-valued enum whose members compare and serialize as their value."""
+class _StrEnum(StrEnum):
+    """Base for the wire enums: value lookups tolerate surrounding whitespace.
 
-    def __str__(self) -> str:  # pragma: no cover - trivial
-        return str(self.value)
+    :class:`~enum.StrEnum` already makes each member its own string value and
+    provides ``__str__``; this base only adds the lenient lookup below.
+    """
 
     @classmethod
     def _missing_(cls, value: object) -> _StrEnum | None:
-        # Be lenient with surrounding whitespace coming off the wire.
+        """Resolve a wire token to a member, ignoring surrounding whitespace.
+
+        Parameters
+        ----------
+        value:
+            The raw value looked up, e.g. ``"Ok "`` straight off the wire.
+
+        Returns
+        -------
+        _StrEnum or None
+            The matching member, or ``None`` to let :class:`~enum.Enum` raise.
+        """
         if isinstance(value, str):
             stripped = value.strip()
             for member in cls:

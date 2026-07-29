@@ -303,17 +303,19 @@ def _optts(v: str | None) -> dt.datetime | None:
 
 def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
     kind = _STEM_BY_TAGWORD[stem]
+    state = node.get("state")
+    perm_attr = node.get("perm")
     common: dict[str, object] = dict(
         device=node.get("device") or "",
         name=node.get("name") or "",
         label=node.get("label"),
         group=node.get("group"),
-        state=IPState(node.get("state")) if node.get("state") else IPState.IDLE,
+        state=IPState(state) if state else IPState.IDLE,
         timeout=_optfloat(node.get("timeout")),
         timestamp=_optts(node.get("timestamp")),
         message=node.get("message"),
     )
-    perm = IPerm(node.get("perm")) if node.get("perm") else IPerm.RW
+    perm = IPerm(perm_attr) if perm_attr else IPerm.RW
     children = list(node)
 
     if kind == "number":
@@ -323,7 +325,8 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
         txts = [_element_from_xml(c, "text") for c in children]
         return TextVector.model_validate({**common, "perm": perm, "elements": txts})
     if kind == "switch":
-        rule = ISRule(node.get("rule")) if node.get("rule") else ISRule.ANY_OF_MANY
+        rule_attr = node.get("rule")
+        rule = ISRule(rule_attr) if rule_attr else ISRule.ANY_OF_MANY
         sws = [_element_from_xml(c, "switch") for c in children]
         return SwitchVector.model_validate(
             {**common, "perm": perm, "rule": rule, "elements": sws}
