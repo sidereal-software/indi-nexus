@@ -53,7 +53,7 @@ passing. Each milestone lands with its own tests; keep that discipline.
 ```
 src/indi_nexus/
 ├── protocol/     DONE   the INDI protocol core (see below)
-├── driver/       planned  driver SDK: subclass a base device; stdio XML under indiserver
+├── driver/       DONE   driver SDK: subclass a base device; stdio XML under indiserver
 ├── client/       planned  reconnecting asyncio TCP client to indiserver + property cache
 ├── web/          planned  FastAPI app: WebSocket bridge translating INDI XML <-> JSON
 └── cli.py        planned  Typer CLI (run driver, serve web, scan)
@@ -95,6 +95,36 @@ and the "accumulate stdin and retry `etree.fromstring`" framing loop.
   - Number values honor the INDI printf `format`, including the `%m` sexagesimal form
     (`format_number` / `parse_number` mirror libindi's `fs_sexa` / `f_scansexa`). This
     matters for RA/Dec interop; `%9.6m` etc. are field-width padded like libindi.
+
+### The driver SDK (`src/indi_nexus/driver/`)
+
+What a driver author subclasses. It rebuilds pyINDI's `device.py` on the M1 models and
+fixes its known warts (class-global `@repeat` registry, the hand-rolled
+`etree.fromstring` retry loop, the `if/elif`-on-XML-tag `ISNew*` dispatch, and the
+libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
+
+- `device.py` - `Device`, the base class. Override `async def setup()` to declare
+  properties with the `define_number/text/switch/light/blob(...)` helpers (each returns a
+  `BoundProperty` and emits the `def`). Access later via `self["NAME"]`. `self.message()`
+  / `self.log_error()` send INDI `message`s. `Device.run()` serves it over stdio.
+- `property.py` - `BoundProperty`, the driver-side handle wrapping a (pure) protocol
+  vector. `.set(RA=1.2, DEC=3.4, state=IPState.OK)` mutates elements **and** emits one
+  `setXxxVector`; it honors `OneOfMany` switch rules (turning one On clears siblings). The
+  protocol models stay behavior-free - this wrapper is where "and tell the client" lives.
+- `scheduling.py` - `@every(seconds=…, minutes=…, hours=…)`, the modern replacement for
+  pyINDI's `@device.repeat`. It only *tags* a method; discovery/execution is **per
+  instance** (no shared class state), one supervised task each, with per-tick error
+  isolation (a failing tick logs and continues, never kills the driver).
+- `dispatch.py` - `@on_new("PROP")` tags the handler for client writes to a property; the
+  device builds a per-instance name->handler map and passes the fully typed parsed vector.
+  Unhandled writes fall through to `on_new_default`.
+- `runtime.py` - `DriverRuntime` owns the stdio transport and an `anyio` structured task
+  group (reader + writer + periodic jobs). It takes plain `read`/`write` callables, so
+  tests drive it through in-memory byte streams exactly as `indiserver` would; `run()`
+  wires real stdin/stdout. Uses `anyio` (not `asyncio.TaskGroup`) to stay on the 3.10 floor.
+
+`examples/demo_device.py` is the reference driver (one of each vector kind, an `@every`
+animation, and an `@on_new` handler).
 
 ## Conventions
 
