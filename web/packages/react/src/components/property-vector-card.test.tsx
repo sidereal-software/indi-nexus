@@ -1,33 +1,13 @@
 /** Component tests: rendering vectors and sending writes through a fake client. */
 
-import { IndiClient, type NumberVector, type SwitchVector } from "@indi-nexus/client";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { NumberVector, SwitchVector } from "@indi-nexus/client";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { IndiProvider } from "../context";
 import { useProperty } from "../hooks";
-import { FakeSocket } from "../testing/fake-socket";
+import { renderConnected } from "../testing/render";
 import { PropertyVectorCard } from "./property-vector-card";
 
 afterEach(cleanup);
-
-/** Render `ui` under a provider whose client is wired to an open fake socket. */
-function renderConnected(ui: ReactNode) {
-  const sockets: FakeSocket[] = [];
-  const client = new IndiClient({
-    url: "ws://x/ws",
-    webSocketFactory: () => {
-      const socket = new FakeSocket();
-      sockets.push(socket);
-      return socket;
-    },
-  });
-  const result = render(<IndiProvider client={client}>{ui}</IndiProvider>);
-  const socket = sockets[0];
-  if (!socket) throw new Error("client did not open a socket");
-  act(() => socket.open());
-  return { socket, ...result };
-}
 
 /** A tiny harness that renders one property's card once it is defined. */
 function CardFor({ device, name }: { device: string; name: string }) {
