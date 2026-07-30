@@ -28,12 +28,11 @@ validated protocol model.
 
 ## See it live
 
-This is the real INDINexus panel, running entirely in your browser against a
-**simulated dome driver** - no server behind it. Connect the dome, open the
-shutter, send it to an azimuth, park it, and watch the INDI message log.
+The real INDINexus panel, running against a **simulated dome driver entirely
+in your browser** - no server behind it. Connect the dome, open the shutter,
+send it to an azimuth, park it, and watch the INDI message log narrate.
 
-<iframe src="demo-app/index.html" title="INDINexus live demo"
-        style="width: 100%; height: 640px; border: 1px solid #8884; border-radius: 8px;"></iframe>
+[Launch the live demo](demo-app/index.html){ .md-button .md-button--primary }
 
 ## The stack
 

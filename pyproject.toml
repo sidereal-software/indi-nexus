@@ -41,7 +41,7 @@ indi-nexus = "indi_nexus.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/sidereal-software/indi-nexus"
-Documentation = "https://sidereal.software/indi-nexus/"
+Documentation = "https://indi-nexus.sidereal.software/"
 
 # Build (and bundle) the TypeScript reference panel into the distribution so a
 # plain `pip install` ships the UI. See hatch_build.py.

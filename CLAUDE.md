@@ -12,7 +12,7 @@ INDINexus provides the Python layers of an INDI system - the driver SDK, the asy
 client, and the web bridge - on a fully-typed Pydantic v2 + FastAPI foundation, with a
 TypeScript/React frontend. It does **not** reimplement the C `indiserver` binary.
 
-Docs are published at <https://sidereal.software/indi-nexus/> from `main` by
+Docs are published at <https://indi-nexus.sidereal.software/> from `main` by
 `.github/workflows/docs.yml`.
 
 ## Locked architectural decisions

@@ -8,7 +8,7 @@ hub - and builds the Python layers on a modern, fully-typed foundation: a Pydant
 protocol core, an async client, a FastAPI + WebSocket web bridge, and a TypeScript/React
 frontend.
 
-**Documentation:** <https://sidereal.software/indi-nexus/> (guides, live demo, and the
+**Documentation:** <https://indi-nexus.sidereal.software/> (guides, live demo, and the
 full Python + TypeScript API reference).
 
 > Status: **early development.** The backend (protocol core, driver SDK, async
