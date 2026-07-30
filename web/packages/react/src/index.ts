@@ -21,6 +21,8 @@ export * from "@indi-nexus/client";
 export * from "./components";
 // Provider + hooks.
 export * from "./context";
+// Display settings (debug-info toggle for the INDI-aware components).
+export * from "./display-settings";
 export * from "./hooks";
 // Themed shadcn/ui primitives.
 export * from "./primitives";

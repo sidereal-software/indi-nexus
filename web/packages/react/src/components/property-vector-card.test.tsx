@@ -3,6 +3,7 @@
 import type { NumberVector, SwitchVector } from "@indi-nexus/client";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { DisplaySettingsProvider } from "../display-settings";
 import { useProperty } from "../hooks";
 import { renderConnected } from "../testing/render";
 import { PropertyVectorCard } from "./property-vector-card";
@@ -66,6 +67,21 @@ describe("PropertyVectorCard", () => {
       socket.receive(JSON.stringify({ tag: "set", vector: { ...numberVec, state: "Ok" } })),
     );
     expect(screen.getByText("Ok")).toBeInTheDocument();
+  });
+
+  it("hides the raw property name and permission by default", () => {
+    renderConnected(<PropertyVectorCard vector={numberVec} />);
+    expect(screen.getByText("Exposure")).toBeInTheDocument();
+    expect(screen.queryByText("EXPOSURE · rw")).not.toBeInTheDocument();
+  });
+
+  it("shows the raw name and permission when debug info is enabled", () => {
+    renderConnected(
+      <DisplaySettingsProvider showDebug>
+        <PropertyVectorCard vector={numberVec} />
+      </DisplaySettingsProvider>,
+    );
+    expect(screen.getByText("EXPOSURE · rw")).toBeInTheDocument();
   });
 
   it("renders switch elements and sends a new switch frame when toggled", () => {

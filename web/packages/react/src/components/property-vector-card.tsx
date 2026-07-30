@@ -3,6 +3,7 @@
 import type { Vector } from "@indi-nexus/client";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { useDisplaySettings } from "../display-settings";
 import { VectorControl } from "./element-controls";
 import { StateBadge } from "./state-badge";
 
@@ -16,10 +17,15 @@ export interface PropertyVectorCardProps {
 /**
  * Render a property vector as a titled card with its state badge and control.
  *
+ * The technical detail line (raw INDI property name and permission) only shows
+ * when the surrounding `DisplaySettingsProvider` enables debug info; operators
+ * see just the human label by default.
+ *
  * @param props - The vector and an optional class name.
  * @returns The card element.
  */
 export function PropertyVectorCard({ vector, className }: PropertyVectorCardProps) {
+  const { showDebug } = useDisplaySettings();
   const perm = "perm" in vector ? vector.perm : undefined;
   return (
     <Card className={cn("gap-3 py-4", className)}>
@@ -27,10 +33,12 @@ export function PropertyVectorCard({ vector, className }: PropertyVectorCardProp
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="truncate text-sm">{vector.label ?? vector.name}</CardTitle>
-            <CardDescription className="truncate font-mono text-xs">
-              {vector.name}
-              {perm ? ` · ${perm}` : ""}
-            </CardDescription>
+            {showDebug ? (
+              <CardDescription className="truncate font-mono text-xs">
+                {vector.name}
+                {perm ? ` · ${perm}` : ""}
+              </CardDescription>
+            ) : null}
           </div>
           <StateBadge state={vector.state} />
         </div>
