@@ -11,12 +11,16 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (Python)
+    name: Backend (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv --python 3.12
+      - run: uv venv --python ${{ matrix.python }}
       - run: uv pip install -e ".[dev]"
       - name: Lint
         run: uv run ruff check src tests examples hatch_build.py
