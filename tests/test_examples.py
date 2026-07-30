@@ -653,3 +653,40 @@ def test_scope_location_update_is_stored():
         assert _has_message(captured, "Site location updated.")
 
     asyncio.run(scenario())
+
+
+def test_hub_serves_several_drivers_on_one_client():
+    """The demo bridge's hub multiplexes drivers like a miniature indiserver.
+
+    Both devices define over the shared stream, and a write is acted on only
+    by the device it is addressed to.
+    """
+
+    async def scenario() -> None:
+        from examples.demo_bridge import Hub
+
+        hub = Hub([DomeSimulator(), TelescopeSimulator()])
+        tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
+        try:
+            async with IndiClient(connect=hub.connect) as client:
+                await client.wait_for("Dome Simulator", "DOME_SHUTTER", timeout=2)
+                await client.wait_for("Telescope Simulator", "EQUATORIAL_EOD_COORD", timeout=2)
+
+                # Connect only the dome; the broadcast write must not touch the
+                # telescope's identically named CONNECTION property.
+                await client.set_switch("Dome Simulator", "CONNECTION", {"CONNECT": True})
+                await client.wait_for(
+                    "Dome Simulator",
+                    "CONNECTION",
+                    lambda v: v.element("CONNECT").value is ISState.ON,
+                    timeout=2,
+                )
+                scope_conn = client.get("Telescope Simulator", "CONNECTION")
+                assert scope_conn is not None
+                assert scope_conn.element("CONNECT").value is ISState.OFF
+        finally:
+            hub.shutdown()
+            async with asyncio.timeout(2):
+                await asyncio.gather(*tasks)
+
+    asyncio.run(scenario())

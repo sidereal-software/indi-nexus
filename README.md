@@ -136,20 +136,28 @@ Runnable references live in `examples/`:
   tracking modes with realistic sky drift, slew rates, motion paddles, park, abort, and
   timed guide pulses.
 - **`monitor_client.py`** - the reference client: subscribe to everything and print each event.
-- **`demo_bridge.py`** - the whole stack in one process: a driver wired straight into the web
-  app through in-memory pipes, no `indiserver` needed.
+- **`demo_bridge.py`** - the whole stack in one process: one or more drivers wired straight
+  into the web app through in-memory pipes (a miniature `indiserver`), no real `indiserver`
+  needed.
 
 A driver runs in one of **three modes** - pick the command for what you want to see:
 
 ```bash
-# 1. The web panel (easiest): driver + bridge + UI in one process, no indiserver.
+# 1. The web panel (easiest): drivers + bridge + UI in one process, no indiserver.
 python -m examples.demo_bridge                                                # demo device
 python -m examples.demo_bridge --device examples.dome_device:DomeSimulator    # dome simulator
 python -m examples.demo_bridge --device examples.telescope_device:TelescopeSimulator  # telescope
-# ...then open http://localhost:8000/  (Messages sheet = the INDI log; /debug = raw frames)
 
-# 2. Under a real C indiserver (the production arrangement), serving TCP :7624:
-indiserver ./examples/dome_device.py
+# Several devices in one panel: repeat --device (the bridge plays a mini indiserver,
+# and each device appears in the panel's sidebar):
+python -m examples.demo_bridge \
+    --device examples.telescope_device:TelescopeSimulator \
+    --device examples.dome_device:DomeSimulator
+# ...then open http://localhost:8000/  (Messages panel = the INDI log; /debug = raw frames)
+
+# 2. Under a real C indiserver (the production arrangement), serving TCP :7624.
+# indiserver takes any number of drivers - this is its native multi-device mode:
+indiserver ./examples/telescope_device.py ./examples/dome_device.py
 # ...then `indi-nexus serve` for the web panel, or `indi-nexus monitor` for a terminal feed.
 
 # 3. Bare stdio (what indiserver itself launches) - for humans, only useful to pipe XML at:

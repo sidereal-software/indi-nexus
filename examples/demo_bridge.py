@@ -1,17 +1,23 @@
-"""Run the web bridge against an in-process driver, without ``indiserver``.
+"""Run the web bridge against in-process drivers, without ``indiserver``.
 
-This wires a driver (the reference :class:`~examples.demo_device.Demo` by
-default, or any ``Device`` subclass named with ``--device module:attr``) directly
-to an :class:`~indi_nexus.client.IndiClient` through two in-memory byte pipes
-(the same technique as ``tests/test_integration.py``), hands that client to the
-FastAPI app, and serves it with uvicorn. The result is the full web stack -
-bridge, REST, and the reference panel at ``/`` - backed by a live driver, with no
-external ``indiserver`` required. It is meant for local development and
-end-to-end testing of the frontend.
+This wires one or more drivers (the reference :class:`~examples.demo_device.Demo`
+by default, or any ``Device`` subclasses named with repeated ``--device
+module:attr`` flags) to an :class:`~indi_nexus.client.IndiClient` through
+in-memory byte pipes (the same technique as ``tests/test_integration.py``),
+hands that client to the FastAPI app, and serves it with uvicorn. With several
+drivers it plays a miniature ``indiserver``: every driver's output merges into
+the one client stream, and each client write is broadcast to every driver (each
+device ignores writes addressed to the others). The result is the full web
+stack - bridge, REST, and the reference panel at ``/`` - backed by live
+drivers, with no external ``indiserver`` required.
 
-Run it from the repository root with ``python -m examples.demo_bridge``
-(optionally ``--host``/``--port``/``--device``), then open the printed URL, or
-point the panel's Vite dev server at it.
+Run it from the repository root, then open the printed URL (or point the
+panel's Vite dev server at it)::
+
+    python -m examples.demo_bridge
+    python -m examples.demo_bridge \\
+        --device examples.telescope_device:TelescopeSimulator \\
+        --device examples.dome_device:DomeSimulator
 """
 
 from __future__ import annotations
@@ -48,8 +54,49 @@ class _Pipe:
         self._queue.put_nowait(b"")
 
 
-async def _serve(host: str, port: int, device: Device) -> None:
-    """Wire a driver to the web app and serve it until interrupted.
+class Hub:
+    """A miniature in-memory ``indiserver``: many drivers, one client stream.
+
+    Driver output is merged onto a single channel (each runtime write is one
+    complete XML message, so interleaving is safe); each client write is
+    broadcast to every driver, whose device ignores messages addressed to
+    another device.
+
+    Parameters
+    ----------
+    devices : list of Device
+        The driver instances to serve.
+    """
+
+    def __init__(self, devices: list[Device]) -> None:
+        self._to_client = _Pipe()
+        self._to_drivers = [_Pipe() for _ in devices]
+        self.runtimes = [
+            DriverRuntime(device, pipe.read, self._to_client.write)
+            for device, pipe in zip(devices, self._to_drivers, strict=True)
+        ]
+
+    async def connect(self) -> tuple[ReadFn, WriteFn, CloseFn]:
+        """Return the client-side transport onto the hub."""
+
+        async def write(data: bytes) -> None:
+            """Broadcast one client message to every driver."""
+            for pipe in self._to_drivers:
+                await pipe.write(data)
+
+        async def close() -> None:
+            """Nothing to release for in-memory pipes; EOF is sent at shutdown."""
+
+        return self._to_client.read, write, close
+
+    def shutdown(self) -> None:
+        """Signal EOF to every driver so their serve loops finish."""
+        for pipe in self._to_drivers:
+            pipe.eof()
+
+
+async def _serve(host: str, port: int, devices: list[Device]) -> None:
+    """Wire the drivers to the web app and serve it until interrupted.
 
     Parameters
     ----------
@@ -57,32 +104,20 @@ async def _serve(host: str, port: int, device: Device) -> None:
         The interface uvicorn binds to.
     port : int
         The TCP port uvicorn listens on.
-    device : Device
-        The driver instance to serve.
+    devices : list of Device
+        The driver instances to serve.
     """
-    to_client = _Pipe()  # driver -> client
-    to_driver = _Pipe()  # client -> driver
-
-    runtime = DriverRuntime(device, to_driver.read, to_client.write)
-
-    async def connect() -> tuple[ReadFn, WriteFn, CloseFn]:
-        """Wire the client's read/write onto the two in-memory pipes."""
-
-        async def close() -> None:
-            """Nothing to release for in-memory pipes; EOF is sent at shutdown."""
-
-        return to_client.read, to_driver.write, close
-
-    client = IndiClient(connect=connect)
+    hub = Hub(devices)
+    client = IndiClient(connect=hub.connect)
     app = create_app(client=client)
 
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info"))
-    driver_task = asyncio.create_task(runtime.serve())
+    driver_tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
     try:
         await server.serve()
     finally:
-        to_driver.eof()
-        await asyncio.gather(driver_task, return_exceptions=True)
+        hub.shutdown()
+        await asyncio.gather(*driver_tasks, return_exceptions=True)
 
 
 def main() -> None:
@@ -92,11 +127,15 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="port to listen on (default 8000)")
     parser.add_argument(
         "--device",
-        default="examples.demo_device:Demo",
-        help="driver to serve, as 'module:attr' (default examples.demo_device:Demo)",
+        action="append",
+        help=(
+            "driver to serve, as 'module:attr'; repeat for several devices "
+            "(default examples.demo_device:Demo)"
+        ),
     )
     args = parser.parse_args()
-    asyncio.run(_serve(args.host, args.port, load_device(args.device)()))
+    specs = args.device or ["examples.demo_device:Demo"]
+    asyncio.run(_serve(args.host, args.port, [load_device(spec)() for spec in specs]))
 
 
 if __name__ == "__main__":
