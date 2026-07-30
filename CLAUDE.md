@@ -132,13 +132,24 @@ animation, and an `@on_new` handler).
 - Python 3.12+ floor. Line length 100. Ruff rules: `E,F,I,UP,B,SIM,ASYNC`. Use the
   stdlib directly (`enum.StrEnum`, `asyncio.TaskGroup`, `asyncio.timeout`, ...); no
   back-compat shims or third-party async layers.
-- Fully typed; `mypy --strict` must pass on `src`. Every public signature carries full
-  type hints (params and return) - the annotations are the source of type truth, so
-  docstrings describe intent, not types.
-- Docstrings are **NumPy style** (Summary / Parameters / Returns / Raises / Examples) on
-  every public module, class, and function, so a future Sphinx + ReadTheDocs autodoc build
-  renders the API reference straight from the source. (We'll enable ruff's `D` rules with
-  `convention = "numpy"` when the docs site is wired up.)
+- Fully typed; `mypy --strict` must pass on `src`. Every public signature (in `src`) carries
+  full type hints on params and return. Test code does **not** need type-hinted signatures.
+- Docstrings are **Numpydoc style** (per the
+  [LSST DM guide](https://developer.lsst.io/python/numpydoc.html)) on **every** module,
+  class, and function - public, private (`_x`), dunder, and every test - so a future
+  Sphinx + ReadTheDocs autodoc build renders the API reference straight from the source.
+  (We'll enable ruff's `D` rules with `convention = "numpy"` when the docs site is wired up.)
+  Follow these rules exactly - they are the ones most easily gotten wrong:
+  - **Every parameter goes on its own entry. Never combine names** on one line
+    (`label, group : ...` is wrong - write a separate entry for each).
+  - Each entry is ``name : `type` `` where the type is in **backticks** (so Sphinx links it),
+    then the description indented on the following line(s). Append `, optional` after the
+    type for any parameter that has a default, e.g. ``timeout : `float`, optional``.
+  - Types appear in docstrings **even though the signature is also annotated** - the
+    signature is the checker's truth, the docstring type is what renders in the API docs.
+  - `Returns` / `Yields` entries use the same ``name : `type` `` form. `Raises` lists the
+    exception type then an indented description. Do **not** document `self`.
+  - Use the imperative mood in the one-line summary ("Return ...", "Send ...").
 - Inline comments explain only what the code and docstring can't - the local "why" behind a
   non-obvious line. Don't restate what the signature or docstring already says.
 - New wire behavior gets a round-trip test in `tests/test_protocol.py` (serialize ->
