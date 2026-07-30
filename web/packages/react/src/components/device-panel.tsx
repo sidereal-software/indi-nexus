@@ -45,7 +45,9 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
   }
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    // Column count follows the panel's own width (container queries), not the
+    // viewport - docked siblings (e.g. a messages panel) shrink the container.
+    <div className={cn("@container flex flex-col gap-6", className)}>
       {groups.map(([group, vectors]) => (
         <section key={group} className="flex flex-col gap-3">
           {group ? (
@@ -53,7 +55,7 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
               {group}
             </h3>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
             {vectors.map((vector) => (
               <PropertyVectorCard key={vector.name} vector={vector} />
             ))}

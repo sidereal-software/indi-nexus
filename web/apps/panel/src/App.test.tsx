@@ -7,7 +7,7 @@
  * and device panel - through real JSON frames.
  */
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -50,6 +50,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   FakeWebSocket.instances = [];
+  localStorage.clear();
 });
 
 /** Render the app, open its socket, and return the socket for driving frames. */
@@ -97,5 +98,83 @@ describe("App", () => {
     // The device panel shows the property card with its editable element.
     expect(screen.getByText("Exposure")).toBeInTheDocument();
     expect(screen.getByLabelText("secs")).toHaveValue(1.5);
+  });
+});
+
+describe("messages panel", () => {
+  it("is docked open by default and streams the INDI log", () => {
+    const { socket } = renderApp();
+    expect(screen.getByRole("complementary", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByText("No messages yet.")).toBeInTheDocument();
+
+    act(() =>
+      socket.receive(
+        JSON.stringify({ tag: "message", device: "Dome", message: "[INFO] Dome parked." }),
+      ),
+    );
+    expect(screen.getByText("[INFO] Dome parked.")).toBeInTheDocument();
+  });
+
+  it("collapses and reopens from the header toggle, remembering the choice", () => {
+    renderApp();
+    const toggle = screen.getByRole("button", { name: /Messages/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("complementary", { name: "Messages" })).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(localStorage.getItem("indi-messages")).toBe("closed");
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole("complementary", { name: "Messages" })).toBeInTheDocument();
+    expect(localStorage.getItem("indi-messages")).toBe("open");
+  });
+
+  it("starts collapsed when the last session closed it", () => {
+    localStorage.setItem("indi-messages", "closed");
+    renderApp();
+    expect(screen.queryByRole("complementary", { name: "Messages" })).not.toBeInTheDocument();
+  });
+});
+
+describe("debug info", () => {
+  /** Prime the app with one defined device property. */
+  function primeExposure(socket: FakeWebSocket) {
+    act(() =>
+      socket.receive(
+        JSON.stringify({
+          tag: "def",
+          vector: {
+            kind: "number",
+            device: "CCD Simulator",
+            name: "EXPOSURE",
+            label: "Exposure",
+            state: "Idle",
+            perm: "rw",
+            elements: [{ kind: "number", name: "secs", value: 1.5 }],
+          },
+        }),
+      ),
+    );
+  }
+
+  it("hides raw INDI names by default and reveals them via the toggle", () => {
+    const { socket } = renderApp();
+    primeExposure(socket);
+    expect(screen.queryByText("EXPOSURE · rw")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Debug info" }));
+    expect(screen.getByText("EXPOSURE · rw")).toBeInTheDocument();
+    expect(localStorage.getItem("indi-debug")).toBe("on");
+
+    fireEvent.click(screen.getByRole("switch", { name: "Debug info" }));
+    expect(screen.queryByText("EXPOSURE · rw")).not.toBeInTheDocument();
+  });
+
+  it("starts with debug info on when the last session enabled it", () => {
+    localStorage.setItem("indi-debug", "on");
+    const { socket } = renderApp();
+    primeExposure(socket);
+    expect(screen.getByText("EXPOSURE · rw")).toBeInTheDocument();
   });
 });
