@@ -10,8 +10,13 @@
 import {
   Button,
   ConnectionStatus,
+  cn,
   DevicePanel,
   DisplaySettingsProvider,
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
   type IndiClient,
   IndiProvider,
   Label,
@@ -32,8 +37,10 @@ import {
   SidebarTrigger,
   Switch,
   Toaster,
+  Toggle,
   TooltipProvider,
   useDevices,
+  useIsMobile,
 } from "@indi-nexus/react";
 import { MessageSquareText, Moon, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -139,34 +146,76 @@ function DeviceSidebar({
   );
 }
 
-/** The right sidebar: the INDI message log, a mirror of the device sidebar. */
-function MessagesSidebar() {
+/**
+ * The desktop right rail: the INDI message log, a mirror of the device sidebar.
+ *
+ * Stays mounted and animates its width with the same duration/easing as the
+ * device sidebar, so opening feels identical; while closed it is hidden from
+ * the accessibility tree and inert.
+ */
+function MessagesSidebar({ open }: { open: boolean }) {
   return (
-    <Sidebar
-      side="right"
-      collapsible="none"
-      role="complementary"
-      aria-label="Messages"
-      className="h-svh shrink-0 border-l"
+    <div
+      aria-hidden={!open}
+      inert={!open}
+      className={cn(
+        "shrink-0 overflow-hidden transition-[width] duration-200 ease-linear",
+        open ? "w-(--sidebar-width)" : "w-0",
+      )}
     >
-      <SidebarHeader className="p-3">
-        <div className="flex items-center gap-2">
-          <MessageSquareText className="size-5 text-primary" />
-          <span className="text-sm font-semibold">Messages</span>
-        </div>
-      </SidebarHeader>
-      <SidebarContent className="overflow-hidden">
-        <MessageLog className="min-h-0 flex-1" />
-      </SidebarContent>
-    </Sidebar>
+      <Sidebar
+        side="right"
+        collapsible="none"
+        role="complementary"
+        aria-label="Messages"
+        className="h-svh w-(--sidebar-width) border-l"
+      >
+        <SidebarHeader className="p-3">
+          <div className="flex items-center gap-2">
+            <MessageSquareText className="size-5 text-primary" />
+            <span className="text-sm font-semibold">Messages</span>
+          </div>
+        </SidebarHeader>
+        <SidebarContent className="overflow-hidden">
+          <MessageLog className="min-h-0 flex-1" />
+        </SidebarContent>
+      </Sidebar>
+    </div>
+  );
+}
+
+/** The mobile presentation: the same log in a swipe-dismissable bottom drawer. */
+function MessagesDrawer({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle className="flex items-center justify-center gap-2">
+            <MessageSquareText className="size-5 text-primary" />
+            Messages
+          </DrawerTitle>
+        </DrawerHeader>
+        <MessageLog className="h-[50svh]" />
+      </DrawerContent>
+    </Drawer>
   );
 }
 
 /** The main content: header + the selected device's property panel. */
 function AppShell() {
   const devices = useDevices();
+  const isMobile = useIsMobile();
   const [selected, setSelected] = useState<string | null>(null);
   const [messagesOpen, setMessagesOpen] = useState(initialMessagesOpen);
+  // The mobile drawer is transient and never persisted: it must not cover the
+  // controls on load just because the desktop rail was left open.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [debug, setDebug] = useState(initialDebug);
 
   // Auto-select the first device (and recover if the selected one disappears).
@@ -176,15 +225,13 @@ function AppShell() {
     }
   }, [devices, selected]);
 
-  const toggleMessages = useCallback(() => {
-    setMessagesOpen((open) => {
-      try {
-        localStorage.setItem(MESSAGES_KEY, open ? "closed" : "open");
-      } catch {
-        // Ignore storage errors (private mode, etc.).
-      }
-      return !open;
-    });
+  const setMessagesOpenPersisted = useCallback((open: boolean) => {
+    setMessagesOpen(open);
+    try {
+      localStorage.setItem(MESSAGES_KEY, open ? "open" : "closed");
+    } catch {
+      // Ignore storage errors (private mode, etc.).
+    }
   }, []);
 
   const setDebugPersisted = useCallback((on: boolean) => {
@@ -212,16 +259,17 @@ function AppShell() {
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
           <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto size-7"
+          <Toggle
+            size="sm"
+            className="ml-auto size-7 min-w-7 p-0"
+            pressed={isMobile ? drawerOpen : messagesOpen}
+            onPressedChange={(pressed) =>
+              isMobile ? setDrawerOpen(pressed) : setMessagesOpenPersisted(pressed)
+            }
             aria-label="Toggle messages"
-            aria-pressed={messagesOpen}
-            onClick={toggleMessages}
           >
             <MessageSquareText />
-          </Button>
+          </Toggle>
         </header>
         <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
           {active ? (
@@ -233,7 +281,11 @@ function AppShell() {
           )}
         </main>
       </SidebarInset>
-      {messagesOpen ? <MessagesSidebar /> : null}
+      {isMobile ? (
+        <MessagesDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
+      ) : (
+        <MessagesSidebar open={messagesOpen} />
+      )}
     </DisplaySettingsProvider>
   );
 }
