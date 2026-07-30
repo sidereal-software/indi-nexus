@@ -117,12 +117,12 @@ class _Vector(_Model):
 
         Parameters
         ----------
-        name : `str`
+        name : str
             The element name to look up.
 
         Returns
         -------
-        element : `Element`
+        element : Element
             The matching element.
 
         Raises

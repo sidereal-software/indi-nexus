@@ -37,13 +37,13 @@ def _coerce_switch(value: Any) -> ISState:
 
     Parameters
     ----------
-    value : `~indi_nexus.protocol.ISState` or `bool` or `str`
+    value : ISState or bool or str
         An `~indi_nexus.protocol.ISState`, a `bool` (`True` -> On), or a wire
         string (``"On"`` / ``"Off"``).
 
     Returns
     -------
-    state : `~indi_nexus.protocol.ISState`
+    state : ISState
         The corresponding switch state.
     """
     if isinstance(value, ISState):
@@ -58,9 +58,9 @@ class BoundProperty:
 
     Parameters
     ----------
-    vector : `~indi_nexus.protocol.Vector`
+    vector : Vector
         The protocol vector this handle wraps and mutates in place.
-    emit : `~collections.abc.Callable`
+    emit : Callable
         Callback that queues an outbound message on the runtime.
     """
 
@@ -93,12 +93,12 @@ class BoundProperty:
 
         Parameters
         ----------
-        name : `str`
+        name : str
             The element name.
 
         Returns
         -------
-        value : `object`
+        value : object
             The element's ``value`` (or ``data`` for a BLOB element).
         """
         el = self._vector.element(name)
@@ -124,16 +124,16 @@ class BoundProperty:
 
         Parameters
         ----------
-        values : `dict`, optional
+        values : dict, optional
             Element values keyed by name, for names that collide with the
             reserved keywords below, e.g. ``set({"state": "Ok"}, state=IPState.OK)``.
-        state : `~indi_nexus.protocol.IPState`, optional
+        state : IPState, optional
             New vector state, if changing it.
-        message : `str`, optional
+        message : str, optional
             Optional message to attach to the update.
-        timestamp : `~datetime.datetime`, optional
+        timestamp : datetime, optional
             Update timestamp; defaults to now.
-        **kwargs : `object`
+        **kwargs : object
             Element values by name (the common case).
         """
         merged = {**(values or {}), **kwargs}
@@ -151,7 +151,7 @@ class BoundProperty:
 
         Parameters
         ----------
-        message : `str`, optional
+        message : str, optional
             Optional explanation to include with the deletion.
         """
         self._emit(DelProperty(device=self._vector.device, name=self._vector.name, message=message))
@@ -161,9 +161,9 @@ class BoundProperty:
 
         Parameters
         ----------
-        name : `str`
+        name : str
             The element name to write.
-        val : `object`
+        val : object
             The new value; coerced for switches and BLOBs.
 
         Raises

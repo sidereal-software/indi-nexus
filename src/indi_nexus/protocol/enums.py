@@ -24,12 +24,12 @@ class _StrEnum(StrEnum):
 
         Parameters
         ----------
-        value : `object`
+        value : object
             The raw value looked up, e.g. ``"Ok "`` straight off the wire.
 
         Returns
         -------
-        member : `_StrEnum` or `None`
+        member : _StrEnum or None
             The matching member, or `None` to let `~enum.Enum` raise.
         """
         if isinstance(value, str):

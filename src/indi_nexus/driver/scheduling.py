@@ -29,11 +29,11 @@ class PeriodicSpec:
 
     Attributes
     ----------
-    interval : `float`
+    interval : float
         Seconds between runs.
-    start_immediately : `bool`
+    start_immediately : bool
         Whether to run once at startup before the first interval elapses.
-    name : `str` or `None`
+    name : str or None
         Optional label for the job (currently informational).
     """
 
@@ -59,22 +59,22 @@ def every(
 
     Parameters
     ----------
-    seconds : `float`, optional
+    seconds : float, optional
         Seconds component of the interval.
-    minutes : `float`, optional
+    minutes : float, optional
         Minutes component of the interval.
-    hours : `float`, optional
+    hours : float, optional
         Hours component of the interval. The three components are summed and
         must total a positive duration.
-    start_immediately : `bool`, optional
+    start_immediately : bool, optional
         If `True`, run once right away and then every interval thereafter;
         otherwise the first run is one interval in.
-    name : `str`, optional
+    name : str, optional
         Optional label for the job.
 
     Returns
     -------
-    decorator : `~collections.abc.Callable`
+    decorator : Callable
         A decorator that tags and returns the method unchanged.
 
     Raises
@@ -113,14 +113,14 @@ def iter_periodic(obj: object) -> Iterator[tuple[PeriodicSpec, Callable[[], Any]
 
     Parameters
     ----------
-    obj : `object`
+    obj : object
         The instance to scan (typically a `~indi_nexus.driver.device.Device`).
 
     Yields
     ------
-    spec : `PeriodicSpec`
+    spec : PeriodicSpec
         The schedule for a tagged job.
-    method : `~collections.abc.Callable`
+    method : Callable
         The bound method to run for that job.
     """
     seen: set[str] = set()

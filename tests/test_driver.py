@@ -43,7 +43,7 @@ class _Harness:
 
         Parameters
         ----------
-        data : `str` or `bytes`
+        data : str or bytes
             The bytes (or text) to deliver as the next read.
         """
         self._inbox.put_nowait(data.encode() if isinstance(data, str) else data)

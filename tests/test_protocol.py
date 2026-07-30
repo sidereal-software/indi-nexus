@@ -97,12 +97,12 @@ def _reparse(msg):
 
     Parameters
     ----------
-    msg : `~indi_nexus.protocol.IndiMessage`
+    msg : IndiMessage
         The message model to round-trip.
 
     Returns
     -------
-    result : `~indi_nexus.protocol.IndiMessage`
+    result : IndiMessage
         The message parsed back from the serialised XML.
     """
     (result,) = parse_indi(to_xml(msg))

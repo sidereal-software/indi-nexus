@@ -77,12 +77,12 @@ def parse_number(text: str) -> float:
 
     Parameters
     ----------
-    text : `str`
+    text : str
         The raw element text.
 
     Returns
     -------
-    value : `float`
+    value : float
         The parsed value; ``0.0`` for empty input.
     """
     s = text.strip()
@@ -109,14 +109,14 @@ def format_number(value: float, fmt: str) -> str:
 
     Parameters
     ----------
-    value : `float`
+    value : float
         The number to format.
-    fmt : `str`
+    fmt : str
         The INDI ``format`` string from the element definition.
 
     Returns
     -------
-    text : `str`
+    text : str
         The formatted value.
     """
     m = re.fullmatch(r"%(\d+)\.(\d+)m", fmt.strip())
@@ -154,11 +154,11 @@ def _set(el: etree._Element, key: str, value: object) -> None:
 
     Parameters
     ----------
-    el : `lxml.etree._Element`
+    el : lxml.etree._Element
         The element to modify.
-    key : `str`
+    key : str
         The attribute name.
-    value : `object`
+    value : object
         The attribute value; ``None`` is skipped and datetimes use the INDI
         timestamp format.
     """
@@ -174,14 +174,14 @@ def _element_xml(el: object, mode: str) -> etree._Element:
 
     Parameters
     ----------
-    el : `object`
+    el : object
         The element model to serialise.
-    mode : `str`
+    mode : str
         ``"def"`` for a full definition, otherwise a value-only ``one*`` node.
 
     Returns
     -------
-    node : `lxml.etree._Element`
+    node : lxml.etree._Element
         The serialised element node.
 
     Raises
@@ -250,14 +250,14 @@ def _vector_xml(vector: Vector, mode: str) -> etree._Element:
 
     Parameters
     ----------
-    vector : `~indi_nexus.protocol.Vector`
+    vector : Vector
         The vector model to serialise.
-    mode : `str`
+    mode : str
         ``"def"``, ``"set"``, or ``"new"`` - controls which attributes appear.
 
     Returns
     -------
-    node : `lxml.etree._Element`
+    node : lxml.etree._Element
         The serialised vector node.
     """
     _, _, stem = _VECTOR_BY_KIND[vector.kind]
@@ -293,12 +293,12 @@ def _message_xml(msg: IndiMessage) -> etree._Element:
 
     Parameters
     ----------
-    msg : `~indi_nexus.protocol.IndiMessage`
+    msg : IndiMessage
         The message model to serialise.
 
     Returns
     -------
-    node : `lxml.etree._Element`
+    node : lxml.etree._Element
         The serialised node.
 
     Raises
@@ -335,14 +335,14 @@ def to_xml(msg: IndiMessage, *, pretty: bool = False) -> bytes:
 
     Parameters
     ----------
-    msg : `~indi_nexus.protocol.IndiMessage`
+    msg : IndiMessage
         The message model to serialise.
-    pretty : `bool`, optional
+    pretty : bool, optional
         Whether to pretty-print the output.
 
     Returns
     -------
-    xml : `bytes`
+    xml : bytes
         The encoded XML.
     """
     return etree.tostring(_message_xml(msg), pretty_print=pretty)
@@ -356,15 +356,15 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
 
     Parameters
     ----------
-    node : `lxml.etree._Element`
+    node : lxml.etree._Element
         The element XML node.
-    kind : `str`
+    kind : str
         The element kind (``"number"``, ``"text"``, ``"switch"``, ``"light"``,
         ``"blob"``).
 
     Returns
     -------
-    element : `object`
+    element : object
         The parsed element model.
 
     Raises
@@ -409,12 +409,12 @@ def _optfloat(v: str | None) -> float | None:
 
     Parameters
     ----------
-    v : `str` or `None`
+    v : str or None
         The raw attribute value.
 
     Returns
     -------
-    value : `float` or `None`
+    value : float or None
         The parsed float, or `None`.
     """
     return None if v is None else float(v)
@@ -425,12 +425,12 @@ def _optint(v: str | None) -> int | None:
 
     Parameters
     ----------
-    v : `str` or `None`
+    v : str or None
         The raw attribute value.
 
     Returns
     -------
-    value : `int` or `None`
+    value : int or None
         The parsed int, or `None`.
     """
     return None if v is None else int(v)
@@ -441,12 +441,12 @@ def _optts(v: str | None) -> dt.datetime | None:
 
     Parameters
     ----------
-    v : `str` or `None`
+    v : str or None
         The raw timestamp attribute.
 
     Returns
     -------
-    value : `~datetime.datetime` or `None`
+    value : datetime or None
         The parsed timestamp, or `None`.
     """
     if not v:
@@ -462,15 +462,15 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
 
     Parameters
     ----------
-    node : `lxml.etree._Element`
+    node : lxml.etree._Element
         The vector XML node.
-    stem : `str`
+    stem : str
         The tag stem (``"Number"``, ``"Text"``, ``"Switch"``, ``"Light"``,
         ``"BLOB"``).
 
     Returns
     -------
-    vector : `~indi_nexus.protocol.Vector`
+    vector : Vector
         The parsed vector model.
     """
     kind = _STEM_BY_TAGWORD[stem]
@@ -512,12 +512,12 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
 
     Parameters
     ----------
-    node : `lxml.etree._Element`
+    node : lxml.etree._Element
         A top-level INDI element node.
 
     Returns
     -------
-    message : `~indi_nexus.protocol.IndiMessage` or `None`
+    message : IndiMessage or None
         The parsed message, or `None` for comments/PIs or unrecognised tags.
     """
     tag = node.tag
@@ -565,12 +565,12 @@ def parse_indi(data: bytes | str) -> list[IndiMessage]:
 
     Parameters
     ----------
-    data : `bytes` or `str`
+    data : bytes or str
         The XML bytes or string to parse.
 
     Returns
     -------
-    messages : `list` [`~indi_nexus.protocol.IndiMessage`]
+    messages : list of IndiMessage
         Every message found in the chunk, in order.
     """
     parser = XMLStreamParser()
@@ -595,12 +595,12 @@ class XMLStreamParser:
 
         Parameters
         ----------
-        data : `bytes` or `str`
+        data : bytes or str
             The next bytes or string from the stream.
 
         Yields
         ------
-        message : `~indi_nexus.protocol.IndiMessage`
+        message : IndiMessage
             Each top-level message that completed within this chunk.
         """
         if isinstance(data, str):
