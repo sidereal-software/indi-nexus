@@ -7,9 +7,11 @@ from lxml import etree
 
 from indi_nexus.protocol import (
     BLOB,
+    BLOBPolicy,
     BLOBVector,
     DefVector,
     DelProperty,
+    EnableBLOB,
     GetProperties,
     IPerm,
     IPState,
@@ -230,6 +232,25 @@ def test_message_and_delproperty():
     d = _reparse(DelProperty(device="CCD", name="EXPOSURE"))
     assert isinstance(d, DelProperty)
     assert d.name == "EXPOSURE"
+
+
+def test_enable_blob_roundtrip():
+    """enableBLOB serialises its policy as element text and round-trips."""
+    xml = to_xml(EnableBLOB(device="CCD", policy=BLOBPolicy.ALSO)).decode()
+    assert xml.startswith("<enableBLOB")
+    assert ">Also<" in xml
+    back = _reparse(EnableBLOB(device="CCD", name="CCD1", policy=BLOBPolicy.ONLY))
+    assert isinstance(back, EnableBLOB)
+    assert back.device == "CCD"
+    assert back.name == "CCD1"
+    assert back.policy == BLOBPolicy.ONLY
+
+
+def test_enable_blob_defaults_to_also_when_empty():
+    """A bodyless enableBLOB parses back to the default Also policy."""
+    (back,) = parse_indi("<enableBLOB device='CCD'></enableBLOB>")
+    assert isinstance(back, EnableBLOB)
+    assert back.policy == BLOBPolicy.ALSO
 
 
 # --------------------------------------------------------------------------- #

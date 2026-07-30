@@ -25,12 +25,13 @@ from typing import cast
 
 from lxml import etree
 
-from indi_nexus.protocol.enums import IPerm, IPState, ISRule, ISState
+from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 from indi_nexus.protocol.models import (
     BLOB,
     BLOBVector,
     DefVector,
     DelProperty,
+    EnableBLOB,
     GetProperties,
     IndiMessage,
     Light,
@@ -327,6 +328,12 @@ def _message_xml(msg: IndiMessage) -> etree._Element:
         _set(node, "timestamp", msg.timestamp)
         _set(node, "message", msg.message)
         return node
+    if isinstance(msg, EnableBLOB):
+        node = etree.Element("enableBLOB")
+        _set(node, "device", msg.device)
+        _set(node, "name", msg.name)
+        node.text = BLOBPolicy(msg.policy).value
+        return node
     raise TypeError(f"Cannot serialize {type(msg)!r}")
 
 
@@ -542,6 +549,13 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
             device=node.get("device"),
             timestamp=_optts(node.get("timestamp")),
             message=node.get("message") or "",
+        )
+    if tag == "enableBLOB":
+        text = (node.text or "").strip()
+        return EnableBLOB(
+            device=node.get("device") or "",
+            name=node.get("name"),
+            policy=BLOBPolicy(text) if text else BLOBPolicy.ALSO,
         )
 
     m = re.fullmatch(r"(def|set|new)(Number|Text|Switch|Light|BLOB)Vector", tag)

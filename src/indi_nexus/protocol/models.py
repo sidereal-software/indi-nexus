@@ -25,7 +25,7 @@ from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from indi_nexus.protocol.enums import IPerm, IPState, ISRule, ISState
+from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 
 INDI_VERSION = "1.7"
 
@@ -217,6 +217,19 @@ class Message(_Model):
     message: str = ""
 
 
+class EnableBLOB(_Model):
+    """Client -> server request controlling BLOB delivery.
+
+    ``indiserver`` withholds BLOBs from a client until it sends this; the policy
+    applies to one device (and optionally one property when ``name`` is set).
+    """
+
+    tag: Literal["enableBLOB"] = "enableBLOB"
+    device: str
+    name: str | None = None
+    policy: BLOBPolicy = BLOBPolicy.ALSO
+
+
 # --------------------------------------------------------------------------- #
 # Wire events: def / set / new intent wrappers around a vector                 #
 # --------------------------------------------------------------------------- #
@@ -241,4 +254,4 @@ class NewVector(_Model):
     vector: Vector
 
 
-IndiMessage = DefVector | SetVector | NewVector | GetProperties | DelProperty | Message
+IndiMessage = DefVector | SetVector | NewVector | GetProperties | DelProperty | Message | EnableBLOB

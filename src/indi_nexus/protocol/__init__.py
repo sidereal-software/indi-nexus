@@ -7,13 +7,14 @@ and to JSON (for modern web clients). It replaces pyINDI's runtime DTD
 reflection and the ``int``-subclass enum machinery.
 """
 
-from indi_nexus.protocol.enums import IPerm, IPState, ISRule, ISState
+from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 from indi_nexus.protocol.models import (
     BLOB,
     BLOBVector,
     DefVector,
     DelProperty,
     Element,
+    EnableBLOB,
     GetProperties,
     IndiMessage,
     Light,
@@ -37,6 +38,7 @@ __all__ = [
     "IPerm",
     "ISRule",
     "ISState",
+    "BLOBPolicy",
     # elements
     "Number",
     "Text",
@@ -55,6 +57,7 @@ __all__ = [
     "GetProperties",
     "DelProperty",
     "Message",
+    "EnableBLOB",
     "DefVector",
     "SetVector",
     "NewVector",

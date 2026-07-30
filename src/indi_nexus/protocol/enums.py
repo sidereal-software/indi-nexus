@@ -70,3 +70,15 @@ class ISState(_StrEnum):
 
     OFF = "Off"
     ON = "On"
+
+
+class BLOBPolicy(_StrEnum):
+    """How ``indiserver`` should deliver BLOBs to a client.
+
+    A client must send an ``enableBLOB`` with one of these policies before
+    ``indiserver`` will forward any BLOB; the default on the wire is ``Never``.
+    """
+
+    NEVER = "Never"
+    ALSO = "Also"
+    ONLY = "Only"
