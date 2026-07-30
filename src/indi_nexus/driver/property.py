@@ -33,7 +33,19 @@ Emit = Callable[[IndiMessage], None]
 
 
 def _coerce_switch(value: Any) -> ISState:
-    """Accept ``ISState``/``bool``/``"On"``/``"Off"`` for a switch element value."""
+    """Coerce a user-supplied switch value into an :class:`ISState`.
+
+    Parameters
+    ----------
+    value:
+        An :class:`ISState`, a ``bool`` (``True`` -> On), or a wire string
+        (``"On"`` / ``"Off"``).
+
+    Returns
+    -------
+    ISState
+        The corresponding switch state.
+    """
     if isinstance(value, ISState):
         return value
     if isinstance(value, bool):
@@ -42,9 +54,18 @@ def _coerce_switch(value: Any) -> ISState:
 
 
 class BoundProperty:
-    """A property vector plus the hook that pushes updates to the client."""
+    """A property vector plus the hook that pushes updates to the client.
+
+    Parameters
+    ----------
+    vector:
+        The protocol vector this handle wraps and mutates in place.
+    emit:
+        Callback that queues an outbound message on the runtime.
+    """
 
     def __init__(self, vector: Vector, emit: Emit) -> None:
+        """Wrap ``vector`` with the runtime's outbound-message callback."""
         self._vector = vector
         self._emit = emit
 
@@ -55,17 +76,31 @@ class BoundProperty:
 
     @property
     def name(self) -> str:
+        """The property's name."""
         return self._vector.name
 
     @property
     def state(self) -> IPState:
+        """The property's current vector state."""
         return self._vector.state
 
     def __getitem__(self, name: str) -> Element:
+        """Return element ``name`` (raises :class:`KeyError` if absent)."""
         return self._vector.element(name)
 
     def value(self, name: str) -> Any:
-        """Return the current value of element ``name`` (``.data`` for a BLOB)."""
+        """Return the current value of an element.
+
+        Parameters
+        ----------
+        name:
+            The element name.
+
+        Returns
+        -------
+        Any
+            The element's ``value`` (or ``data`` for a BLOB element).
+        """
         el = self._vector.element(name)
         if isinstance(el, BLOB):
             return el.data
@@ -80,17 +115,26 @@ class BoundProperty:
         timestamp: dt.datetime | None = None,
         **kwargs: Any,
     ) -> None:
-        """Assign element values by name, update state, and emit a ``set``.
+        """Assign element values, update state, and emit a ``set`` to the client.
 
         ``set(RA=1.23, DEC=4.56, state=IPState.OK)`` writes the two elements, sets
         the vector state, stamps the timestamp, and sends a single
-        ``setNumberVector`` to the client. For a ``OneOfMany`` switch vector,
-        turning one element On automatically turns its siblings Off.
+        ``setNumberVector``. For a ``OneOfMany`` switch vector, turning one element
+        On automatically turns its siblings Off.
 
-        Elements are passed as keyword arguments. Use the positional ``values``
-        dict for element names that collide with the reserved keywords
-        (``state`` / ``message`` / ``timestamp``), e.g.
-        ``set({"state": "Ok"}, state=IPState.OK)``.
+        Parameters
+        ----------
+        values:
+            Element values as a dict, for names that collide with the reserved
+            keywords below, e.g. ``set({"state": "Ok"}, state=IPState.OK)``.
+        state:
+            New vector state, if changing it.
+        message:
+            Optional message to attach to the update.
+        timestamp:
+            Update timestamp; defaults to now.
+        **kwargs:
+            Element values by name (the common case).
         """
         merged = {**(values or {}), **kwargs}
         for elem_name, val in merged.items():
@@ -103,10 +147,30 @@ class BoundProperty:
         self._emit(SetVector(vector=self._vector))
 
     def delete(self, message: str | None = None) -> None:
-        """Tell the client this property has gone away (``delProperty``)."""
+        """Tell the client this property has gone away (``delProperty``).
+
+        Parameters
+        ----------
+        message:
+            Optional explanation to include with the deletion.
+        """
         self._emit(DelProperty(device=self._vector.device, name=self._vector.name, message=message))
 
     def _assign(self, name: str, val: Any) -> None:
+        """Write one element value, applying per-kind coercion and switch rules.
+
+        Parameters
+        ----------
+        name:
+            The element name to write.
+        val:
+            The new value; coerced for switches and BLOBs.
+
+        Raises
+        ------
+        KeyError
+            If ``name`` is not an element of this vector.
+        """
         vec = self._vector
         el = vec.element(name)  # raises KeyError if the element is unknown
         if isinstance(el, Switch):

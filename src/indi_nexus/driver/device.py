@@ -49,12 +49,26 @@ class Device:
 
     Subclass it, set :attr:`name` (optional; defaults to the class name), and
     override :meth:`setup`.
+
+    Attributes
+    ----------
+    name:
+        Class attribute; override to set the INDI device name. Empty means "use
+        the class name".
     """
 
     #: Override to set the INDI device name. Empty means "use the class name".
     name: str = ""
 
     def __init__(self, name: str | None = None) -> None:
+        """Initialise the device and discover its ``@on_new`` handlers.
+
+        Parameters
+        ----------
+        name:
+            Instance-level device name override. Falls back to the class
+            :attr:`name`, then to the class name.
+        """
         self._device = name or type(self).name or type(self).__name__
         self._properties: dict[str, BoundProperty] = {}
         self._new_handlers: dict[str, NewHandler] = dict(iter_new_handlers(self))
@@ -68,26 +82,42 @@ class Device:
         return self._device
 
     def __repr__(self) -> str:
+        """Return a debug representation naming the class and device."""
         return f"<{type(self).__name__} device={self._device!r}>"
 
     # -- lifecycle hooks (override these) ---------------------------------- #
     async def setup(self) -> None:
         """Define the device's properties. Called once, on first ``getProperties``.
 
-        Override and call ``self.define_*`` here.
+        Override and call ``self.define_*`` here. The base implementation does
+        nothing.
         """
 
     async def on_new_default(self, vector: Vector) -> None:
         """Handle a client write to a property with no ``@on_new`` handler.
 
         The default is to ignore it. Override for a catch-all.
+
+        Parameters
+        ----------
+        vector:
+            The parsed vector the client asked to change.
         """
 
     # -- property definition ---------------------------------------------- #
     def define(self, vector: Vector) -> BoundProperty:
-        """Register ``vector`` and emit its ``def``; return its handle.
+        """Register a property vector, emit its ``def``, and return its handle.
 
-        If the vector has no device set, this device's name is filled in.
+        Parameters
+        ----------
+        vector:
+            The vector to define. If its ``device`` is unset, this device's name
+            is filled in.
+
+        Returns
+        -------
+        BoundProperty
+            The handle used to push later updates for this property.
         """
         if not vector.device:
             vector.device = self._device
@@ -107,6 +137,28 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
     ) -> BoundProperty:
+        """Define a number vector property.
+
+        Parameters
+        ----------
+        name:
+            The property name.
+        elements:
+            The number elements the vector contains.
+        label, group:
+            Optional display label and GUI group.
+        state:
+            Initial vector state.
+        perm:
+            Client access permission.
+        timeout:
+            Optional worst-case update time, in seconds.
+
+        Returns
+        -------
+        BoundProperty
+            The handle for the newly defined property.
+        """
         return self.define(
             NumberVector(
                 device=self._device,
@@ -131,6 +183,28 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
     ) -> BoundProperty:
+        """Define a text vector property.
+
+        Parameters
+        ----------
+        name:
+            The property name.
+        elements:
+            The text elements the vector contains.
+        label, group:
+            Optional display label and GUI group.
+        state:
+            Initial vector state.
+        perm:
+            Client access permission.
+        timeout:
+            Optional worst-case update time, in seconds.
+
+        Returns
+        -------
+        BoundProperty
+            The handle for the newly defined property.
+        """
         return self.define(
             TextVector(
                 device=self._device,
@@ -156,6 +230,30 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
     ) -> BoundProperty:
+        """Define a switch vector property.
+
+        Parameters
+        ----------
+        name:
+            The property name.
+        elements:
+            The switch elements the vector contains.
+        rule:
+            The switch constraint (e.g. ``OneOfMany``).
+        label, group:
+            Optional display label and GUI group.
+        state:
+            Initial vector state.
+        perm:
+            Client access permission.
+        timeout:
+            Optional worst-case update time, in seconds.
+
+        Returns
+        -------
+        BoundProperty
+            The handle for the newly defined property.
+        """
         return self.define(
             SwitchVector(
                 device=self._device,
@@ -179,7 +277,26 @@ class Device:
         group: str | None = None,
         state: IPState = IPState.IDLE,
     ) -> BoundProperty:
-        # Lights are always read-only in INDI, so there is no perm argument.
+        """Define a light vector property.
+
+        Lights are always read-only in INDI, so there is no ``perm`` argument.
+
+        Parameters
+        ----------
+        name:
+            The property name.
+        elements:
+            The light elements the vector contains.
+        label, group:
+            Optional display label and GUI group.
+        state:
+            Initial vector state.
+
+        Returns
+        -------
+        BoundProperty
+            The handle for the newly defined property.
+        """
         return self.define(
             LightVector(
                 device=self._device,
@@ -202,6 +319,28 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
     ) -> BoundProperty:
+        """Define a BLOB vector property.
+
+        Parameters
+        ----------
+        name:
+            The property name.
+        elements:
+            The BLOB elements the vector contains.
+        label, group:
+            Optional display label and GUI group.
+        state:
+            Initial vector state.
+        perm:
+            Client access permission.
+        timeout:
+            Optional worst-case update time, in seconds.
+
+        Returns
+        -------
+        BoundProperty
+            The handle for the newly defined property.
+        """
         return self.define(
             BLOBVector(
                 device=self._device,
@@ -217,20 +356,48 @@ class Device:
 
     # -- property access --------------------------------------------------- #
     def property(self, name: str) -> BoundProperty:
-        """Return the handle for a previously defined property."""
+        """Return the handle for a previously defined property.
+
+        Parameters
+        ----------
+        name:
+            The property name passed to a ``define_*`` call.
+
+        Returns
+        -------
+        BoundProperty
+            The handle for that property.
+
+        Raises
+        ------
+        KeyError
+            If no property with that name has been defined.
+        """
         return self._properties[name]
 
     def __getitem__(self, name: str) -> BoundProperty:
+        """Return the handle for property ``name`` (see :meth:`property`)."""
         return self._properties[name]
 
     def __contains__(self, name: str) -> bool:
+        """Return whether a property named ``name`` has been defined."""
         return name in self._properties
 
     # -- client messaging -------------------------------------------------- #
     def message(
         self, text: str, *, level: str = "INFO", timestamp: dt.datetime | None = None
     ) -> None:
-        """Send a free-form log/notification ``message`` to the client."""
+        """Send a free-form log/notification ``message`` to the client.
+
+        Parameters
+        ----------
+        text:
+            The message body.
+        level:
+            A severity label prefixed to the text (e.g. ``INFO``, ``ERROR``).
+        timestamp:
+            Message timestamp; defaults to now.
+        """
         self._send(
             Message(
                 device=self._device,
@@ -240,14 +407,39 @@ class Device:
         )
 
     def log_error(self, text: str) -> None:
-        """Convenience for an ``ERROR``-level :meth:`message`."""
+        """Send an ``ERROR``-level :meth:`message`.
+
+        Parameters
+        ----------
+        text:
+            The error text.
+        """
         self.message(text, level="ERROR")
 
     # -- runtime plumbing (called by DriverRuntime) ------------------------ #
     def _bind(self, emit: Emit) -> None:
+        """Attach the runtime's outbound-message callback to this device.
+
+        Parameters
+        ----------
+        emit:
+            Callback the device uses to queue outbound messages.
+        """
         self._emit = emit
 
     def _send(self, msg: IndiMessage) -> None:
+        """Queue one outbound message, requiring an attached runtime.
+
+        Parameters
+        ----------
+        msg:
+            The message to send.
+
+        Raises
+        ------
+        RuntimeError
+            If the device is not attached to a runtime.
+        """
         if self._emit is None:
             raise RuntimeError(
                 "Device is not attached to a runtime; define/send only works while serving"
@@ -255,15 +447,26 @@ class Device:
         self._emit(msg)
 
     async def _dispatch_get_properties(self) -> None:
+        """Handle a ``getProperties``: run :meth:`setup` once, else re-announce.
+
+        The first request runs :meth:`setup`; later ones (a late-joining client)
+        re-emit the ``def`` for every property already defined.
+        """
         if not self._setup_done:
             self._setup_done = True
             await self.setup()
         else:
-            # A late-joining client: re-announce everything we already have.
             for prop in self._properties.values():
                 self._send(DefVector(vector=prop.vector))
 
     async def _dispatch_new(self, vector: Vector) -> None:
+        """Route a client write to its ``@on_new`` handler or the default.
+
+        Parameters
+        ----------
+        vector:
+            The parsed vector the client asked to change.
+        """
         handler = self._new_handlers.get(vector.name)
         result = handler(vector) if handler is not None else self.on_new_default(vector)
         if inspect.isawaitable(result):
@@ -272,7 +475,13 @@ class Device:
     # -- entrypoint -------------------------------------------------------- #
     @classmethod
     def run(cls, name: str | None = None) -> None:
-        """Run this device as an ``indiserver`` stdio driver until stdin closes."""
+        """Run this device as an ``indiserver`` stdio driver until stdin closes.
+
+        Parameters
+        ----------
+        name:
+            Optional device-name override passed to the constructor.
+        """
         from indi_nexus.driver.runtime import run
 
         run(cls(name=name))

@@ -18,18 +18,31 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def on_new(name: str) -> Callable[[F], F]:
-    """Register the decorated method as the handler for client writes to ``name``.
+    """Tag a method as the handler for client writes to property ``name``.
 
     The handler receives the parsed vector for the property the client is trying
-    to change::
+    to change.
 
-        @on_new("CONNECTION")
-        async def _connect(self, vector: SwitchVector) -> None:
-            connect = vector["CONNECT"].value == ISState.ON
-            ...
+    Parameters
+    ----------
+    name:
+        The property name (the vector's ``name``) this handler serves.
+
+    Returns
+    -------
+    Callable
+        A decorator that tags and returns the method unchanged.
+
+    Examples
+    --------
+    >>> @on_new("CONNECTION")
+    ... async def _connect(self, vector: SwitchVector) -> None:
+    ...     connect = vector["CONNECT"].value == ISState.ON
+    ...     ...
     """
 
     def decorator(func: F) -> F:
+        """Tag ``func`` with the target property name and return it unchanged."""
         setattr(func, _HANDLER_ATTR, name)
         return func
 
@@ -37,7 +50,20 @@ def on_new(name: str) -> Callable[[F], F]:
 
 
 def iter_new_handlers(obj: object) -> Iterator[tuple[str, Callable[..., Any]]]:
-    """Yield ``(property_name, bound_method)`` for each ``@on_new`` handler on ``obj``."""
+    """Yield the property name and bound method for each ``@on_new`` handler.
+
+    Walks the full MRO, with subclass overrides shadowing base entries.
+
+    Parameters
+    ----------
+    obj:
+        The instance to scan (typically a :class:`~indi_nexus.driver.device.Device`).
+
+    Yields
+    ------
+    tuple of (str, Callable)
+        The property name and the bound handler for it.
+    """
     seen: set[str] = set()
     for klass in type(obj).__mro__:
         for attr, value in vars(klass).items():

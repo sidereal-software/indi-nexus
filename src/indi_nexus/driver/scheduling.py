@@ -8,9 +8,8 @@ same schedule; it also re-implemented interval timing by hand with chained
 
 Here the decorator only **tags** a method with a small :class:`PeriodicSpec`.
 Discovery and execution are per-instance: the runtime scans the concrete device
-object for tagged methods (:func:`iter_periodic`) and supervises one async task
-per method inside a structured task group. No shared mutable state, so two
-device instances never interfere.
+object for tagged methods (:func:`iter_periodic`) and supervises one asyncio task
+per method. No shared mutable state, so two device instances never interfere.
 """
 
 from __future__ import annotations
@@ -26,7 +25,17 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 @dataclass(frozen=True)
 class PeriodicSpec:
-    """How often a tagged method should run, in seconds."""
+    """The schedule attached to an ``@every``-tagged method.
+
+    Attributes
+    ----------
+    interval:
+        Seconds between runs.
+    start_immediately:
+        Whether to run once at startup before the first interval elapses.
+    name:
+        Optional label for the job (currently informational).
+    """
 
     interval: float
     start_immediately: bool = False
@@ -41,19 +50,41 @@ def every(
     start_immediately: bool = False,
     name: str | None = None,
 ) -> Callable[[F], F]:
-    """Run the decorated (async or sync) device method on a fixed interval.
+    """Tag a device method to run on a fixed interval.
 
-    The interval is the sum of ``seconds`` + ``minutes`` + ``hours`` and must be
-    positive. With ``start_immediately=True`` the method runs once right away and
-    then every interval thereafter; otherwise the first run is one interval in.
+    The interval is the sum of ``seconds`` + ``minutes`` + ``hours``. The method
+    may be sync or async. This only records a :class:`PeriodicSpec` on the
+    function; :class:`~indi_nexus.driver.runtime.DriverRuntime` discovers and runs
+    it once the device is served.
 
-    Example::
+    Parameters
+    ----------
+    seconds, minutes, hours:
+        Interval components; summed to the total period. Must total a positive
+        duration.
+    start_immediately:
+        If ``True``, run once right away and then every interval thereafter;
+        otherwise the first run is one interval in.
+    name:
+        Optional label for the job.
 
-        class Mount(Device):
-            @every(seconds=1)
-            async def poll(self) -> None:
-                ra, dec = await self.read_mount()
-                self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec)
+    Returns
+    -------
+    Callable
+        A decorator that tags and returns the method unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the combined interval is not positive.
+
+    Examples
+    --------
+    >>> class Mount(Device):
+    ...     @every(seconds=1)
+    ...     async def poll(self) -> None:
+    ...         ra, dec = await self.read_mount()
+    ...         self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec)
     """
     interval = seconds + minutes * 60.0 + hours * 3600.0
     if interval <= 0.0:
@@ -62,6 +93,7 @@ def every(
     spec = PeriodicSpec(interval=interval, start_immediately=start_immediately, name=name)
 
     def decorator(func: F) -> F:
+        """Tag ``func`` with the schedule and return it unchanged."""
         setattr(func, _SPEC_ATTR, spec)
         return func
 
@@ -69,11 +101,21 @@ def every(
 
 
 def iter_periodic(obj: object) -> Iterator[tuple[PeriodicSpec, Callable[[], Any]]]:
-    """Yield ``(spec, bound_method)`` for every ``@every``-tagged method on ``obj``.
+    """Yield the schedule and bound method for each ``@every`` job on ``obj``.
 
     Walks the full MRO so tagged methods on base classes are found, while an
     override in a subclass shadows the base entry (whether or not the override is
     itself tagged) - standard method-resolution semantics.
+
+    Parameters
+    ----------
+    obj:
+        The instance to scan (typically a :class:`~indi_nexus.driver.device.Device`).
+
+    Yields
+    ------
+    tuple of (PeriodicSpec, Callable)
+        The schedule and the bound method to run for each tagged job.
     """
     seen: set[str] = set()
     for klass in type(obj).__mro__:

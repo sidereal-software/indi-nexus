@@ -54,6 +54,7 @@ class DriverRuntime:
     """
 
     def __init__(self, device: Device, read: ReadFn, write: WriteFn) -> None:
+        """Bind the device to its transport and its outbound-message callback."""
         self._device = device
         self._read = read
         self._write = write
@@ -63,6 +64,7 @@ class DriverRuntime:
         device._bind(self._emit)
 
     def _emit(self, msg: IndiMessage) -> None:
+        """Queue one outbound message on the (unbounded) outbox."""
         self._outbox.put_nowait(msg)
 
     async def serve(self) -> None:
@@ -155,9 +157,11 @@ async def _open_stdio() -> tuple[ReadFn, WriteFn]:
     await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
 
     async def read() -> bytes:
+        """Read the next chunk from stdin (``b""`` at EOF)."""
         return await reader.read(_READ_CHUNK)
 
     async def write(data: bytes) -> None:
+        """Write one serialised message to stdout and flush."""
         sys.stdout.buffer.write(data)
         sys.stdout.buffer.flush()
 
