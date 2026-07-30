@@ -8,8 +8,8 @@ keeps the proven INDI architecture - drivers running under the C `indiserver` hu
 rebuilds the Python layers on a modern, fully-typed foundation: a Pydantic v2 protocol
 core, an async client, a FastAPI + WebSocket web bridge, and a TypeScript/React frontend.
 
-> Status: **early development.** The protocol core (Milestone 1) is complete and tested.
-> See [Roadmap](#roadmap).
+> Status: **early development.** The protocol core, driver SDK, and async client
+> (Milestones 1-3) are complete and tested. See [Roadmap](#roadmap).
 
 ## What it is
 
@@ -37,12 +37,12 @@ INDINexus provides three things, all built on one shared, typed protocol model:
 
 | Layer | Technology |
 |---|---|
-| Language (backend) | Python 3.10+ |
+| Language (backend) | Python 3.12+ |
 | Data model / validation | Pydantic v2 |
 | XML | lxml |
 | Web / API | FastAPI + Uvicorn, native WebSockets |
 | CLI | Typer |
-| Concurrency | asyncio + anyio |
+| Concurrency | asyncio (stdlib) |
 | Packaging / env | uv, hatchling |
 | Lint / format | Ruff |
 | Type checking | mypy (strict) |
@@ -52,11 +52,11 @@ INDINexus provides three things, all built on one shared, typed protocol model:
 
 ## Getting started
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.10+.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 
 ```bash
 # Create the virtualenv and install the package with dev dependencies
-uv venv --python 3.10
+uv venv --python 3.12
 uv pip install -e ".[dev]"
 ```
 
@@ -91,13 +91,15 @@ indi-nexus/
 ├── pyproject.toml           # packaging, dependencies, tool config (ruff/mypy/pytest)
 ├── src/indi_nexus/
 │   ├── protocol/            # DONE: the INDI protocol core
-│   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState (wire-token str enums)
-│   │   ├── models.py        #   typed Pydantic vectors, elements, and def/set/new events
+│   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy (str enums)
+│   │   ├── models.py        #   typed Pydantic vectors, elements, def/set/new + enableBLOB
 │   │   └── xml.py           #   INDI XML codec + streaming pull-parser + sexagesimal
-│   ├── driver/              # planned: driver SDK (stdio under indiserver)
-│   ├── client/              # planned: async client to indiserver
+│   ├── driver/              # DONE: driver SDK (stdio under indiserver)
+│   ├── client/              # DONE: reconnecting async client + property cache
+│   ├── transport.py         # DONE: shared read/write byte-stream contract + TCP adapter
 │   ├── web/                 # planned: FastAPI + WebSocket bridge
 │   └── cli.py               # planned: Typer CLI
+├── examples/                # runnable reference driver + client
 ├── tests/                   # pytest suite
 └── web/                     # planned: pnpm workspace (client lib, React bindings, app)
 ```
@@ -125,12 +127,60 @@ assert msg.vector["CCD_EXP"].value == 1.5
 For a continuous socket/stdio stream, use `XMLStreamParser`, which emits complete messages
 as top-level elements arrive (reassembling across arbitrary chunk boundaries).
 
+## Writing a driver
+
+Subclass `Device`, declare properties in `setup()`, poll with `@every`, and handle client
+writes with `@on_new`. See `examples/demo_device.py`.
+
+```python
+from indi_nexus.driver import Device, every, on_new
+from indi_nexus.protocol import Number, IPState, IPerm
+
+class Mount(Device):
+    name = "Mount"
+
+    async def setup(self) -> None:
+        self.define_number(
+            "EQUATORIAL_EOD_COORD",
+            [Number(name="RA", format="%9.6m"), Number(name="DEC", format="%9.6m")],
+            perm=IPerm.RO,
+        )
+
+    @every(seconds=1)
+    async def poll(self) -> None:
+        ra, dec = await self.read_mount()
+        self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec, state=IPState.OK)
+
+if __name__ == "__main__":
+    Mount.run()          # serves over stdio under indiserver
+```
+
+## Using the client
+
+`IndiClient` keeps a typed cache of `indiserver` state, lets you watch it, and sends
+updates - reconnecting automatically. See `examples/monitor_client.py`.
+
+```python
+from indi_nexus.client import IndiClient
+from indi_nexus.protocol import IPState
+
+async with IndiClient("localhost", 7624) as client:
+    client.subscribe(lambda e: print(e.type, e.device, e.name))  # sync or async
+    await client.set_number("CCD", "EXPOSURE", {"secs": 1.5})
+    image = await client.wait_for(
+        "CCD", "EXPOSURE", lambda v: v.state == IPState.OK, timeout=30
+    )
+```
+
 ## Roadmap
 
 - [x] **M1 - Protocol core**: enums, typed models, XML codec, streaming parser.
-- [ ] **M2 - Driver SDK**: base device class, stdio transport under `indiserver`.
-- [ ] **M3 - Async client**: reconnecting `indiserver` client with typed property cache.
+- [x] **M2 - Driver SDK**: base device class, `@every`/`@on_new`, stdio transport under
+  `indiserver`.
+- [x] **M3 - Async client**: reconnecting `indiserver` client with a typed property cache,
+  subscriptions, `wait_for`, and `enableBLOB`.
 - [ ] **M4 - Web bridge + CLI**: FastAPI WebSocket bridge (XML↔JSON), Typer CLI.
+- [ ] **M5 - Frontend**: pnpm workspace (client lib, React bindings, reference app).
 - [ ] **M5 - Frontend**: `@indi-nexus/client`, `@indi-nexus/react`, reference panel app.
 
 ## License

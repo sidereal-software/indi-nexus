@@ -54,7 +54,8 @@ passing. Each milestone lands with its own tests; keep that discipline.
 src/indi_nexus/
 ├── protocol/     DONE   the INDI protocol core (see below)
 ├── driver/       DONE   driver SDK: subclass a base device; stdio XML under indiserver
-├── client/       planned  reconnecting asyncio TCP client to indiserver + property cache
+├── client/       DONE   reconnecting asyncio TCP client to indiserver + property cache
+├── transport.py  DONE   shared ReadFn/WriteFn byte-stream contract + TCP adapter
 ├── web/          planned  FastAPI app: WebSocket bridge translating INDI XML <-> JSON
 └── cli.py        planned  Typer CLI (run driver, serve web, scan)
 ```
@@ -73,9 +74,9 @@ The single source of truth for the INDI 1.7 wire format. It replaces three fragi
 of pyINDI: runtime DTD reflection, `int`-subclass enums that compared against wire strings,
 and the "accumulate stdin and retry `etree.fromstring`" framing loop.
 
-- `enums.py` - `IPState`, `IPerm`, `ISRule`, `ISState`. These mix in `str` so a member
-  **is** its exact wire token (`IPState.OK == "Ok"`) and Pydantic serializes it directly.
-  (each subclasses `enum.StrEnum`, so a member *is* its exact wire token.)
+- `enums.py` - `IPState`, `IPerm`, `ISRule`, `ISState`, `BLOBPolicy`. Each subclasses
+  `enum.StrEnum`, so a member **is** its exact wire token (`IPState.OK == "Ok"`) and
+  Pydantic serializes it directly.
 - `models.py` - typed Pydantic models. Key design choices:
   - A **vector** (`NumberVector`, `TextVector`, `SwitchVector`, `LightVector`,
     `BLOBVector`) is the canonical in-memory representation of a property. Discriminated on
@@ -87,6 +88,9 @@ and the "accumulate stdin and retry `etree.fromstring`" framing loop.
     defaults, because `set`/`one` messages carry only `name` + value. Clients merge `set`
     values onto the previously-defined vector (standard INDI behavior).
   - `LightVector` has no `perm` (lights are always read-only in INDI).
+  - Non-property messages: `GetProperties`, `DelProperty`, `Message`, and `EnableBLOB`
+    (`BLOBPolicy` = `Never`/`Also`/`Only`) - a client must send `enableBLOB` before
+    `indiserver` forwards any BLOB.
 - `xml.py` - the codec.
   - `to_xml(msg)` serializes a message model to canonical INDI XML.
   - `parse_indi(data)` parses a complete chunk; `XMLStreamParser` is the incremental
@@ -118,14 +122,42 @@ libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
 - `dispatch.py` - `@on_new("PROP")` tags the handler for client writes to a property; the
   device builds a per-instance name->handler map and passes the fully typed parsed vector.
   Unhandled writes fall through to `on_new_default`.
-- `runtime.py` - `DriverRuntime` owns the stdio transport and an `anyio` structured task
-  group (reader + writer + periodic jobs). It takes plain `read`/`write` callables, so
-  tests drive it through in-memory byte streams exactly as `indiserver` would; `run()`
+- `runtime.py` - `DriverRuntime` owns the stdio transport and the supervision loop. It
+  takes plain `read`/`write` callables (the shared `ReadFn`/`WriteFn` from `transport.py`),
+  so tests drive it through in-memory byte streams exactly as `indiserver` would; `run()`
   wires real stdin/stdout. Plain `asyncio`: an outbox `asyncio.Queue`, a writer task, and
   one task per periodic job, all driven by the reader until stdin EOF.
 
 `examples/demo_device.py` is the reference driver (one of each vector kind, an `@every`
 animation, and an `@on_new` handler).
+
+### The client (`src/indi_nexus/client/`)
+
+A reconnecting `asyncio` TCP client to `indiserver` that mirrors server state into a typed
+cache and lets code watch it and send updates - always as M1 models, never raw XML. It
+replaces pyINDI's `client.py`/`utils.py` (raw XML strings, subclass-override, singleton
+hacks, a SAX handler, and *no* cache).
+
+- `store.py` - `PropertyStore`, the pure cache (behavior-free w.r.t. sockets, so trivially
+  testable). `apply(msg)` folds one message in following INDI semantics (`def` defines,
+  `set` **merges** values/state onto the definition keeping def-only metadata, `del`
+  removes a property or a whole device) and returns a `PropertyEvent`. It also holds the
+  subscription registry; `matching(event)` returns the interested callbacks - the client
+  does the actual (possibly async) dispatch, keeping the store pure.
+- `client.py` - `IndiClient`. Async context manager (`async with IndiClient(host, port)`)
+  or `run()` for monitors. A background loop connects, sends `getProperties` (+ replays any
+  `enableBLOB` policies) on every (re)connect, runs a reader (folds into the store,
+  dispatches to subscribers - sync **and** async callbacks) and a writer (outbox
+  `asyncio.Queue`), and reconnects with a fixed delay. Reads: `get`, `store`,
+  `client[device]`. Watch: `subscribe(cb, device=, name=)`, `on_message`, `on_connection`.
+  Scripting: `await wait_for(device, name, predicate=, timeout=)`. Sends: `get_properties`,
+  `enable_blob`, `set_number/text/switch/blob`. The transport is injectable (a `connect`
+  coroutine returning `read`/`write`), so tests drive it over in-memory streams; the
+  default uses `transport.open_tcp`.
+
+`examples/monitor_client.py` is the reference client (subscribe to all events, print each).
+`tests/test_integration.py` cross-wires a `DriverRuntime` and an `IndiClient` through
+in-memory pipes - a full driver<->client round-trip with no `indiserver`.
 
 ## Conventions
 
