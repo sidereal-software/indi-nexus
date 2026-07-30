@@ -6,6 +6,7 @@ import asyncio
 
 import pytest
 
+from examples.ccd_device import AMBIENT_C, CCDSimulator
 from examples.demo_device import Demo
 from examples.dome_device import PARK_AZ, DomeSimulator
 from examples.monitor_client import format_event, monitor
@@ -685,5 +686,233 @@ def test_hub_serves_several_drivers_on_one_client():
             hub.shutdown()
             async with asyncio.timeout(2):
                 await asyncio.gather(*tasks)
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The CCD simulator example                                                    #
+# --------------------------------------------------------------------------- #
+async def _ccd(*, connect: bool = True) -> tuple[CCDSimulator, list[object]]:
+    """Build a set-up CCD simulator with its emitted messages captured.
+
+    Parameters
+    ----------
+    connect : bool, optional
+        Whether to turn the CONNECTION switch on (as an operator would first).
+    """
+    captured: list[object] = []
+    ccd = CCDSimulator()
+    ccd._bind(captured.append)
+    await ccd.setup()
+    if connect:
+        await ccd._dispatch_new(_ccd_switch("CONNECTION", "CONNECT"))
+    return ccd, captured
+
+
+def _ccd_number(prop: str, values: dict[str, float]) -> NumberVector:
+    """Build a client number write for CCD property elements."""
+    return NumberVector(
+        device="CCD Simulator",
+        name=prop,
+        elements=[Number(name=name, value=value) for name, value in values.items()],
+    )
+
+
+def _ccd_switch(prop: str, element: str) -> SwitchVector:
+    """Build a panel-style switch write naming only the selected element."""
+    return SwitchVector(
+        device="CCD Simulator", name=prop, elements=[Switch(name=element, value=ISState.ON)]
+    )
+
+
+def _fits_int(fits: bytes, key: str) -> int:
+    """Read an integer header value from a FITS byte string."""
+    header = fits[:2880].decode("ascii")
+    for start in range(0, len(header), 80):
+        card = header[start : start + 80]
+        if card.startswith(f"{key:<8}="):
+            return int(float(card[10:30]))
+    raise KeyError(key)
+
+
+def _fits_mean(fits: bytes) -> float:
+    """Return the mean pixel value of a 16-bit FITS image."""
+    import struct
+
+    count = _fits_int(fits, "NAXIS1") * _fits_int(fits, "NAXIS2")
+    values = struct.unpack(f">{count}h", fits[2880 : 2880 + count * 2])
+    return sum(value + 32768 for value in values) / count
+
+
+def _temp(ccd: CCDSimulator) -> float:
+    """Return the CCD's current sensor temperature."""
+    return ccd["CCD_TEMPERATURE"]["CCD_TEMPERATURE_VALUE"].value
+
+
+def test_ccd_exposure_counts_down_and_delivers_a_fits_image():
+    """An exposure runs Busy with a countdown and completes with a FITS blob."""
+
+    async def scenario() -> None:
+        ccd, captured = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_BINNING", {"HOR_BIN": 2, "VER_BIN": 2}))
+        await ccd._dispatch_new(_ccd_number("CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": 2}))
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.BUSY
+        assert _has_message(captured, "Starting 2.00 s exposure.")
+
+        await ccd.tick()  # one second left
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.BUSY
+        assert ccd["CCD_EXPOSURE"]["CCD_EXPOSURE_VALUE"].value == 1.0
+
+        await ccd.tick()  # completes and renders
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.OK
+        assert ccd["CCD_EXPOSURE"]["CCD_EXPOSURE_VALUE"].value == 0
+        fits = ccd["CCD1"]["CCD1"].data
+        assert fits is not None and fits.startswith(b"SIMPLE")
+        assert _fits_int(fits, "NAXIS1") == 320  # 640 / bin 2
+        assert _fits_int(fits, "NAXIS2") == 240
+        assert len(fits) % 2880 == 0
+        assert _has_message(captured, "Exposure complete.")
+
+    asyncio.run(scenario())
+
+
+def test_ccd_abort_cancels_the_running_exposure():
+    """Abort ends the exposure Idle with no image delivered."""
+
+    async def scenario() -> None:
+        ccd, captured = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": 10}))
+        await ccd.tick()
+        await ccd._dispatch_new(_ccd_switch("CCD_ABORT_EXPOSURE", "ABORT"))
+
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.IDLE
+        assert ccd["CCD_EXPOSURE"]["CCD_EXPOSURE_VALUE"].value == 0
+        assert _has_message(captured, "Exposure aborted.")
+
+        await ccd.tick()  # nothing left to complete
+        assert ccd["CCD1"]["CCD1"].data is None
+
+    asyncio.run(scenario())
+
+
+def test_ccd_bias_frames_stay_dark_and_light_frames_collect_signal():
+    """A light frame accumulates sky glow and stars over the bias level."""
+
+    async def scenario() -> None:
+        ccd, _ = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_BINNING", {"HOR_BIN": 4, "VER_BIN": 4}))
+
+        await ccd._dispatch_new(_ccd_switch("CCD_FRAME_TYPE", "FRAME_BIAS"))
+        await ccd._dispatch_new(_ccd_number("CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": 1}))
+        await ccd.tick()
+        bias_fits = ccd["CCD1"]["CCD1"].data
+        assert bias_fits is not None
+        bias_mean = _fits_mean(bias_fits)
+
+        await ccd._dispatch_new(_ccd_switch("CCD_FRAME_TYPE", "FRAME_LIGHT"))
+        await ccd._dispatch_new(_ccd_number("CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": 1}))
+        await ccd.tick()
+        light_fits = ccd["CCD1"]["CCD1"].data
+        assert light_fits is not None
+
+        # Bias sits at the offset (100 ADU); the light frame adds ~100 ADU of
+        # sky glow plus stars, so it must be clearly brighter.
+        assert bias_mean < 150
+        assert _fits_mean(light_fits) > bias_mean + 50
+
+    asyncio.run(scenario())
+
+
+def test_ccd_binning_is_clamped_to_whole_steps():
+    """Out-of-range binning writes are clamped into [1, 4]."""
+
+    async def scenario() -> None:
+        ccd, _ = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_BINNING", {"HOR_BIN": 8, "VER_BIN": 0}))
+        binning = ccd["CCD_BINNING"]
+        assert binning["HOR_BIN"].value == 4
+        assert binning["VER_BIN"].value == 1
+        assert binning.vector.state is IPState.OK
+
+    asyncio.run(scenario())
+
+
+def test_ccd_tec_cools_stepwise_then_holds():
+    """The TEC pulls half a degree per tick and reports Ok at the set point."""
+
+    async def scenario() -> None:
+        ccd, captured = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_TEMPERATURE", {"CCD_TEMPERATURE_VALUE": 23}))
+        assert ccd["CCD_TEMPERATURE"].vector.state is IPState.BUSY
+        assert ccd["CCD_COOLER"]["COOLER_ON"].value is ISState.ON
+
+        await ccd.tick()
+        assert _temp(ccd) == 24.5
+        for _ in range(3):
+            await ccd.tick()
+        assert _temp(ccd) == 23.0
+        assert ccd["CCD_TEMPERATURE"].vector.state is IPState.OK
+        assert _has_message(captured, "Temperature reached +23.0 C.")
+
+        await ccd.tick()  # holding: nothing changes
+        assert _temp(ccd) == 23.0
+
+    asyncio.run(scenario())
+
+
+def test_ccd_cooler_off_warms_back_toward_ambient():
+    """Switching the cooler off relaxes the sensor exponentially to ambient."""
+
+    async def scenario() -> None:
+        ccd, _ = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_TEMPERATURE", {"CCD_TEMPERATURE_VALUE": 23}))
+        for _ in range(4):
+            await ccd.tick()
+        assert _temp(ccd) == 23.0
+
+        await ccd._dispatch_new(_ccd_switch("CCD_COOLER", "COOLER_OFF"))
+        assert ccd["CCD_TEMPERATURE"].vector.state is IPState.BUSY
+        await ccd.tick()
+        assert _temp(ccd) == pytest.approx(23.4)  # 20% of the 2-degree gap
+
+        for _ in range(60):
+            await ccd.tick()
+        assert _temp(ccd) == AMBIENT_C
+        assert ccd["CCD_TEMPERATURE"].vector.state is IPState.OK
+        assert ccd["CCD_COOLER"]["COOLER_OFF"].value is ISState.ON
+
+    asyncio.run(scenario())
+
+
+def test_ccd_time_factor_stretches_the_exposure_clock():
+    """SIM_TIME_FACTOR of 2 makes a one-second exposure take two ticks."""
+
+    async def scenario() -> None:
+        ccd, _ = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_BINNING", {"HOR_BIN": 4, "VER_BIN": 4}))
+        await ccd._dispatch_new(_ccd_number("SIMULATOR_SETTINGS", {"SIM_TIME_FACTOR": 2}))
+        await ccd._dispatch_new(_ccd_number("CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": 1}))
+
+        await ccd.tick()
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.BUSY  # one tick left
+        await ccd.tick()
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.OK
+        assert ccd["CCD1"]["CCD1"].data is not None
+
+    asyncio.run(scenario())
+
+
+def test_ccd_rejects_commands_while_disconnected():
+    """Exposure and cooler commands are refused until CONNECTION is on."""
+
+    async def scenario() -> None:
+        ccd, captured = await _ccd(connect=False)
+        await ccd._dispatch_new(_ccd_number("CCD_EXPOSURE", {"CCD_EXPOSURE_VALUE": 1}))
+        await ccd._dispatch_new(_ccd_number("CCD_TEMPERATURE", {"CCD_TEMPERATURE_VALUE": 0}))
+
+        assert ccd["CCD_EXPOSURE"].vector.state is IPState.IDLE
+        assert ccd["CCD_TEMPERATURE"].vector.state is IPState.IDLE
+        assert _has_message(captured, "CCD Simulator is not connected.")
 
     asyncio.run(scenario())

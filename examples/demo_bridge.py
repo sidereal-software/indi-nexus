@@ -17,6 +17,7 @@ panel's Vite dev server at it)::
     python -m examples.demo_bridge
     python -m examples.demo_bridge \\
         --device examples.telescope_device:TelescopeSimulator \\
+        --device examples.ccd_device:CCDSimulator \\
         --device examples.dome_device:DomeSimulator
 """
 
