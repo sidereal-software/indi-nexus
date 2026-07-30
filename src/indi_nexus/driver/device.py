@@ -487,11 +487,19 @@ class Device:
     async def _dispatch_new(self, vector: Vector) -> None:
         """Route a client write to its ``@on_new`` handler or the default.
 
+        A write addressed to a *different* device is ignored, matching libindi
+        drivers' ``strcmp(dev, getDeviceName())`` guard. ``indiserver`` routes
+        writes so this rarely triggers there, but a hub that broadcasts to
+        several drivers on one stream (e.g. ``examples/demo_bridge.py``) relies
+        on it - without the guard every driver would react to every write.
+
         Parameters
         ----------
         vector : Vector
             The parsed vector the client asked to change.
         """
+        if vector.device != self._device:
+            return
         handler = self._new_handlers.get(vector.name)
         result = handler(vector) if handler is not None else self.on_new_default(vector)
         if inspect.isawaitable(result):

@@ -382,6 +382,31 @@ def test_on_new_routes_to_handler_and_default() -> None:
     asyncio.run(scenario())
 
 
+def test_writes_addressed_to_other_devices_are_ignored() -> None:
+    """A ``new`` naming a different device never reaches the handlers.
+
+    Matches libindi's ``strcmp(dev, getDeviceName())`` guard; a broadcast hub
+    (several drivers on one stream, as in ``examples/demo_bridge.py``) relies
+    on this so only the addressed device reacts to a write.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Handler()
+        harness.feed(
+            "<newSwitchVector device='SomeoneElse' name='power'>"
+            "<oneSwitch name='on'>On</oneSwitch></newSwitchVector>"
+        )
+        harness.eof()
+        await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert dev.handled is None
+        assert dev.fallback is None
+
+    asyncio.run(scenario())
+
+
 def test_raising_on_new_handler_does_not_kill_the_driver() -> None:
     """A handler exception is logged to the client and the driver keeps serving.
 
