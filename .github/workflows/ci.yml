@@ -48,14 +48,16 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # Build first (topological: client -> react -> panel): the react package's
+      # typecheck and tests both consume @indi-nexus/client's built types/dist.
+      - name: Build
+        run: pnpm -r build
       - name: Lint + format
         run: pnpm lint
       - name: Type-check
         run: pnpm -r typecheck
       - name: Test
         run: pnpm -r test
-      - name: Build
-        run: pnpm -r build
 
   package:
     name: Package (wheel bundles the panel)
