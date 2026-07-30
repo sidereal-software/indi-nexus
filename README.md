@@ -72,7 +72,9 @@ python -m examples.demo_bridge
 ```
 
 Then open <http://localhost:8000/> for the reference panel (toggle the Demo device's switch and
-watch state update), or <http://localhost:8000/debug> for the raw debug inspector.
+watch state update), or <http://localhost:8000/debug> for the raw debug inspector. To serve the
+dome simulator instead, add `--device examples.dome_device:DomeSimulator` - see
+[The examples](#the-examples) for all the ways to run a driver.
 
 ## Command reference
 
@@ -100,8 +102,10 @@ pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxie
 **Run it**:
 
 ```bash
-python -m examples.demo_bridge              # bridge + live demo device, no indiserver (open :8000)
-indi-nexus serve                            # bridge against a real indiserver (open :8000)
+python -m examples.demo_bridge              # web panel + live demo device, no indiserver (open :8000)
+python -m examples.demo_bridge --device examples.dome_device:DomeSimulator
+                                            # same, but serving the dome simulator
+indi-nexus serve                            # web panel against a real indiserver (open :8000)
 indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
 indi-nexus monitor                          # print live INDI updates from indiserver
 indi-nexus --help                           # all CLI commands and options
@@ -118,6 +122,45 @@ in `web/`, `pnpm lint` + `pnpm -r typecheck` + `pnpm -r test` + `pnpm -r build` 
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of these plus a check that the
 wheel bundles the panel.
 
+## The examples
+
+Runnable references live in `examples/`:
+
+- **`demo_device.py`** - the reference driver: one of each INDI vector kind, a power switch
+  gating a once-per-second animation.
+- **`dome_device.py`** - a realistic device: libindi's classic Dome Simulator ported to the
+  INDINexus SDK (connection, azimuth rotation, timed shutter, park/unpark, abort, speeds),
+  using the standard INDI dome property names.
+- **`telescope_device.py`** - libindi's Telescope Simulator ported to the INDINexus SDK:
+  the standard goto/slew/sync interaction (`EQUATORIAL_EOD_COORD` + `ON_COORD_SET`),
+  tracking modes with realistic sky drift, slew rates, motion paddles, park, abort, and
+  timed guide pulses.
+- **`monitor_client.py`** - the reference client: subscribe to everything and print each event.
+- **`demo_bridge.py`** - the whole stack in one process: a driver wired straight into the web
+  app through in-memory pipes, no `indiserver` needed.
+
+A driver runs in one of **three modes** - pick the command for what you want to see:
+
+```bash
+# 1. The web panel (easiest): driver + bridge + UI in one process, no indiserver.
+python -m examples.demo_bridge                                                # demo device
+python -m examples.demo_bridge --device examples.dome_device:DomeSimulator    # dome simulator
+python -m examples.demo_bridge --device examples.telescope_device:TelescopeSimulator  # telescope
+# ...then open http://localhost:8000/  (Messages sheet = the INDI log; /debug = raw frames)
+
+# 2. Under a real C indiserver (the production arrangement), serving TCP :7624:
+indiserver ./examples/dome_device.py
+# ...then `indi-nexus serve` for the web panel, or `indi-nexus monitor` for a terminal feed.
+
+# 3. Bare stdio (what indiserver itself launches) - for humans, only useful to pipe XML at:
+echo '<getProperties version="1.7"/>' | python -m examples.dome_device
+```
+
+Note that mode 3 is what you get from `python -m examples.dome_device` alone: a raw INDI
+driver speaking XML on stdin/stdout. Per the protocol it waits **silently** for a
+`getProperties` before saying anything - it is not hung, it just has no client. For an
+interactive UI, use mode 1 or 2.
+
 ## Project layout
 
 ```
@@ -133,7 +176,7 @@ indi-nexus/
 │   ├── transport.py         # DONE: shared read/write byte-stream contract + TCP adapter
 │   ├── web/                 # DONE: FastAPI bridge (WS + REST) + static/debug.html
 │   └── cli.py               # DONE: Typer CLI (serve / run / monitor)
-├── examples/                # runnable reference driver, client, and demo bridge
+├── examples/                # runnable references: demo driver, dome simulator, client, demo bridge
 ├── tests/                   # pytest suite
 └── web/                     # DONE: pnpm workspace (TypeScript frontend)
     ├── packages/client/     #   @indi-nexus/client - framework-agnostic transport + store
