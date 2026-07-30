@@ -34,10 +34,12 @@ class Demo(Device):
     name = "Demo"
 
     def __init__(self, name: str | None = None) -> None:
+        """Initialise the device with a zeroed animation counter."""
         super().__init__(name)
         self._tick = 0
 
     async def setup(self) -> None:
+        """Define one of each vector kind and announce readiness."""
         self.define_number(
             "counters",
             [
@@ -76,6 +78,7 @@ class Demo(Device):
 
     @every(seconds=1)
     async def animate(self) -> None:
+        """Advance the counter and cycle every property through the states."""
         self._tick += 1
         state = _STATES[self._tick % len(_STATES)]
         self["counters"].set(count=self._tick, ra=(self._tick % 24), state=state)
@@ -84,7 +87,7 @@ class Demo(Device):
 
     @on_new("power")
     async def _power(self, vector: SwitchVector) -> None:
-        # Echo the client's requested switch back as the new confirmed state.
+        """Echo the client's requested power switch back as the confirmed state."""
         turned_on = vector["on"].value == ISState.ON
         self["power"].set(
             on=ISState.ON if turned_on else ISState.OFF,
