@@ -3,7 +3,14 @@
 import type { NumberVector } from "@indi-nexus/client";
 import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { useConnection, useDevice, useDevices, useMessages, useProperty } from "./hooks";
+import {
+  useConnection,
+  useDevice,
+  useDevices,
+  useElement,
+  useMessages,
+  useProperty,
+} from "./hooks";
 import { receive, renderConnected } from "./testing/render";
 
 afterEach(cleanup);
@@ -84,6 +91,25 @@ describe("useProperty", () => {
   }
 
   it("is undefined until defined, then follows set merges", () => {
+    const { socket } = renderConnected(<Probe />);
+    expect(screen.getByText("(undefined)")).toBeInTheDocument();
+
+    receive(socket, { tag: "def", vector: numVec("CCD", "EXPOSURE", 1.5) });
+    expect(screen.getByText("value:1.5")).toBeInTheDocument();
+
+    receive(socket, { tag: "set", vector: numVec("CCD", "EXPOSURE", 2.5) });
+    expect(screen.getByText("value:2.5")).toBeInTheDocument();
+  });
+});
+
+describe("useElement", () => {
+  function Probe() {
+    const element = useElement("CCD", "EXPOSURE", "v");
+    if (element === undefined) return <span>(undefined)</span>;
+    return <span>{element.kind === "number" ? `value:${element.value}` : "?"}</span>;
+  }
+
+  it("is undefined until defined, then follows the one element", () => {
     const { socket } = renderConnected(<Probe />);
     expect(screen.getByText("(undefined)")).toBeInTheDocument();
 

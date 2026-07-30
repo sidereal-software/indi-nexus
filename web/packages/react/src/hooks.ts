@@ -7,7 +7,14 @@
  * reference), these hooks re-render precisely when the data they read changes.
  */
 
-import type { ConnectionState, DeviceSnapshot, Message, Vector } from "@indi-nexus/client";
+import {
+  type ConnectionState,
+  type DeviceSnapshot,
+  elementByName,
+  type IndiElement,
+  type Message,
+  type Vector,
+} from "@indi-nexus/client";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useIndiClient } from "./context";
 
@@ -53,6 +60,23 @@ export function useProperty(device: string, name: string): Vector | undefined {
   );
   const getSnapshot = useCallback(() => client.get(device, name), [client, device, name]);
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Subscribe to a single element of a property vector.
+ *
+ * Sugar over {@link useProperty} for the common "I just want one value" case:
+ *
+ * ```tsx
+ * const ra = useElement("Telescope Simulator", "EQUATORIAL_EOD_COORD", "RA");
+ * return <span>{ra?.kind === "number" ? formatNumber(ra.value, ra.format) : "-"}</span>;
+ * ```
+ *
+ * @returns The element, or `undefined` until the property is defined.
+ */
+export function useElement(device: string, name: string, element: string): IndiElement | undefined {
+  const vector = useProperty(device, name);
+  return vector === undefined ? undefined : elementByName(vector, element);
 }
 
 /**
