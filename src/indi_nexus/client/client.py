@@ -430,6 +430,21 @@ class IndiClient:
             unsubscribe()
 
     # -- sends ------------------------------------------------------------- #
+    async def send(self, msg: IndiMessage) -> None:
+        """Queue an arbitrary message to send upstream.
+
+        The typed helpers (:meth:`set_number`, :meth:`get_properties`, ...) cover
+        the common cases; this forwards any already-built message - used by the
+        web bridge to relay a browser-authored ``new*``/``getProperties``/
+        ``enableBLOB`` frame verbatim.
+
+        Parameters
+        ----------
+        msg : IndiMessage
+            The message to send.
+        """
+        self._outbox.put_nowait(msg)
+
     async def _send(self, msg: IndiMessage) -> None:
         """Queue one message for the writer.
 
