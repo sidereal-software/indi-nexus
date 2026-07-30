@@ -77,12 +77,12 @@ def parse_number(text: str) -> float:
 
     Parameters
     ----------
-    text:
+    text : `str`
         The raw element text.
 
     Returns
     -------
-    float
+    value : `float`
         The parsed value; ``0.0`` for empty input.
     """
     s = text.strip()
@@ -109,14 +109,14 @@ def format_number(value: float, fmt: str) -> str:
 
     Parameters
     ----------
-    value:
+    value : `float`
         The number to format.
-    fmt:
+    fmt : `str`
         The INDI ``format`` string from the element definition.
 
     Returns
     -------
-    str
+    text : `str`
         The formatted value.
     """
     m = re.fullmatch(r"%(\d+)\.(\d+)m", fmt.strip())
@@ -154,11 +154,11 @@ def _set(el: etree._Element, key: str, value: object) -> None:
 
     Parameters
     ----------
-    el:
+    el : `lxml.etree._Element`
         The element to modify.
-    key:
+    key : `str`
         The attribute name.
-    value:
+    value : `object`
         The attribute value; ``None`` is skipped and datetimes use the INDI
         timestamp format.
     """
@@ -174,20 +174,20 @@ def _element_xml(el: object, mode: str) -> etree._Element:
 
     Parameters
     ----------
-    el:
+    el : `object`
         The element model to serialise.
-    mode:
+    mode : `str`
         ``"def"`` for a full definition, otherwise a value-only ``one*`` node.
 
     Returns
     -------
-    lxml.etree._Element
+    node : `lxml.etree._Element`
         The serialised element node.
 
     Raises
     ------
     TypeError
-        If ``el`` is not a known element type.
+        Raised if ``el`` is not a known element type.
     """
     prefix = "def" if mode == "def" else "one"
 
@@ -250,14 +250,14 @@ def _vector_xml(vector: Vector, mode: str) -> etree._Element:
 
     Parameters
     ----------
-    vector:
+    vector : `~indi_nexus.protocol.Vector`
         The vector model to serialise.
-    mode:
+    mode : `str`
         ``"def"``, ``"set"``, or ``"new"`` - controls which attributes appear.
 
     Returns
     -------
-    lxml.etree._Element
+    node : `lxml.etree._Element`
         The serialised vector node.
     """
     _, _, stem = _VECTOR_BY_KIND[vector.kind]
@@ -293,18 +293,18 @@ def _message_xml(msg: IndiMessage) -> etree._Element:
 
     Parameters
     ----------
-    msg:
+    msg : `~indi_nexus.protocol.IndiMessage`
         The message model to serialise.
 
     Returns
     -------
-    lxml.etree._Element
+    node : `lxml.etree._Element`
         The serialised node.
 
     Raises
     ------
     TypeError
-        If ``msg`` is not a serialisable message type.
+        Raised if ``msg`` is not a serialisable message type.
     """
     if isinstance(msg, (DefVector, SetVector, NewVector)):
         return _vector_xml(msg.vector, msg.tag)
@@ -335,14 +335,14 @@ def to_xml(msg: IndiMessage, *, pretty: bool = False) -> bytes:
 
     Parameters
     ----------
-    msg:
+    msg : `~indi_nexus.protocol.IndiMessage`
         The message model to serialise.
-    pretty:
+    pretty : `bool`, optional
         Whether to pretty-print the output.
 
     Returns
     -------
-    bytes
+    xml : `bytes`
         The encoded XML.
     """
     return etree.tostring(_message_xml(msg), pretty_print=pretty)
@@ -356,21 +356,21 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
 
     Parameters
     ----------
-    node:
+    node : `lxml.etree._Element`
         The element XML node.
-    kind:
+    kind : `str`
         The element kind (``"number"``, ``"text"``, ``"switch"``, ``"light"``,
         ``"blob"``).
 
     Returns
     -------
-    object
+    element : `object`
         The parsed element model.
 
     Raises
     ------
     ValueError
-        If ``kind`` is not a known element kind.
+        Raised if ``kind`` is not a known element kind.
     """
     name = node.get("name") or ""
     label = node.get("label")
@@ -405,17 +405,50 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
 
 
 def _optfloat(v: str | None) -> float | None:
-    """Parse an optional float attribute (``None`` stays ``None``)."""
+    """Parse an optional float attribute (`None` stays `None`).
+
+    Parameters
+    ----------
+    v : `str` or `None`
+        The raw attribute value.
+
+    Returns
+    -------
+    value : `float` or `None`
+        The parsed float, or `None`.
+    """
     return None if v is None else float(v)
 
 
 def _optint(v: str | None) -> int | None:
-    """Parse an optional int attribute (``None`` stays ``None``)."""
+    """Parse an optional int attribute (`None` stays `None`).
+
+    Parameters
+    ----------
+    v : `str` or `None`
+        The raw attribute value.
+
+    Returns
+    -------
+    value : `int` or `None`
+        The parsed int, or `None`.
+    """
     return None if v is None else int(v)
 
 
 def _optts(v: str | None) -> dt.datetime | None:
-    """Parse an optional ISO timestamp; return ``None`` if absent or invalid."""
+    """Parse an optional ISO timestamp; return `None` if absent or invalid.
+
+    Parameters
+    ----------
+    v : `str` or `None`
+        The raw timestamp attribute.
+
+    Returns
+    -------
+    value : `~datetime.datetime` or `None`
+        The parsed timestamp, or `None`.
+    """
     if not v:
         return None
     try:
@@ -429,15 +462,15 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
 
     Parameters
     ----------
-    node:
+    node : `lxml.etree._Element`
         The vector XML node.
-    stem:
+    stem : `str`
         The tag stem (``"Number"``, ``"Text"``, ``"Switch"``, ``"Light"``,
         ``"BLOB"``).
 
     Returns
     -------
-    Vector
+    vector : `~indi_nexus.protocol.Vector`
         The parsed vector model.
     """
     kind = _STEM_BY_TAGWORD[stem]
@@ -479,13 +512,13 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
 
     Parameters
     ----------
-    node:
+    node : `lxml.etree._Element`
         A top-level INDI element node.
 
     Returns
     -------
-    IndiMessage or None
-        The parsed message, or ``None`` for comments/PIs or unrecognised tags.
+    message : `~indi_nexus.protocol.IndiMessage` or `None`
+        The parsed message, or `None` for comments/PIs or unrecognised tags.
     """
     tag = node.tag
     if not isinstance(tag, str):  # comments / PIs
@@ -532,12 +565,12 @@ def parse_indi(data: bytes | str) -> list[IndiMessage]:
 
     Parameters
     ----------
-    data:
+    data : `bytes` or `str`
         The XML bytes or string to parse.
 
     Returns
     -------
-    list of IndiMessage
+    messages : `list` [`~indi_nexus.protocol.IndiMessage`]
         Every message found in the chunk, in order.
     """
     parser = XMLStreamParser()
@@ -562,12 +595,12 @@ class XMLStreamParser:
 
         Parameters
         ----------
-        data:
+        data : `bytes` or `str`
             The next bytes or string from the stream.
 
         Yields
         ------
-        IndiMessage
+        message : `~indi_nexus.protocol.IndiMessage`
             Each top-level message that completed within this chunk.
         """
         if isinstance(data, str):

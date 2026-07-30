@@ -117,18 +117,18 @@ class _Vector(_Model):
 
         Parameters
         ----------
-        name:
+        name : `str`
             The element name to look up.
 
         Returns
         -------
-        Element
+        element : `Element`
             The matching element.
 
         Raises
         ------
         KeyError
-            If no element with that name exists in this vector.
+            Raised if no element with that name exists in this vector.
         """
         for el in self.elements:  # type: ignore[attr-defined]
             if el.name == name:

@@ -24,13 +24,13 @@ class _StrEnum(StrEnum):
 
         Parameters
         ----------
-        value:
+        value : `object`
             The raw value looked up, e.g. ``"Ok "`` straight off the wire.
 
         Returns
         -------
-        _StrEnum or None
-            The matching member, or ``None`` to let :class:`~enum.Enum` raise.
+        member : `_StrEnum` or `None`
+            The matching member, or `None` to let `~enum.Enum` raise.
         """
         if isinstance(value, str):
             stripped = value.strip()
