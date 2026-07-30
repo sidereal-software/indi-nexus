@@ -297,7 +297,7 @@ def test_get_properties_all_devices():
 
 
 def test_message_and_delproperty():
-    """message and delProperty messages round-trip to their model types."""
+    """Message and delProperty messages round-trip to their model types."""
     assert isinstance(_reparse(Message(device="CCD", message="hello")), Message)
     d = _reparse(DelProperty(device="CCD", name="EXPOSURE"))
     assert isinstance(d, DelProperty)
@@ -305,7 +305,7 @@ def test_message_and_delproperty():
 
 
 def test_enable_blob_roundtrip():
-    """enableBLOB serialises its policy as element text and round-trips."""
+    """An enableBLOB message serialises its policy as element text and round-trips."""
     xml = to_xml(EnableBLOB(device="CCD", policy=BLOBPolicy.ALSO)).decode()
     assert xml.startswith("<enableBLOB")
     assert ">Also<" in xml
@@ -379,3 +379,37 @@ def test_unknown_top_level_tag_is_skipped():
     out = parse_indi(b"<wibble attr='x'>text</wibble><getProperties version='1.7'/>")
     assert len(out) == 1
     assert isinstance(out[0], GetProperties)
+
+
+def test_vector_get_reads_values_tolerantly():
+    """get() returns a named element's value, a default when absent, BLOB data."""
+    vec = NumberVector(device="CCD", name="EXPOSURE", elements=[Number(name="secs", value=1.5)])
+    assert vec.get("secs") == 1.5
+    assert vec.get("missing") is None
+    assert vec.get("missing", 7.0) == 7.0
+
+    blob = BLOBVector(device="CCD", name="IMAGE", elements=[BLOB(name="frame", data=b"abc")])
+    assert blob.get("frame") == b"abc"
+
+
+def test_vector_values_maps_names_to_values():
+    """values() returns the elements as a name-to-value mapping."""
+    vec = SwitchVector(
+        device="D",
+        name="power",
+        elements=[Switch(name="on", value=ISState.ON), Switch(name="off", value=ISState.OFF)],
+    )
+    assert vec.values() == {"on": ISState.ON, "off": ISState.OFF}
+
+
+def test_switch_vector_selected_returns_first_on_or_none():
+    """selected() names the On member of a (possibly partial) switch write."""
+    partial = SwitchVector(
+        device="D", name="power", elements=[Switch(name="off", value=ISState.ON)]
+    )
+    assert partial.selected() == "off"
+
+    deselect = SwitchVector(
+        device="D", name="power", elements=[Switch(name="a", value=ISState.OFF)]
+    )
+    assert deselect.selected() is None

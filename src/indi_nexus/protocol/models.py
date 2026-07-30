@@ -21,7 +21,7 @@ Design notes
 from __future__ import annotations
 
 import datetime as dt
-from typing import Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -146,6 +146,44 @@ class _Vector(_Model):
         """Return element ``name`` (see :meth:`element`)."""
         return self.element(name)
 
+    def get(self, name: str, default: Any = None) -> Any:
+        """Return the value of element ``name``, or ``default`` when absent.
+
+        The tolerant companion to :meth:`element`: a client's ``set``/``new``
+        may name only some elements, so handlers read requested values with a
+        fallback - ``ra = vector.get("RA", current_ra)``. BLOB elements yield
+        their payload (``data``).
+
+        Parameters
+        ----------
+        name : str
+            The element name to look up.
+        default : object, optional
+            Returned when no element with that name exists.
+
+        Returns
+        -------
+        value : object
+            The element's value (or BLOB payload), or ``default``.
+        """
+        for el in self.elements:  # type: ignore[attr-defined]
+            if el.name == name:
+                return el.data if isinstance(el, BLOB) else el.value
+        return default
+
+    def values(self) -> dict[str, Any]:
+        """Return the elements as a name-to-value mapping (payloads for BLOBs).
+
+        Returns
+        -------
+        values : dict
+            Element values keyed by element name.
+        """
+        return {
+            el.name: (el.data if isinstance(el, BLOB) else el.value)
+            for el in self.elements  # type: ignore[attr-defined]
+        }
+
 
 class NumberVector(_Vector):
     """A vector of numeric elements (``defNumberVector`` / ``setNumberVector``)."""
@@ -170,6 +208,25 @@ class SwitchVector(_Vector):
     perm: IPerm = IPerm.RW
     rule: ISRule = ISRule.ANY_OF_MANY
     elements: list[Switch] = Field(default_factory=list)
+
+    def selected(self) -> str | None:
+        """Return the name of the first element that is On, or `None`.
+
+        The idiomatic way to read a ``OneOfMany``/``AtMostOne`` client write:
+        such a write names the newly selected member (often *only* that
+        member), so the question is "which element is On in this request" -
+        never "what is element X", which raises when X was not sent.
+
+        Returns
+        -------
+        name : str or None
+            The first On element's name, or `None` when none is On (an
+            ``AtMostOne`` deselect).
+        """
+        for el in self.elements:
+            if el.value is ISState.ON:
+                return el.name
+        return None
 
 
 class LightVector(_Vector):
