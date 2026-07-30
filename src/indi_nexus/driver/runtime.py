@@ -97,12 +97,22 @@ class DriverRuntime:
                 await self._handle(msg)
 
     async def _handle(self, msg: IndiMessage) -> None:
-        """Route one inbound message to the device."""
-        if isinstance(msg, GetProperties):
-            await self._device._dispatch_get_properties(msg)
-        elif isinstance(msg, NewVector):
-            await self._device._dispatch_new(msg.vector)
-        # def/set/message flowing the "wrong" way into a driver are ignored.
+        """Route one inbound message to the device, isolating handler failures.
+
+        A raising handler (an ``@on_new`` hitting a malformed client write, or a
+        failing ``setup()``) is logged to the client and swallowed, mirroring the
+        per-tick isolation of ``@every`` jobs - one bad message must never kill
+        the driver. ``asyncio.CancelledError`` is a ``BaseException``, so shutdown
+        cancellation still propagates.
+        """
+        try:
+            if isinstance(msg, GetProperties):
+                await self._device._dispatch_get_properties(msg)
+            elif isinstance(msg, NewVector):
+                await self._device._dispatch_new(msg.vector)
+            # def/set/message flowing the "wrong" way into a driver are ignored.
+        except Exception as exc:  # noqa: BLE001 - deliberate per-message isolation
+            self._device.log_error(f"handler for {message_name(msg)!r} failed: {exc}")
 
     async def _writer_loop(self) -> None:
         """Drain the outbox to the transport until the shutdown sentinel."""
@@ -138,6 +148,24 @@ class DriverRuntime:
                 await result
         except Exception as exc:  # noqa: BLE001 - deliberate per-tick isolation
             self._device.log_error(f"periodic task {task_name(method)!r} failed: {exc}")
+
+
+def message_name(msg: IndiMessage) -> str:
+    """Return a readable identifier for an inbound message, for log messages.
+
+    Parameters
+    ----------
+    msg : IndiMessage
+        The message being handled.
+
+    Returns
+    -------
+    name : str
+        ``device.property`` for a property write, else the message tag.
+    """
+    if isinstance(msg, NewVector):
+        return f"{msg.vector.device}.{msg.vector.name}"
+    return type(msg).__name__
 
 
 def task_name(method: Callable[..., Any]) -> str:

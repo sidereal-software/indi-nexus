@@ -9,18 +9,28 @@ that new wire behaviour gets a round-trip test.
 from __future__ import annotations
 
 import asyncio
+import io
+import os
+import sys
+from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from indi_nexus.driver import BoundProperty, Device, DriverRuntime, every, on_new
 from indi_nexus.driver.scheduling import iter_periodic
 from indi_nexus.protocol import (
+    BLOB,
+    BLOBVector,
     DefVector,
+    DelProperty,
     IndiMessage,
     IPState,
     ISRule,
     ISState,
     Message,
     Number,
+    NumberVector,
     SetVector,
     Switch,
     SwitchVector,
@@ -372,6 +382,65 @@ def test_on_new_routes_to_handler_and_default() -> None:
     asyncio.run(scenario())
 
 
+def test_raising_on_new_handler_does_not_kill_the_driver() -> None:
+    """A handler exception is logged to the client and the driver keeps serving.
+
+    Regression test for the panel freeze: a OneOfMany write carrying only the
+    newly-selected element made a handler assuming the other element raise
+    ``KeyError``, which used to unwind the reader loop and stop the driver.
+    """
+
+    class _Fragile(Device):
+        """A device whose power handler assumes an element that may be absent."""
+
+        name = "Fragile"
+
+        def __init__(self, name: str | None = None) -> None:
+            """Track which writes reached the handler."""
+            super().__init__(name)
+            self.handled: list[str] = []
+
+        async def setup(self) -> None:
+            """Define the switch the handler serves."""
+            self.define_switch(
+                "power",
+                [Switch(name="on", value=ISState.OFF), Switch(name="off", value=ISState.ON)],
+                rule=ISRule.ONE_OF_MANY,
+            )
+
+        @on_new("power")
+        async def _power(self, vector: SwitchVector) -> None:
+            """Record the write, then index an element that may not be present."""
+            self.handled.append(vector.name)
+            vector.element("on")  # raises KeyError when only "off" was sent
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Fragile()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.feed(
+            "<newSwitchVector device='Fragile' name='power'>"
+            "<oneSwitch name='off'>On</oneSwitch></newSwitchVector>"  # no "on" element
+        )
+        harness.feed(
+            "<newSwitchVector device='Fragile' name='power'>"
+            "<oneSwitch name='on'>On</oneSwitch></newSwitchVector>"
+        )
+        harness.eof()
+        await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        # Both writes reached the handler: the KeyError did not stop the reader.
+        assert dev.handled == ["power", "power"]
+        errors = [
+            m for m in harness.messages() if isinstance(m, Message) and "failed" in str(m.message)
+        ]
+        assert errors, "the handler failure was not reported to the client"
+        assert "Fragile.power" in str(errors[0].message)
+
+    asyncio.run(scenario())
+
+
 # --------------------------------------------------------------------------- #
 # BoundProperty                                                                #
 # --------------------------------------------------------------------------- #
@@ -397,6 +466,82 @@ def test_set_one_of_many_clears_siblings_and_round_trips() -> None:
     assert parsed.vector.state == IPState.OK
     assert parsed.vector.element("on").value == ISState.ON
     assert parsed.vector.element("off").value == ISState.OFF
+
+
+def test_bound_property_accessors() -> None:
+    """The handle exposes its vector, name, state, elements, and values."""
+    vec = NumberVector(
+        device="d",
+        name="coords",
+        state=IPState.BUSY,
+        elements=[Number(name="RA", value=1.5)],
+    )
+    prop = BoundProperty(vec, lambda msg: None)
+
+    assert prop.vector is vec
+    assert prop.name == "coords"
+    assert prop.state == IPState.BUSY
+    assert prop["RA"].value == 1.5
+    assert prop.value("RA") == 1.5
+
+
+def test_bound_property_value_reads_blob_data() -> None:
+    """value() returns the payload bytes for a BLOB element."""
+    vec = BLOBVector(device="d", name="img", elements=[BLOB(name="frame", data=b"FITS")])
+    prop = BoundProperty(vec, lambda msg: None)
+    assert prop.value("frame") == b"FITS"
+
+
+def test_set_blob_element_updates_data_and_size() -> None:
+    """Assigning a BLOB element stores the bytes and recomputes its size."""
+    captured: list[IndiMessage] = []
+    vec = BLOBVector(device="d", name="img", elements=[BLOB(name="frame")])
+    prop = BoundProperty(vec, captured.append)
+
+    prop.set(frame=b"\x00\x01payload", state=IPState.OK)
+
+    el = vec.element("frame")
+    assert el.data == b"\x00\x01payload"
+    assert el.size == len(b"\x00\x01payload")
+    (msg,) = captured
+    assert isinstance(msg, SetVector)
+
+
+def test_set_message_attaches_to_the_vector() -> None:
+    """set(message=...) stores the message on the emitted vector."""
+    captured: list[IndiMessage] = []
+    vec = NumberVector(device="d", name="n", elements=[Number(name="v")])
+    prop = BoundProperty(vec, captured.append)
+
+    prop.set(v=2.0, message="slewing")
+
+    assert vec.message == "slewing"
+    (msg,) = captured
+    assert isinstance(msg, SetVector)
+    assert msg.vector.message == "slewing"
+
+
+def test_switch_accepts_wire_string_values() -> None:
+    """A switch element accepts the "On"/"Off" wire strings as values."""
+    vec = SwitchVector(device="d", name="p", elements=[Switch(name="a", value=ISState.OFF)])
+    prop = BoundProperty(vec, lambda msg: None)
+    prop.set(a="On")
+    assert vec.element("a").value == ISState.ON
+
+
+def test_delete_emits_del_property() -> None:
+    """delete() emits a delProperty for the wrapped vector."""
+    captured: list[IndiMessage] = []
+    vec = NumberVector(device="d", name="n", elements=[Number(name="v")])
+    prop = BoundProperty(vec, captured.append)
+
+    prop.delete("gone")
+
+    (msg,) = captured
+    assert isinstance(msg, DelProperty)
+    assert msg.device == "d"
+    assert msg.name == "n"
+    assert msg.message == "gone"
 
 
 def test_reserved_element_name_via_values_dict() -> None:
@@ -428,3 +573,87 @@ def test_periodic_discovery_is_per_instance() -> None:
     assert a_tick.__self__ is a  # type: ignore[attr-defined]
     assert b_tick.__self__ is b  # type: ignore[attr-defined]
     assert a._new_handlers is not b._new_handlers
+
+
+# --------------------------------------------------------------------------- #
+# Device surface                                                               #
+# --------------------------------------------------------------------------- #
+def test_device_name_and_property_lookup() -> None:
+    """The device property and property() lookup expose defined state."""
+    captured: list[IndiMessage] = []
+    dev = _Simple("Named")
+    dev._bind(captured.append)
+    assert dev.device == "Named"
+
+    prop = dev.define_number("num", [Number(name="v", value=1.0)])
+    assert dev.property("num") is prop
+    assert dev["num"] is prop
+    assert "num" in dev
+
+
+def test_define_fills_in_the_device_name() -> None:
+    """define() stamps this device's name onto a vector with none set."""
+    captured: list[IndiMessage] = []
+    dev = _Simple()
+    dev._bind(captured.append)
+
+    prop = dev.define(NumberVector(device="", name="n", elements=[Number(name="v")]))
+
+    assert prop.vector.device == "Simple"
+    (msg,) = captured
+    assert isinstance(msg, DefVector)
+    assert msg.vector.device == "Simple"
+
+
+def test_define_blob_emits_a_blob_def() -> None:
+    """define_blob registers a BLOB vector and emits its def."""
+    captured: list[IndiMessage] = []
+    dev = _Simple()
+    dev._bind(captured.append)
+
+    dev.define_blob("img", [BLOB(name="frame", format=".fits")], group="Data")
+
+    (msg,) = captured
+    assert isinstance(msg, DefVector)
+    assert isinstance(msg.vector, BLOBVector)
+    assert msg.vector.name == "img"
+    assert msg.vector.element("frame").format == ".fits"
+
+
+def test_send_without_runtime_raises() -> None:
+    """Defining or messaging on an unbound device raises RuntimeError."""
+    dev = _Simple()
+    with pytest.raises(RuntimeError):
+        dev.message("not attached")
+
+
+def test_every_rejects_non_positive_interval() -> None:
+    """@every with a zero (or negative) total interval is rejected."""
+    with pytest.raises(ValueError):
+        every(seconds=0.0)
+    with pytest.raises(ValueError):
+        every(seconds=-1.0, minutes=0.0)
+
+
+# --------------------------------------------------------------------------- #
+# Real stdio wiring                                                            #
+# --------------------------------------------------------------------------- #
+def test_device_run_serves_over_real_stdio(monkeypatch) -> None:
+    """Device.run() serves a session over actual stdin/stdout streams.
+
+    stdin is replaced with the read end of an OS pipe pre-loaded with a
+    ``getProperties`` and already closed (EOF), and stdout with a buffer, so the
+    blocking entrypoint runs one full serve cycle and returns.
+    """
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, b"<getProperties/>")
+    os.close(write_fd)
+    monkeypatch.setattr(sys, "stdin", os.fdopen(read_fd, "rb", buffering=0))
+    out = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", SimpleNamespace(buffer=out))
+
+    _Simple.run("StdioDev")
+
+    defs = [m for m in parse_indi(out.getvalue()) if isinstance(m, DefVector)]
+    assert {d.vector.name for d in defs} == {"num", "sw"}
+    assert all(d.vector.device == "StdioDev" for d in defs)
