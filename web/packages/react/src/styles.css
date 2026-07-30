@@ -1,0 +1,15 @@
+/*
+ * Library build entry: Tailwind + the INDINexus theme, scanning this package's
+ * components. Compiled to `dist/styles.css` and exported as
+ * `@indi-nexus/react/styles.css` - the batteries-included stylesheet for
+ * consumers who do not run Tailwind themselves.
+ *
+ * Consumers who DO run Tailwind should instead `@import "@indi-nexus/react/theme.css"`
+ * (the tokens only) and let their own build generate utilities.
+ */
+
+@import "tailwindcss";
+@import "./theme.css";
+
+/* Scan this package's components so their utilities land in the prebuilt CSS. */
+@source "./**/*.{ts,tsx}";
