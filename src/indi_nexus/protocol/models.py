@@ -40,6 +40,8 @@ class _Model(BaseModel):
 # Elements                                                                    #
 # --------------------------------------------------------------------------- #
 class _Element(_Model):
+    """Fields shared by every property element; not used on its own."""
+
     name: str
     label: str | None = None
 
@@ -99,6 +101,8 @@ Element = Annotated[
 # Vectors                                                                      #
 # --------------------------------------------------------------------------- #
 class _Vector(_Model):
+    """Fields shared by every property vector; not used on its own."""
+
     device: str
     name: str
     label: str | None = None
@@ -109,29 +113,52 @@ class _Vector(_Model):
     message: str | None = None
 
     def element(self, name: str) -> Element:
-        """Return the child element with ``name`` (raises ``KeyError`` if absent)."""
+        """Return the child element with a given name.
+
+        Parameters
+        ----------
+        name:
+            The element name to look up.
+
+        Returns
+        -------
+        Element
+            The matching element.
+
+        Raises
+        ------
+        KeyError
+            If no element with that name exists in this vector.
+        """
         for el in self.elements:  # type: ignore[attr-defined]
             if el.name == name:
                 return cast("Element", el)
         raise KeyError(f"{name!r} not in {self.device}.{self.name}")
 
     def __getitem__(self, name: str) -> Element:
+        """Return element ``name`` (see :meth:`element`)."""
         return self.element(name)
 
 
 class NumberVector(_Vector):
+    """A vector of numeric elements (``defNumberVector`` / ``setNumberVector``)."""
+
     kind: Literal["number"] = "number"
     perm: IPerm = IPerm.RW
     elements: list[Number] = Field(default_factory=list)
 
 
 class TextVector(_Vector):
+    """A vector of text elements (``defTextVector`` / ``setTextVector``)."""
+
     kind: Literal["text"] = "text"
     perm: IPerm = IPerm.RW
     elements: list[Text] = Field(default_factory=list)
 
 
 class SwitchVector(_Vector):
+    """A vector of switch elements with a selection ``rule``."""
+
     kind: Literal["switch"] = "switch"
     perm: IPerm = IPerm.RW
     rule: ISRule = ISRule.ANY_OF_MANY
@@ -139,12 +166,15 @@ class SwitchVector(_Vector):
 
 
 class LightVector(_Vector):
-    # Light vectors are always read-only in INDI, so they carry no perm.
+    """A vector of read-only light elements (no ``perm``; lights are always RO)."""
+
     kind: Literal["light"] = "light"
     elements: list[Light] = Field(default_factory=list)
 
 
 class BLOBVector(_Vector):
+    """A vector of BLOB elements (binary payloads)."""
+
     kind: Literal["blob"] = "blob"
     perm: IPerm = IPerm.RW
     elements: list[BLOB] = Field(default_factory=list)

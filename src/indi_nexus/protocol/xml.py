@@ -70,7 +70,21 @@ _STEM_BY_TAGWORD = {
 # Sexagesimal helpers (mirrors libindi f_scansexa / fs_sexa)                   #
 # --------------------------------------------------------------------------- #
 def parse_number(text: str) -> float:
-    """Parse a number that may be decimal or sexagesimal (``dd:mm:ss``)."""
+    """Parse a number that may be decimal or sexagesimal.
+
+    Accepts plain decimals as well as ``dd:mm:ss`` (or space-separated)
+    sexagesimal forms used for RA/Dec, mirroring libindi's ``f_scansexa``.
+
+    Parameters
+    ----------
+    text:
+        The raw element text.
+
+    Returns
+    -------
+    float
+        The parsed value; ``0.0`` for empty input.
+    """
     s = text.strip()
     if not s:
         return 0.0
@@ -88,7 +102,23 @@ def parse_number(text: str) -> float:
 
 
 def format_number(value: float, fmt: str) -> str:
-    """Format ``value`` per an INDI printf format, including ``%m`` sexagesimal."""
+    """Format a number per an INDI printf-style format.
+
+    Handles ordinary printf conversions as well as the ``%m`` sexagesimal form
+    (e.g. ``%9.6m``), field-width padded like libindi's ``fs_sexa``.
+
+    Parameters
+    ----------
+    value:
+        The number to format.
+    fmt:
+        The INDI ``format`` string from the element definition.
+
+    Returns
+    -------
+    str
+        The formatted value.
+    """
     m = re.fullmatch(r"%(\d+)\.(\d+)m", fmt.strip())
     if not m:
         try:
@@ -120,6 +150,18 @@ def format_number(value: float, fmt: str) -> str:
 # Serialization                                                                #
 # --------------------------------------------------------------------------- #
 def _set(el: etree._Element, key: str, value: object) -> None:
+    """Set an XML attribute, skipping ``None`` and formatting datetimes.
+
+    Parameters
+    ----------
+    el:
+        The element to modify.
+    key:
+        The attribute name.
+    value:
+        The attribute value; ``None`` is skipped and datetimes use the INDI
+        timestamp format.
+    """
     if value is None:
         return
     if isinstance(value, dt.datetime):
@@ -128,7 +170,25 @@ def _set(el: etree._Element, key: str, value: object) -> None:
 
 
 def _element_xml(el: object, mode: str) -> etree._Element:
-    """Build a ``def*`` (full) or ``one*`` (name+value) element node."""
+    """Build a ``def*`` (full) or ``one*`` (name+value) element node.
+
+    Parameters
+    ----------
+    el:
+        The element model to serialise.
+    mode:
+        ``"def"`` for a full definition, otherwise a value-only ``one*`` node.
+
+    Returns
+    -------
+    lxml.etree._Element
+        The serialised element node.
+
+    Raises
+    ------
+    TypeError
+        If ``el`` is not a known element type.
+    """
     prefix = "def" if mode == "def" else "one"
 
     if isinstance(el, Number):
@@ -186,6 +246,20 @@ def _element_xml(el: object, mode: str) -> etree._Element:
 
 
 def _vector_xml(vector: Vector, mode: str) -> etree._Element:
+    """Build a ``def*``/``set*``/``new*`` vector node with its children.
+
+    Parameters
+    ----------
+    vector:
+        The vector model to serialise.
+    mode:
+        ``"def"``, ``"set"``, or ``"new"`` - controls which attributes appear.
+
+    Returns
+    -------
+    lxml.etree._Element
+        The serialised vector node.
+    """
     _, _, stem = _VECTOR_BY_KIND[vector.kind]
     node = etree.Element(f"{mode}{stem}Vector")
     _set(node, "device", vector.device)
@@ -215,6 +289,23 @@ def _vector_xml(vector: Vector, mode: str) -> etree._Element:
 
 
 def _message_xml(msg: IndiMessage) -> etree._Element:
+    """Build the XML node for any top-level INDI message.
+
+    Parameters
+    ----------
+    msg:
+        The message model to serialise.
+
+    Returns
+    -------
+    lxml.etree._Element
+        The serialised node.
+
+    Raises
+    ------
+    TypeError
+        If ``msg`` is not a serialisable message type.
+    """
     if isinstance(msg, (DefVector, SetVector, NewVector)):
         return _vector_xml(msg.vector, msg.tag)
     if isinstance(msg, GetProperties):
@@ -240,18 +331,47 @@ def _message_xml(msg: IndiMessage) -> etree._Element:
 
 
 def to_xml(msg: IndiMessage, *, pretty: bool = False) -> bytes:
-    """Serialize an INDI message model to canonical INDI XML bytes."""
+    """Serialise an INDI message model to canonical INDI XML bytes.
+
+    Parameters
+    ----------
+    msg:
+        The message model to serialise.
+    pretty:
+        Whether to pretty-print the output.
+
+    Returns
+    -------
+    bytes
+        The encoded XML.
+    """
     return etree.tostring(_message_xml(msg), pretty_print=pretty)
 
 
 # --------------------------------------------------------------------------- #
 # Deserialization                                                              #
 # --------------------------------------------------------------------------- #
-def _get(el: etree._Element, key: str) -> str | None:
-    return el.get(key)
-
-
 def _element_from_xml(node: etree._Element, kind: str) -> object:
+    """Build an element model from a ``def*``/``one*`` node.
+
+    Parameters
+    ----------
+    node:
+        The element XML node.
+    kind:
+        The element kind (``"number"``, ``"text"``, ``"switch"``, ``"light"``,
+        ``"blob"``).
+
+    Returns
+    -------
+    object
+        The parsed element model.
+
+    Raises
+    ------
+    ValueError
+        If ``kind`` is not a known element kind.
+    """
     name = node.get("name") or ""
     label = node.get("label")
     text = (node.text or "").strip()
@@ -285,14 +405,17 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
 
 
 def _optfloat(v: str | None) -> float | None:
+    """Parse an optional float attribute (``None`` stays ``None``)."""
     return None if v is None else float(v)
 
 
 def _optint(v: str | None) -> int | None:
+    """Parse an optional int attribute (``None`` stays ``None``)."""
     return None if v is None else int(v)
 
 
 def _optts(v: str | None) -> dt.datetime | None:
+    """Parse an optional ISO timestamp; return ``None`` if absent or invalid."""
     if not v:
         return None
     try:
@@ -302,6 +425,21 @@ def _optts(v: str | None) -> dt.datetime | None:
 
 
 def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
+    """Build a vector model from a ``def*``/``set*``/``new*`` vector node.
+
+    Parameters
+    ----------
+    node:
+        The vector XML node.
+    stem:
+        The tag stem (``"Number"``, ``"Text"``, ``"Switch"``, ``"Light"``,
+        ``"BLOB"``).
+
+    Returns
+    -------
+    Vector
+        The parsed vector model.
+    """
     kind = _STEM_BY_TAGWORD[stem]
     state = node.get("state")
     perm_attr = node.get("perm")
@@ -328,9 +466,7 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
         rule_attr = node.get("rule")
         rule = ISRule(rule_attr) if rule_attr else ISRule.ANY_OF_MANY
         sws = [_element_from_xml(c, "switch") for c in children]
-        return SwitchVector.model_validate(
-            {**common, "perm": perm, "rule": rule, "elements": sws}
-        )
+        return SwitchVector.model_validate({**common, "perm": perm, "rule": rule, "elements": sws})
     if kind == "light":
         lights = [_element_from_xml(c, "light") for c in children]
         return LightVector.model_validate({**common, "elements": lights})
@@ -339,7 +475,18 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
 
 
 def message_from_xml(node: etree._Element) -> IndiMessage | None:
-    """Convert a single top-level INDI element node to a message model."""
+    """Convert a single top-level INDI element node to a message model.
+
+    Parameters
+    ----------
+    node:
+        A top-level INDI element node.
+
+    Returns
+    -------
+    IndiMessage or None
+        The parsed message, or ``None`` for comments/PIs or unrecognised tags.
+    """
     tag = node.tag
     if not isinstance(tag, str):  # comments / PIs
         return None
@@ -378,7 +525,21 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
 
 
 def parse_indi(data: bytes | str) -> list[IndiMessage]:
-    """Parse a complete chunk of INDI XML (one or more top-level elements)."""
+    """Parse a complete chunk of INDI XML into message models.
+
+    Convenience wrapper over :class:`XMLStreamParser` for a self-contained chunk
+    that holds one or more complete top-level elements.
+
+    Parameters
+    ----------
+    data:
+        The XML bytes or string to parse.
+
+    Returns
+    -------
+    list of IndiMessage
+        Every message found in the chunk, in order.
+    """
     parser = XMLStreamParser()
     return list(parser.feed(data))
 
@@ -392,10 +553,23 @@ class XMLStreamParser:
     """
 
     def __init__(self) -> None:
+        """Start the pull parser and open a synthetic enclosing root element."""
         self._parser = etree.XMLPullParser(events=("end",), recover=True, huge_tree=True)
         self._parser.feed(b"<indinexus>")
 
     def feed(self, data: bytes | str) -> Iterator[IndiMessage]:
+        """Feed the next chunk of bytes and yield any completed messages.
+
+        Parameters
+        ----------
+        data:
+            The next bytes or string from the stream.
+
+        Yields
+        ------
+        IndiMessage
+            Each top-level message that completed within this chunk.
+        """
         if isinstance(data, str):
             data = data.encode("utf-8")
         self._parser.feed(data)
