@@ -25,6 +25,7 @@ from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
     DefVector,
+    GetProperties,
     IndiMessage,
     IPerm,
     IPState,
@@ -460,12 +461,21 @@ class Device:
             )
         self._emit(msg)
 
-    async def _dispatch_get_properties(self) -> None:
+    async def _dispatch_get_properties(self, request: GetProperties) -> None:
         """Handle a ``getProperties``: run :meth:`setup` once, else re-announce.
 
-        The first request runs :meth:`setup`; later ones (a late-joining client)
-        re-emit the ``def`` for every property already defined.
+        A request naming a *different* device is ignored, per the INDI spec (a
+        driver answers only for its own device; ``device`` absent means "all").
+        The first matching request runs :meth:`setup`; later ones (a late-joining
+        client) re-emit the ``def`` for every property already defined.
+
+        Parameters
+        ----------
+        request : GetProperties
+            The inbound request; its ``device`` filter is honored.
         """
+        if request.device is not None and request.device != self._device:
+            return
         if not self._setup_done:
             self._setup_done = True
             await self.setup()

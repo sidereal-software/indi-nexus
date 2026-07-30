@@ -217,6 +217,43 @@ def test_second_get_properties_reannounces_without_rerunning_setup() -> None:
     asyncio.run(scenario())
 
 
+def test_get_properties_for_another_device_is_ignored() -> None:
+    """A getProperties naming a different device draws no response (INDI spec)."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Simple()  # device name "Simple"
+        harness.feed("<getProperties device='Other'/>")
+        harness.eof()
+        await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert dev.setup_calls == 0  # setup did not run
+        assert harness.messages() == []  # nothing announced
+
+    asyncio.run(scenario())
+
+
+def test_get_properties_for_our_device_responds() -> None:
+    """A getProperties naming this device runs setup and announces it."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Simple()
+        harness.feed("<getProperties device='Simple'/>")
+        harness.eof()
+        await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert dev.setup_calls == 1
+        assert {m.vector.name for m in harness.messages() if isinstance(m, DefVector)} == {
+            "num",
+            "sw",
+        }
+
+    asyncio.run(scenario())
+
+
 # --------------------------------------------------------------------------- #
 # @every                                                                       #
 # --------------------------------------------------------------------------- #

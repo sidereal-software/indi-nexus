@@ -99,7 +99,7 @@ class DriverRuntime:
     async def _handle(self, msg: IndiMessage) -> None:
         """Route one inbound message to the device."""
         if isinstance(msg, GetProperties):
-            await self._device._dispatch_get_properties()
+            await self._device._dispatch_get_properties(msg)
         elif isinstance(msg, NewVector):
             await self._device._dispatch_new(msg.vector)
         # def/set/message flowing the "wrong" way into a driver are ignored.
