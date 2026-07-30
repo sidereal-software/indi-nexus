@@ -13,7 +13,8 @@ client, and the web bridge - on a fully-typed Pydantic v2 + FastAPI foundation, 
 TypeScript/React frontend. It does **not** reimplement the C `indiserver` binary.
 
 Docs are published at <https://indi-nexus.sidereal.software/> from `main` by
-`.github/workflows/docs.yml`.
+`.github/workflows/docs.yml`. The full command reference lives in `DEVELOPMENT.md`;
+keep it in sync when commands or workflows change.
 
 ## Locked architectural decisions
 
@@ -49,20 +50,20 @@ uv run mypy src                 # type-check (strict)
 ```
 
 **Green baseline before any commit:** `ruff check` clean, `mypy src` clean, `pytest`
-passing. Each milestone lands with its own tests; keep that discipline.
+passing. New work lands with its own tests; keep that discipline.
 
 ## Architecture
 
 ```
 src/indi_nexus/
-├── protocol/     DONE   the INDI protocol core (see below)
-├── driver/       DONE   driver SDK: subclass a base device; stdio XML under indiserver
-├── client/       DONE   reconnecting asyncio TCP client to indiserver + property cache
-├── transport.py  DONE   shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
-├── web/          DONE   FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
-└── cli.py        DONE   Typer CLI (serve web, run driver, monitor)
+├── protocol/     the INDI protocol core (see below)
+├── driver/       driver SDK: subclass a base device; stdio XML under indiserver
+├── client/       reconnecting asyncio TCP client to indiserver + property cache
+├── transport.py  shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
+├── web/          FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
+└── cli.py        Typer CLI (serve web, run driver, monitor)
 
-web/              DONE   pnpm workspace: the TypeScript frontend (see below)
+web/              pnpm workspace: the TypeScript frontend (see below)
 ├── packages/client/     @indi-nexus/client - framework-agnostic transport + property store
 ├── packages/react/      @indi-nexus/react  - hooks + shadcn/ui components + shared theme
 └── apps/panel/          the reference panel, built into src/indi_nexus/web/static/panel/
@@ -117,7 +118,7 @@ retry `etree.fromstring`" framing loop).
 
 ### The driver SDK (`src/indi_nexus/driver/`)
 
-What a driver author subclasses, built on the M1 models. The vocabulary is plain Python
+What a driver author subclasses, built on the protocol models. The vocabulary is plain Python
 throughout - no libindi-C surface (`IUFind`/`IDSet*`/`IEAddTimer`), no per-tag `ISNew*`
 dispatch, no class-global registries.
 
@@ -134,9 +135,9 @@ dispatch, no class-global registries.
   `setXxxVector`; it honors `OneOfMany` switch rules (turning one On clears siblings). The
   protocol models stay behavior-free - this wrapper is where "and tell the client" lives.
 - `scheduling.py` - `@every(seconds=…, minutes=…, hours=…)` declares a periodic job.
-  It only *tags* a method; discovery/execution is **per
-  instance** (no shared class state), one supervised task each, with per-tick error
-  isolation (a failing tick logs and continues, never kills the driver).
+  It only *tags* a method; discovery/execution is **per instance** (no shared class
+  state), one supervised task each, with per-tick error isolation (a failing tick logs
+  and continues, never kills the driver).
   `@every(..., when_connected=True)` pauses a job while `device.connected` is false.
 - `dispatch.py` - `@on_new("PROP")` tags the handler for client writes to a property; the
   device builds a per-instance name->handler map and passes the fully typed parsed vector.
@@ -155,7 +156,7 @@ animation gated on its power switch, and an `@on_new` handler).
 ### The client (`src/indi_nexus/client/`)
 
 A reconnecting `asyncio` TCP client to `indiserver` that mirrors server state into a typed
-cache and lets code watch it and send updates - always as M1 models, never raw XML.
+cache and lets code watch it and send updates - always as protocol models, never raw XML.
 
 - `store.py` - `PropertyStore`, the pure cache (behavior-free w.r.t. sockets, so trivially
   testable). `apply(msg)` folds one message in following INDI semantics (`def` defines,
