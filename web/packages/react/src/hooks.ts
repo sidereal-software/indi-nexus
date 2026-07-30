@@ -8,7 +8,7 @@
  */
 
 import type { ConnectionState, DeviceSnapshot, Message, Vector } from "@indi-nexus/client";
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useIndiClient } from "./context";
 
 /** Subscribe to the bridge/upstream connection state. */
@@ -56,26 +56,25 @@ export function useProperty(device: string, name: string): Vector | undefined {
 }
 
 /**
- * Accumulate the most recent INDI `message` notifications into a rolling buffer.
+ * Subscribe to the client's rolling log of INDI `message` notifications.
  *
- * Messages are not part of the property cache, so this keeps its own bounded log.
+ * The buffer lives on the client (see `IndiClient.messages`), not in this hook,
+ * so a component that mounts late - a log panel opened on demand - still shows
+ * everything received since the page connected.
  *
- * @param limit - Maximum messages to retain (oldest dropped first).
- * @returns The buffered messages, oldest first.
+ * @param limit - Maximum messages to return (oldest dropped first).
+ * @returns The most recent messages, oldest first.
  */
 export function useMessages(limit = 200): readonly Message[] {
   const client = useIndiClient();
-  const bufferRef = useRef<Message[]>([]);
   const subscribe = useCallback(
-    (onChange: () => void) =>
-      client.onMessage((message) => {
-        const next = [...bufferRef.current, message];
-        if (next.length > limit) next.splice(0, next.length - limit);
-        bufferRef.current = next;
-        onChange();
-      }),
-    [client, limit],
+    (onChange: () => void) => client.onMessage(() => onChange()),
+    [client],
   );
-  const getSnapshot = useCallback(() => bufferRef.current, []);
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const getSnapshot = useCallback(() => client.messages(), [client]);
+  const messages = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useMemo(
+    () => (messages.length > limit ? messages.slice(messages.length - limit) : messages),
+    [messages, limit],
+  );
 }

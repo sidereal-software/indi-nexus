@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import deque
 from collections.abc import Awaitable, Callable
 
 from indi_nexus.client import IndiClient, PropertyEvent
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 #: An outbound sink: something that sends one text frame to a browser.
 Sink = Callable[[str], Awaitable[None]]
+
+#: How many recent ``message`` frames are kept for replay to new browsers.
+_MESSAGE_HISTORY = 100
 
 
 class Bridge:
@@ -40,6 +44,9 @@ class Bridge:
     def __init__(self, client: IndiClient) -> None:
         self._client = client
         self._sinks: set[Sink] = set()
+        # INDI messages are transient (not part of the property cache), so keep a
+        # bounded history to prime a newly-connected browser's log.
+        self._messages: deque[str] = deque(maxlen=_MESSAGE_HISTORY)
 
     @property
     def client(self) -> IndiClient:
@@ -79,12 +86,13 @@ class Bridge:
         self._sinks.discard(sink)
 
     def snapshot(self) -> list[str]:
-        """Return the current cache as a list of ``def`` JSON frames.
+        """Return the current cache and recent messages as JSON frames.
 
         Returns
         -------
         frames : list of str
-            One ``defXxxVector`` JSON frame per cached property, for priming a
+            One ``defXxxVector`` JSON frame per cached property, followed by the
+            retained ``message`` frames (oldest first), for priming a
             newly-connected browser.
         """
         store = self._client.store
@@ -92,6 +100,7 @@ class Bridge:
         for device in store.devices():
             for vector in store.device(device).values():
                 frames.append(to_json(DefVector(vector=vector)))
+        frames.extend(self._messages)
         return frames
 
     @staticmethod
@@ -148,14 +157,16 @@ class Bridge:
         await self._broadcast(frame)
 
     async def _on_message(self, message: Message) -> None:
-        """Broadcast an INDI log message to all sinks.
+        """Record an INDI log message and broadcast it to all sinks.
 
         Parameters
         ----------
         message : Message
             The inbound message to relay.
         """
-        await self._broadcast(to_json(message))
+        frame = to_json(message)
+        self._messages.append(frame)
+        await self._broadcast(frame)
 
     async def _on_connection(self, connected: bool) -> None:
         """Broadcast an upstream connection-state control frame.

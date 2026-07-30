@@ -69,6 +69,11 @@ export interface IndiClientOptions {
    * unless talking to a server that does not.
    */
   autoGetProperties?: boolean;
+  /**
+   * Maximum inbound `message` notifications retained in {@link IndiClient.messages}
+   * (oldest dropped first).
+   */
+  messageLogLimit?: number;
 }
 
 /** Derive the bridge WebSocket URL from the current page location. */
@@ -103,10 +108,19 @@ export class IndiClient {
   private readonly blobPolicies = new Map<string, EnableBlob>();
 
   private readonly autoGetProperties: boolean;
+  private readonly messageLogLimit: number;
   private _state: ConnectionState = { transport: false, upstream: false };
+
+  /**
+   * Rolling log of inbound `message` notifications, oldest first. Kept on the
+   * client (immutably, a new array per append) so UI that mounts late - a log
+   * panel opened on demand - can still show everything since the page loaded.
+   */
+  private _messages: readonly Message[] = [];
 
   constructor(options: IndiClientOptions = {}) {
     this.autoGetProperties = options.autoGetProperties ?? false;
+    this.messageLogLimit = options.messageLogLimit ?? 200;
     const connectionOptions: ConnectionOptions = {
       reconnectDelay: options.reconnectDelay,
       webSocketFactory: options.webSocketFactory,
@@ -164,6 +178,16 @@ export class IndiClient {
   /** A stable, sorted list of all known device names. */
   devices(): readonly string[] {
     return this._store.devices();
+  }
+
+  /**
+   * The retained inbound `message` notifications, oldest first.
+   *
+   * The returned array is a stable snapshot (a new reference only when a
+   * message arrives), so it is safe to feed to `useSyncExternalStore`.
+   */
+  messages(): readonly Message[] {
+    return this._messages;
   }
 
   // -- subscriptions ----------------------------------------------------- //
@@ -352,6 +376,9 @@ export class IndiClient {
     const event = this._store.apply(message);
     if (event !== null) this.dispatch(event);
     if (message.tag === "message") {
+      const next = [...this._messages, message];
+      if (next.length > this.messageLogLimit) next.splice(0, next.length - this.messageLogLimit);
+      this._messages = next;
       for (const callback of this.messageSubs.values()) callback(message);
     }
   }
