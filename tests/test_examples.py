@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from examples.demo_device import Demo
 from examples.dome_device import PARK_AZ, DomeSimulator
 from examples.monitor_client import format_event, monitor
+from examples.telescope_device import TelescopeSimulator
 from indi_nexus.client import IndiClient
 from indi_nexus.client.store import PropertyEvent
 from indi_nexus.protocol import (
@@ -159,12 +162,20 @@ def test_demo_power_off_accepts_partial_write_and_parks_idle():
 # --------------------------------------------------------------------------- #
 # The dome simulator example                                                   #
 # --------------------------------------------------------------------------- #
-async def _dome() -> tuple[DomeSimulator, list[object]]:
-    """Build a set-up dome simulator with its emitted messages captured."""
+async def _dome(*, connect: bool = True) -> tuple[DomeSimulator, list[object]]:
+    """Build a set-up dome simulator with its emitted messages captured.
+
+    Parameters
+    ----------
+    connect : bool, optional
+        Whether to turn the CONNECTION switch on (as an operator would first).
+    """
     captured: list[object] = []
     dome = DomeSimulator()
     dome._bind(captured.append)
     await dome.setup()
+    if connect:
+        await dome._dispatch_new(_dome_switch("CONNECTION", "CONNECT"))
     return dome, captured
 
 
@@ -356,5 +367,289 @@ def test_dome_speeds_are_clamped_to_their_range():
         assert dome["SPEEDS"]["DOME"].value == 10.0  # max
         await dome._dispatch_new(_dome_number("SPEEDS", "SHUTTER", 0.0))
         assert dome["SPEEDS"]["SHUTTER"].value == 0.01  # min
+
+    asyncio.run(scenario())
+
+
+def test_dome_rejects_commands_while_disconnected():
+    """Motion and shutter commands are refused until CONNECTION is on."""
+
+    async def scenario() -> None:
+        dome, captured = await _dome(connect=False)
+        await dome._dispatch_new(_dome_number("ABS_DOME_POSITION", "DOME_ABSOLUTE_POSITION", 90))
+        await dome._dispatch_new(_dome_switch("DOME_SHUTTER", "SHUTTER_OPEN"))
+
+        assert dome["ABS_DOME_POSITION"].vector.state is IPState.IDLE
+        assert dome["DOME_SHUTTER"]["SHUTTER_CLOSE"].value is ISState.ON  # unchanged
+        assert _has_message(captured, "Dome is not connected.")
+
+        for _ in range(3):  # the simulation is inert while disconnected
+            await dome.tick()
+        assert _az(dome) == 0.0
+
+    asyncio.run(scenario())
+
+
+def test_dome_connect_enables_commands_and_disconnect_halts_motion():
+    """Connecting unlocks the dome; disconnecting mid-slew stops everything."""
+
+    async def scenario() -> None:
+        dome, captured = await _dome(connect=False)
+        await dome._dispatch_new(_dome_switch("CONNECTION", "CONNECT"))
+        assert dome["CONNECTION"]["CONNECT"].value is ISState.ON
+        assert _has_message(captured, "Dome connected.")
+
+        await dome._dispatch_new(_dome_number("ABS_DOME_POSITION", "DOME_ABSOLUTE_POSITION", 90))
+        await dome.tick()
+        assert _az(dome) == 5.0
+
+        await dome._dispatch_new(_dome_switch("CONNECTION", "DISCONNECT"))
+        assert _has_message(captured, "Dome disconnected.")
+        assert dome["ABS_DOME_POSITION"].vector.state is IPState.IDLE  # nothing left Busy
+        frozen = _az(dome)
+        await dome.tick()
+        assert _az(dome) == frozen
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The telescope simulator example                                              #
+# --------------------------------------------------------------------------- #
+async def _scope(*, connect: bool = True) -> tuple[TelescopeSimulator, list[object]]:
+    """Build a set-up telescope simulator with its emitted messages captured.
+
+    Parameters
+    ----------
+    connect : bool, optional
+        Whether to turn the CONNECTION switch on (as an operator would first).
+    """
+    captured: list[object] = []
+    scope = TelescopeSimulator()
+    scope._bind(captured.append)
+    await scope.setup()
+    if connect:
+        await scope._dispatch_new(_scope_switch("CONNECTION", "CONNECT"))
+    return scope, captured
+
+
+def _scope_switch(prop: str, element: str) -> SwitchVector:
+    """Build a panel-style switch write naming only the selected element."""
+    return SwitchVector(
+        device="Telescope Simulator",
+        name=prop,
+        elements=[Switch(name=element, value=ISState.ON)],
+    )
+
+
+def _scope_numbers(prop: str, **values: float) -> NumberVector:
+    """Build a client number write for the named telescope property elements."""
+    return NumberVector(
+        device="Telescope Simulator",
+        name=prop,
+        elements=[Number(name=name, value=value) for name, value in values.items()],
+    )
+
+
+def _radec(scope: TelescopeSimulator) -> tuple[float, float]:
+    """Return the scope's current (RA hours, Dec degrees)."""
+    coords = scope["EQUATORIAL_EOD_COORD"]
+    return coords["RA"].value, coords["DEC"].value
+
+
+async def _sync_to(scope: TelescopeSimulator, ra: float, dec: float) -> None:
+    """Sync the scope to the given coordinates, restoring goto-on-write mode."""
+    await scope._dispatch_new(_scope_switch("ON_COORD_SET", "SYNC"))
+    await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=ra, DEC=dec))
+    await scope._dispatch_new(_scope_switch("ON_COORD_SET", "TRACK"))
+
+
+def test_scope_goto_slews_stepwise_then_tracks():
+    """A coordinate write slews at the selected rate and ends tracking."""
+
+    async def scenario() -> None:
+        scope, captured = await _scope()
+        await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=6, DEC=0))
+        assert scope["EQUATORIAL_EOD_COORD"].vector.state is IPState.BUSY
+
+        await scope.tick()  # Max rate: 30 deg/s = 2h RA and 30 deg Dec per tick
+        assert _radec(scope) == (2.0, 60.0)
+        await scope.tick()
+        await scope.tick()
+        assert _radec(scope) == (6.0, 0.0)
+        assert scope["EQUATORIAL_EOD_COORD"].vector.state is IPState.OK
+        assert scope["TELESCOPE_TRACK_STATE"]["TRACK_ON"].value is ISState.ON
+        assert _has_message(captured, "Telescope slew is complete. Tracking...")
+
+    asyncio.run(scenario())
+
+
+def test_scope_sync_jumps_without_slewing():
+    """In Sync mode a coordinate write updates the pointing instantly."""
+
+    async def scenario() -> None:
+        scope, captured = await _scope()
+        await scope._dispatch_new(_scope_switch("ON_COORD_SET", "SYNC"))
+        await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=5.5, DEC=-20))
+        assert _radec(scope) == (5.5, -20.0)
+        assert scope["EQUATORIAL_EOD_COORD"].vector.state is IPState.OK
+        assert _has_message(captured, "Sync is successful.")
+
+    asyncio.run(scenario())
+
+
+def test_scope_ra_wraps_the_shortest_way():
+    """A goto across 0h RA rotates through the wrap, not the long way."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await _sync_to(scope, 23.5, 0)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_SLEW_RATE", "SLEW_FIND"))
+        await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=0.5, DEC=0))
+
+        await scope.tick()  # Find rate: 5 deg/s = 1/3 h per tick, increasing
+        ra, _dec = _radec(scope)
+        assert ra == pytest.approx(23.5 + 1.0 / 3.0)
+        for _ in range(3):
+            await scope.tick()
+        assert _radec(scope)[0] == 0.5
+
+    asyncio.run(scenario())
+
+
+def test_scope_ra_drifts_only_while_not_tracking():
+    """Tracking holds RA still; with tracking off the sky drifts past."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await _sync_to(scope, 12, 0)
+
+        await scope.tick()  # tracking is off by default
+        drift = 15.041 / 15.0 / 3600.0
+        assert _radec(scope)[0] == pytest.approx(12 + drift)
+
+        await scope._dispatch_new(_scope_switch("TELESCOPE_TRACK_STATE", "TRACK_ON"))
+        before = _radec(scope)[0]
+        await scope.tick()
+        assert _radec(scope)[0] == before  # sidereal tracking follows exactly
+
+    asyncio.run(scenario())
+
+
+def test_scope_manual_motion_paddle_moves_until_released():
+    """The N/S paddle moves at the slew rate while held, then stops."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await _sync_to(scope, 12, 0)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_TRACK_STATE", "TRACK_ON"))
+        await scope._dispatch_new(_scope_switch("TELESCOPE_SLEW_RATE", "SLEW_CENTERING"))
+
+        await scope._dispatch_new(_scope_switch("TELESCOPE_MOTION_NS", "MOTION_NORTH"))
+        await scope.tick()
+        assert _radec(scope)[1] == pytest.approx(0.5)
+
+        # Deselecting (the paddle released) sends the member Off.
+        await scope._dispatch_new(
+            SwitchVector(
+                device="Telescope Simulator",
+                name="TELESCOPE_MOTION_NS",
+                elements=[Switch(name="MOTION_NORTH", value=ISState.OFF)],
+            )
+        )
+        await scope.tick()
+        assert _radec(scope)[1] == pytest.approx(0.5)  # no further motion
+
+    asyncio.run(scenario())
+
+
+def test_scope_park_slews_to_pole_and_locks_out_motion():
+    """Parking slews to the pole, stops tracking, and refuses motion."""
+
+    async def scenario() -> None:
+        scope, captured = await _scope()
+        await _sync_to(scope, 5, 20)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_PARK", "PARK"))
+        assert scope["TELESCOPE_PARK"].vector.state is IPState.BUSY
+
+        for _ in range(3):  # 20 -> 90 degrees at 30 deg/s
+            await scope.tick()
+        assert _radec(scope) == (5.0, 90.0)
+        assert scope["TELESCOPE_PARK"]["PARK"].value is ISState.ON
+        assert scope["TELESCOPE_TRACK_STATE"]["TRACK_OFF"].value is ISState.ON
+        assert _has_message(captured, "Telescope slew is complete. Parked.")
+
+        await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=1, DEC=1))
+        assert _has_message(captured, "Please unpark the mount")
+        assert _radec(scope) == (5.0, 90.0)
+
+        await scope._dispatch_new(_scope_switch("TELESCOPE_PARK", "UNPARK"))
+        assert _has_message(captured, "Telescope unparked.")
+
+    asyncio.run(scenario())
+
+
+def test_scope_abort_stops_the_slew():
+    """Abort halts a slew mid-flight and leaves the scope where it was."""
+
+    async def scenario() -> None:
+        scope, captured = await _scope()
+        await _sync_to(scope, 12, 0)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_TRACK_STATE", "TRACK_ON"))
+        await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=18, DEC=45))
+        await scope.tick()
+
+        await scope._dispatch_new(_scope_switch("TELESCOPE_ABORT_MOTION", "ABORT"))
+        frozen = _radec(scope)
+        await scope.tick()
+        assert _radec(scope) == frozen
+        assert _has_message(captured, "Telescope motion aborted.")
+
+    asyncio.run(scenario())
+
+
+def test_scope_guide_pulse_nudges_and_completes():
+    """A timed guide pulse offsets by rate x sidereal x duration, then resets."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await _sync_to(scope, 12, 0)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_TRACK_STATE", "TRACK_ON"))
+
+        await scope._dispatch_new(_scope_numbers("TELESCOPE_TIMED_GUIDE_NS", TIMED_GUIDE_N=1000))
+        # 0.5 x 15.041 arcsec over one second, as degrees of declination.
+        assert _radec(scope)[1] == pytest.approx(0.5 * 15.041 / 3600.0)
+        guide = scope["TELESCOPE_TIMED_GUIDE_NS"]
+        assert guide["TIMED_GUIDE_N"].value == 0.0
+        assert guide.vector.state is IPState.OK
+
+    asyncio.run(scenario())
+
+
+def test_scope_rejects_commands_while_disconnected():
+    """Motion commands are refused until CONNECTION is on."""
+
+    async def scenario() -> None:
+        scope, captured = await _scope(connect=False)
+        await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=3, DEC=3))
+        assert _has_message(captured, "Telescope is not connected.")
+        assert _radec(scope) == (0.0, 90.0)
+        for _ in range(2):
+            await scope.tick()
+        assert _radec(scope) == (0.0, 90.0)  # simulation inert while disconnected
+
+    asyncio.run(scenario())
+
+
+def test_scope_location_update_is_stored():
+    """A GEOGRAPHIC_COORD write is normalised, stored, and confirmed."""
+
+    async def scenario() -> None:
+        scope, captured = await _scope()
+        await scope._dispatch_new(_scope_numbers("GEOGRAPHIC_COORD", LAT=-30.5, LONG=380.0))
+        site = scope["GEOGRAPHIC_COORD"]
+        assert site["LAT"].value == -30.5
+        assert site["LONG"].value == 20.0  # wrapped into [0, 360)
+        assert _has_message(captured, "Site location updated.")
 
     asyncio.run(scenario())

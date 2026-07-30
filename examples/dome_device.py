@@ -2,11 +2,13 @@
 """A dome-control driver: libindi's classic Dome Simulator, rebuilt on INDINexus.
 
 This is a port of ``dome_simulator.cpp`` (Jasem Mutlaq's C++ Dome Simulator) to
-the INDINexus driver SDK. It keeps the standard INDI dome property names -
-``ABS_DOME_POSITION``, ``REL_DOME_POSITION``, ``DOME_SHUTTER``, ``DOME_PARK``,
-``DOME_ABORT_MOTION`` - so any INDI client recognises it, and the same motion
-model: the dome rotates toward a target azimuth at a configurable deg/s taking
-the shortest way around, and the shutter opens/closes over time at m/s. The
+the INDINexus driver SDK. It keeps the standard INDI property names - the
+device-level ``CONNECTION`` switch (which libindi's ``INDI::DefaultDevice`` base
+normally provides for free), ``ABS_DOME_POSITION``, ``REL_DOME_POSITION``,
+``DOME_SHUTTER``, ``DOME_PARK``, ``DOME_ABORT_MOTION`` - so any INDI client
+recognises it, and the same motion model: the dome rotates toward a target
+azimuth at a configurable deg/s taking the shortest way around, and the shutter
+opens/closes over time at m/s. Commands only work while connected, and the
 ~300-line C++ class becomes a compact typed device: properties are declared in
 ``setup()``, client writes arrive as parsed vectors via ``@on_new``, and the
 whole simulation is one ``@every`` tick.
@@ -74,7 +76,7 @@ def _selected(vector: SwitchVector) -> str | None:
 
 
 class DomeSimulator(Device):
-    """A simulated observatory dome: azimuth rotation, shutter, park, abort."""
+    """A simulated observatory dome: connect, rotate in azimuth, shutter, park."""
 
     name = "Dome Simulator"
 
@@ -88,6 +90,18 @@ class DomeSimulator(Device):
 
     async def setup(self) -> None:
         """Define the standard INDI dome properties and announce readiness."""
+        # In libindi, CONNECTION comes free from INDI::DefaultDevice; here the
+        # SDK is explicit, so the driver defines the standard switch itself.
+        self.define_switch(
+            "CONNECTION",
+            [
+                Switch(name="CONNECT", label="Connect", value=ISState.OFF),
+                Switch(name="DISCONNECT", label="Disconnect", value=ISState.ON),
+            ],
+            rule=ISRule.ONE_OF_MANY,
+            label="Connection",
+            group="Main Control",
+        )
         self.define_number(
             "ABS_DOME_POSITION",
             [Number(name="DOME_ABSOLUTE_POSITION", label="Degrees", format="%.2f", min=0, max=360)],
@@ -144,10 +158,47 @@ class DomeSimulator(Device):
         )
         self.message("Dome simulator ready.")
 
+    # -- connection -------------------------------------------------------- #
+    @property
+    def _connected(self) -> bool:
+        """Whether the (simulated) dome link is up."""
+        return self["CONNECTION"]["CONNECT"].value is ISState.ON
+
+    def _require_connected(self) -> bool:
+        """Return whether commands may run, logging the standard error if not."""
+        if self._connected:
+            return True
+        self.log_error("Dome is not connected.")
+        return False
+
+    @on_new("CONNECTION")
+    async def _connection(self, vector: SwitchVector) -> None:
+        """Open or close the (simulated) dome link."""
+        connect = _selected(vector) == "CONNECT"
+        self["CONNECTION"].set(
+            **{"CONNECT" if connect else "DISCONNECT": ISState.ON}, state=IPState.OK
+        )
+        if not connect:
+            # Halt any motion so nothing is left Busy behind a dead link; a real
+            # driver would close its serial/network connection here.
+            self._target_az = None
+            self._shutter_travel = 0.0
+            self._parking = self._unparking = False
+            self["ABS_DOME_POSITION"].set(state=IPState.IDLE)
+            self["DOME_SHUTTER"].set(state=IPState.IDLE)
+            self["DOME_PARK"].set(state=IPState.IDLE)
+        self.message(f"Dome {'connected' if connect else 'disconnected'}.")
+
     # -- simulation -------------------------------------------------------- #
     @every(seconds=1)
     async def tick(self) -> None:
-        """Advance the rotation and shutter simulations by one second."""
+        """Advance the rotation and shutter simulations by one second.
+
+        Inert while disconnected, mirroring the C++ ``TimerHit``'s
+        ``if (!isConnected()) return``.
+        """
+        if not self._connected:
+            return
         self._tick_rotation()
         self._tick_shutter()
 
@@ -223,11 +274,15 @@ class DomeSimulator(Device):
     @on_new("ABS_DOME_POSITION")
     async def _abs_move(self, vector: NumberVector) -> None:
         """Rotate to the requested absolute azimuth."""
+        if not self._require_connected():
+            return
         self._slew_to(vector["DOME_ABSOLUTE_POSITION"].value)
 
     @on_new("REL_DOME_POSITION")
     async def _rel_move(self, vector: NumberVector) -> None:
         """Rotate by the requested azimuth offset from the current position."""
+        if not self._require_connected():
+            return
         offset: float = vector["DOME_RELATIVE_POSITION"].value
         current: float = self["ABS_DOME_POSITION"]["DOME_ABSOLUTE_POSITION"].value
         self["REL_DOME_POSITION"].set(DOME_RELATIVE_POSITION=offset, state=IPState.OK)
@@ -236,6 +291,8 @@ class DomeSimulator(Device):
     @on_new("SPEEDS")
     async def _speeds(self, vector: NumberVector) -> None:
         """Accept new dome/shutter speeds, clamped to each member's range."""
+        if not self._require_connected():
+            return
         speeds = self["SPEEDS"]
         members = {member.name: member for member in speeds.vector.elements}
         updates: dict[str, float] = {}
@@ -251,6 +308,8 @@ class DomeSimulator(Device):
     @on_new("DOME_SHUTTER")
     async def _shutter(self, vector: SwitchVector) -> None:
         """Open or close the shutter, whichever member the client selected."""
+        if not self._require_connected():
+            return
         selected = _selected(vector)
         if selected is None:
             return
@@ -259,6 +318,8 @@ class DomeSimulator(Device):
     @on_new("DOME_PARK")
     async def _park(self, vector: SwitchVector) -> None:
         """Park (close the shutter, rotate to the park azimuth) or unpark."""
+        if not self._require_connected():
+            return
         if _selected(vector) == "PARK":
             self._parking, self._unparking = True, False
             self["DOME_PARK"].set(PARK=ISState.ON, state=IPState.BUSY)
@@ -276,6 +337,8 @@ class DomeSimulator(Device):
     @on_new("DOME_ABORT_MOTION")
     async def _abort(self, vector: SwitchVector) -> None:
         """Stop the rotation; an interrupted shutter is left in an Alert state."""
+        if not self._require_connected():
+            return
         self._parking = self._unparking = False
         if self._target_az is not None:
             self._target_az = None
