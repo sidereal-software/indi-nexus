@@ -1,7 +1,7 @@
 /** A compact indicator of the bridge and upstream connection state. */
 
-import { cn } from "@/lib/utils";
 import { useConnection } from "../hooks";
+import { cn } from "../lib/utils";
 
 /** A single labelled status dot. */
 function StatusDot({ on, label }: { on: boolean; label: string }) {

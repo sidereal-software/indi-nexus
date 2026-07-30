@@ -1,8 +1,8 @@
 /** A small badge whose colour tracks an INDI vector/light state. */
 
 import type { IPState } from "@indi-nexus/client";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/ui/badge";
+import { cn } from "../lib/utils";
+import { Badge } from "../ui/badge";
 
 /** Tailwind classes per state, using the theme's `--color-state-*` tokens. */
 const STATE_CLASSES: Record<IPState, string> = {

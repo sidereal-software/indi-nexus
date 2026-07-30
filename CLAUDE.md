@@ -226,7 +226,11 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   emits a prebuilt `dist/styles.css` (`@indi-nexus/react/styles.css`, batteries-included) and
   copies the source `theme.css` (`@indi-nexus/react/theme.css`, for consumers running their
   own Tailwind). Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup`, etc. per the
-  shadcn skill rules; don't hand-edit `src/ui/`.
+  shadcn skill rules; don't hand-edit `src/ui/`. **Imports are relative, not the `@/`
+  alias** - esbuild/tsc resolve the tsconfig `paths` alias inconsistently across platforms
+  (it built locally but failed in CI), so after a `shadcn add` rewrite the new component's
+  `@/…` imports to relative (the `@/` alias stays in `components.json`/`tsconfig` only so the
+  CLI still knows where to place files).
 - `apps/panel/` - the reference frontend (Vite + `@tailwindcss/vite`), composed entirely from
   `@indi-nexus/react`: a device sidebar with connection status + light/dark toggle, a
   `DevicePanel` per device, and a `MessageLog` sheet. `vite build` emits into
