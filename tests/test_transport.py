@@ -126,7 +126,7 @@ def test_open_tcp_write_and_read_round_trip():
 
 
 def test_open_tcp_read_returns_empty_at_eof():
-    """read returns b"" once the server closes the connection."""
+    """A read returns b"" once the server closes the connection."""
 
     async def scenario() -> None:
         """Run the async body of this test on the event loop."""

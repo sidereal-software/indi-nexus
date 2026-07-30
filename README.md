@@ -105,6 +105,7 @@ pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxie
 python -m examples.demo_bridge              # web panel + live demo device, no indiserver (open :8000)
 python -m examples.demo_bridge --device examples.dome_device:DomeSimulator
                                             # same, but serving the dome simulator
+indi-nexus new my_driver.py                 # scaffold a runnable driver file to start from
 indi-nexus serve                            # web panel against a real indiserver (open :8000)
 indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
 indi-nexus monitor                          # print live INDI updates from indiserver
@@ -115,6 +116,15 @@ indi-nexus --help                           # all CLI commands and options
 
 ```bash
 uv build                          # build sdist + wheel; the panel is bundled, so pip install ships the UI
+```
+
+**Documentation** (MkDocs Material; published from `main` by `.github/workflows/docs.yml`):
+
+```bash
+uv pip install -e ".[docs]"       # docs toolchain (first time)
+cd web && pnpm run docs && cd ..  # generate the TS API reference + the live demo app
+uv run mkdocs serve               # author locally at http://127.0.0.1:8000/indi-nexus/
+uv run mkdocs build --strict      # what CI runs
 ```
 
 The expected green baseline before committing: `ruff check` + `mypy src` + `pytest` clean, and
@@ -218,30 +228,56 @@ as top-level elements arrive (reassembling across arbitrary chunk boundaries).
 ## Writing a driver
 
 Subclass `Device`, declare properties in `setup()`, poll with `@every`, and handle client
-writes with `@on_new`. See `examples/demo_device.py`.
+writes with `@on_new`. Start from a working file with:
+
+```bash
+indi-nexus new my_driver.py     # scaffold a commented, runnable driver
+python -m examples.demo_bridge --device my_driver:MyDriver   # ...and see it in the panel
+```
+
+The SDK carries the standard INDI lifecycle so a driver is only its own behavior:
+`define_connection()` gives you the standard `CONNECTION` switch with
+`on_connect`/`on_disconnect` hooks and a `require_connected()` guard;
+`@every(..., when_connected=True)` pauses polling while the link is down; and the
+parsed vectors handed to `@on_new` answer the two questions every handler asks -
+`vector.selected()` (which switch did the client turn on?) and
+`vector.get(name, default)` (what value did they send, tolerating partial writes?).
 
 ```python
 from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import Number, IPState, IPerm
+from indi_nexus.protocol import IPState, ISState, Number, Switch, SwitchVector
 
 class Mount(Device):
     name = "Mount"
 
     async def setup(self) -> None:
+        self.define_connection()
         self.define_number(
             "EQUATORIAL_EOD_COORD",
             [Number(name="RA", format="%9.6m"), Number(name="DEC", format="%9.6m")],
-            perm=IPerm.RO,
         )
 
-    @every(seconds=1)
+    async def on_connect(self) -> None:
+        await self.open_serial_link()
+
+    @every(seconds=1, when_connected=True)
     async def poll(self) -> None:
         ra, dec = await self.read_mount()
         self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec, state=IPState.OK)
 
+    @on_new("EQUATORIAL_EOD_COORD")
+    async def _goto(self, vector) -> None:
+        if not self.require_connected():
+            return
+        await self.slew_to(vector.get("RA", 0.0), vector.get("DEC", 0.0))
+
 if __name__ == "__main__":
     Mount.run()          # serves over stdio under indiserver
 ```
+
+For complete, realistic drivers see `examples/dome_device.py` and
+`examples/telescope_device.py` - ports of libindi's C++ simulators at a fraction of
+the code.
 
 ## Using the client
 
@@ -289,7 +325,7 @@ on one shared wire contract and themed with [shadcn/ui](https://ui.shadcn.com):
 
 - **`@indi-nexus/client`** - a framework-agnostic, reconnecting client for the bridge's
   WebSocket and a typed property store (a TS port of the Python client). No UI dependency.
-- **`@indi-nexus/react`** - `IndiProvider`, hooks (`useProperty`, `useDevice`,
+- **`@indi-nexus/react`** - `IndiProvider`, hooks (`useProperty`, `useElement`, `useDevice`,
   `useConnection`, ...), INDI-aware components (`PropertyVectorCard`, `DevicePanel`,
   `StateBadge`, `ConnectionStatus`, `MessageLog`), and the themed shadcn/ui primitives.
 - **`apps/panel`** - the reference panel that ships with `indi-nexus`.

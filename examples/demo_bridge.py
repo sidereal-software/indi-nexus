@@ -1,4 +1,4 @@
-"""Run the web bridge against in-process drivers, without ``indiserver``.
+r"""Run the web bridge against in-process drivers, without ``indiserver``.
 
 This wires one or more drivers (the reference :class:`~examples.demo_device.Demo`
 by default, or any ``Device`` subclasses named with repeated ``--device

@@ -95,6 +95,9 @@ and the "accumulate stdin and retry `etree.fromstring`" framing loop.
     defaults, because `set`/`one` messages carry only `name` + value. Clients merge `set`
     values onto the previously-defined vector (standard INDI behavior).
   - `LightVector` has no `perm` (lights are always read-only in INDI).
+  - Vectors carry pure accessors for handler ergonomics: `element(name)`/`[name]`
+    (raising), `get(name, default)` (tolerant; BLOBs yield `data`), `values()`
+    (name->value dict), and `SwitchVector.selected()` (first On member of a write).
   - Non-property messages: `GetProperties`, `DelProperty`, `Message`, and `EnableBLOB`
     (`BLOBPolicy` = `Never`/`Also`/`Only`) - a client must send `enableBLOB` before
     `indiserver` forwards any BLOB.
@@ -122,6 +125,10 @@ libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
   properties with the `define_number/text/switch/light/blob(...)` helpers (each returns a
   `BoundProperty` and emits the `def`). Access later via `self["NAME"]`. `self.message()`
   / `self.log_error()` send INDI `message`s. `Device.run()` serves it over stdio.
+  `define_connection()` adds the standard `CONNECTION` switch with a built-in handler
+  (flip + `on_connect`/`on_disconnect` hooks + announcement); `connected` /
+  `require_connected()` read the state, and a subclass `@on_new("CONNECTION")` shadows
+  the built-in (the handler map keeps the MRO-first entry per property).
 - `property.py` - `BoundProperty`, the driver-side handle wrapping a (pure) protocol
   vector. `.set(RA=1.2, DEC=3.4, state=IPState.OK)` mutates elements **and** emits one
   `setXxxVector`; it honors `OneOfMany` switch rules (turning one On clears siblings). The
@@ -130,6 +137,7 @@ libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
   pyINDI's `@device.repeat`. It only *tags* a method; discovery/execution is **per
   instance** (no shared class state), one supervised task each, with per-tick error
   isolation (a failing tick logs and continues, never kills the driver).
+  `@every(..., when_connected=True)` pauses a job while `device.connected` is false.
 - `dispatch.py` - `@on_new("PROP")` tags the handler for client writes to a property; the
   device builds a per-instance name->handler map and passes the fully typed parsed vector.
   Unhandled writes fall through to `on_new_default`.
@@ -199,7 +207,8 @@ SAX BLOB handler, server-side HTML/JS9 coupling).
 
 ### The CLI (`src/indi_nexus/cli.py`)
 
-Typer app, the `indi-nexus` entrypoint. `serve` runs the web bridge (uvicorn); `run
+Typer app, the `indi-nexus` entrypoint. `new` scaffolds a runnable driver file (the
+template is import-tested so it cannot rot); `serve` runs the web bridge (uvicorn); `run
 module:attr` imports a `Device` subclass and serves it over stdio; `monitor` prints live
 updates from `indiserver`. Heavy imports (uvicorn/fastapi) are lazy so `--help` stays fast.
 
@@ -222,7 +231,7 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   states - `transport` (browser<->bridge) and `upstream` (bridge<->indiserver, from the
   bridge's `connection` control frame).
 - `packages/react/` - **`@indi-nexus/react`**. `IndiProvider` + `useIndiClient`, hooks
-  (`useConnection`/`useDevices`/`useDevice`/`useProperty`/`useMessages`, all via
+  (`useConnection`/`useDevices`/`useDevice`/`useProperty`/`useElement`/`useMessages`, all via
   `useSyncExternalStore` over the immutable store), and INDI-aware components
   (`PropertyVectorCard`, `DevicePanel`, per-kind element controls, `StateBadge`,
   `ConnectionStatus`, `MessageLog`). shadcn/ui primitives live in `src/ui/` (added via the
@@ -258,8 +267,8 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
 - Docstrings are **Numpydoc style** (per the
   [LSST DM guide](https://developer.lsst.io/python/numpydoc.html)) on **every** module,
   class, and function - public, private (`_x`), dunder, and every test - so a future
-  Sphinx + ReadTheDocs autodoc build renders the API reference straight from the source.
-  (We'll enable ruff's `D` rules with `convention = "numpy"` when the docs site is wired up.)
+  MkDocs + mkdocstrings build renders the API reference straight from the source (see
+  `mkdocs.yml`; ruff's `D` rules enforce the convention).
   Follow these rules exactly - they are the ones most easily gotten wrong:
   - **Every parameter goes on its own entry. Never combine names** on one line
     (`label, group : ...` is wrong - write a separate entry for each).

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "plugin": ["typedoc-plugin-markdown"],
+  "entryFileName": "index",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "disableSources": true,
+  "hidePageHeader": true,
+  "hideBreadcrumbs": true
+}

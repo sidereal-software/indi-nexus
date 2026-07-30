@@ -31,6 +31,10 @@ dev = [
     "lxml-stubs>=0.5",
     "httpx>=0.27",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.25",
+]
 
 [project.scripts]
 indi-nexus = "indi_nexus.cli:app"
@@ -55,7 +59,10 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,80 @@
+site_name: INDINexus
+site_description: >-
+  A modern, typed Python framework for INDI astronomical instrument control -
+  Python drivers, an async client, a web bridge, and React components.
+site_url: https://mmtobservatory.github.io/indi-nexus/
+repo_url: https://github.com/mmtobservatory/indi-nexus
+repo_name: indi-nexus
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    logo: material/telescope
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            show_source: true
+            show_root_heading: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            merge_init_into_class: true
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Writing a driver: guides/writing-drivers.md
+      - The examples: guides/examples.md
+      - Building a frontend: guides/frontend.md
+      - Protocol concepts: guides/protocol.md
+  - Python API:
+      - Protocol: reference/python/protocol.md
+      - Driver SDK: reference/python/driver.md
+      - Client: reference/python/client.md
+      - Web bridge: reference/python/web.md
+      - Transport: reference/python/transport.md
+  - TypeScript API:
+      - "@indi-nexus/client": reference/typescript/client/index.md
+      - "@indi-nexus/react": reference/typescript/react/index.md
+  - Live demo: demo.md
