@@ -57,7 +57,7 @@ src/indi_nexus/
 ├── protocol/     DONE   the INDI protocol core (see below)
 ├── driver/       DONE   driver SDK: subclass a base device; stdio XML under indiserver
 ├── client/       DONE   reconnecting asyncio TCP client to indiserver + property cache
-├── transport.py  DONE   shared ReadFn/WriteFn byte-stream contract + TCP adapter
+├── transport.py  DONE   shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
 ├── web/          DONE   FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
 └── cli.py        DONE   Typer CLI (serve web, run driver, monitor)
 
@@ -137,10 +137,12 @@ libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
   takes plain `read`/`write` callables (the shared `ReadFn`/`WriteFn` from `transport.py`),
   so tests drive it through in-memory byte streams exactly as `indiserver` would; `run()`
   wires real stdin/stdout. Plain `asyncio`: an outbox `asyncio.Queue`, a writer task, and
-  one task per periodic job, all driven by the reader until stdin EOF.
+  one task per periodic job, all driven by the reader until stdin EOF. Inbound dispatch has
+  the same error isolation as ticks: a raising `@on_new` handler (or `setup()`) is reported
+  to the client via `message` and swallowed - one bad client write never kills the driver.
 
 `examples/demo_device.py` is the reference driver (one of each vector kind, an `@every`
-animation, and an `@on_new` handler).
+animation gated on its power switch, and an `@on_new` handler).
 
 ### The client (`src/indi_nexus/client/`)
 
@@ -163,8 +165,9 @@ hacks, a SAX handler, and *no* cache).
   `client[device]`. Watch: `subscribe(cb, device=, name=)`, `on_message`, `on_connection`.
   Scripting: `await wait_for(device, name, predicate=, timeout=)`. Sends: `get_properties`,
   `enable_blob`, `set_number/text/switch/blob`. The transport is injectable (a `connect`
-  coroutine returning `read`/`write`), so tests drive it over in-memory streams; the
-  default uses `transport.open_tcp`.
+  coroutine returning `read`/`write`/`close`), so tests drive it over in-memory streams;
+  the default uses `transport.open_tcp`. Every ended connection - EOF, error, or
+  `aclose()` - invokes `close`, so the OS socket never lingers between reconnects.
 
 `examples/monitor_client.py` is the reference client (subscribe to all events, print each).
 `tests/test_integration.py` cross-wires a `DriverRuntime` and an `IndiClient` through
@@ -180,8 +183,10 @@ SAX BLOB handler, server-side HTML/JS9 coupling).
   WebSocket sinks: property events become `def`/`set`/`delProperty` JSON, `on_message`
   becomes `message` JSON, and `on_connection` becomes a small `{"event":"connection"}`
   **control** frame (the one non-INDI frame; UI needs it, the protocol has no message for
-  it). `snapshot()` primes a new browser with the current cache; `handle_incoming(text)`
-  parses a browser frame with `from_json` and forwards it via `client.send`.
+  it). `snapshot()` primes a new browser with the current cache plus a bounded history of
+  recent `message` frames (messages are transient, so without replay a fresh page's log
+  would always start empty); `handle_incoming(text)` parses a browser frame with
+  `from_json` and forwards it via `client.send`.
 - `app.py` - `create_app(*, client=None, indi_host=, indi_port=)`. Lifespan starts/stops
   the bridge. `GET /health`; `GET /api/devices[/{device}[/{name}]]` (read-only JSON
   snapshot); `WS /ws` (snapshot on connect, then live, browser frames forwarded upstream);
