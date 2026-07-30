@@ -123,29 +123,29 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
         {elements.map((element) => {
           const id = `${vector.device}.${vector.name}.${element.name}`;
           return (
-            <Field key={element.name} orientation="horizontal">
-              <FieldLabel
-                htmlFor={id}
-                title={element.label ?? element.name}
-                className="min-w-0 truncate text-muted-foreground"
-              >
-                {element.label ?? element.name}
-              </FieldLabel>
-              {/* Live telemetry: the device's current value, updating with each
-                  set; the input beside it is only the *requested* new value. The
-                  readout never shrinks away - the label truncates instead. */}
-              <span
-                title="Current value"
-                className="ml-auto shrink-0 font-mono text-sm tabular-nums"
-              >
-                {currentValue(element)}
-              </span>
+            // Two deterministic lines per element: a header pairing the label
+            // with the live readout (telemetry: where the device is now), and a
+            // full-width input below (the *requested* new value). Nothing
+            // competes for one row, so long labels and sexagesimal values -
+            // "RA (hh:mm:ss)" / "12:34:56" - always fit.
+            <Field key={element.name} className="gap-1.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <FieldLabel htmlFor={id} className="shrink-0 text-muted-foreground">
+                  {element.label ?? element.name}
+                </FieldLabel>
+                <span
+                  title="Current value"
+                  className="min-w-0 truncate font-mono text-sm tabular-nums"
+                >
+                  {currentValue(element)}
+                </span>
+              </div>
               <Input
                 id={id}
                 name={element.name}
                 type={element.kind === "number" ? "number" : "text"}
                 defaultValue={String(element.value)}
-                className="w-28 shrink-0 font-mono tabular-nums"
+                className="w-full font-mono tabular-nums"
                 {...(element.kind === "number" ? numberInputProps(element) : {})}
               />
             </Field>
