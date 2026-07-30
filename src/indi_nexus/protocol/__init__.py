@@ -8,6 +8,7 @@ reflection and the ``int``-subclass enum machinery.
 """
 
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
+from indi_nexus.protocol.json import from_json, to_json
 from indi_nexus.protocol.models import (
     BLOB,
     BLOBVector,
@@ -66,4 +67,6 @@ __all__ = [
     "to_xml",
     "parse_indi",
     "XMLStreamParser",
+    "to_json",
+    "from_json",
 ]

@@ -31,9 +31,16 @@ INDI_VERSION = "1.7"
 
 
 class _Model(BaseModel):
-    """Shared config: ignore unknown wire attributes, allow enum values."""
+    """Shared config: ignore unknown wire attributes, base64 BLOB bytes in JSON."""
 
-    model_config = ConfigDict(extra="ignore", use_enum_values=False)
+    model_config = ConfigDict(
+        extra="ignore",
+        use_enum_values=False,
+        # BLOB payloads are binary; encode/decode them as base64 in JSON so the
+        # browser wire contract stays valid JSON (the XML codec base64s too).
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
 
 
 # --------------------------------------------------------------------------- #
