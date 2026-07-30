@@ -32,7 +32,13 @@ from indi_nexus.protocol import (
     parse_indi,
     to_xml,
 )
-from indi_nexus.protocol.xml import format_number, parse_number
+from indi_nexus.protocol.xml import (
+    _element_from_xml,
+    _element_xml,
+    format_number,
+    message_from_xml,
+    parse_number,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -52,6 +58,14 @@ def test_enum_tolerates_whitespace_from_wire():
     assert ISState("On\n") is ISState.ON
 
 
+def test_enum_rejects_unknown_tokens():
+    """A token that matches no member (even stripped) raises ValueError."""
+    with pytest.raises(ValueError):
+        IPState("Nope")
+    with pytest.raises(ValueError):
+        ISState(3)
+
+
 # --------------------------------------------------------------------------- #
 # Sexagesimal formatting / parsing                                            #
 # --------------------------------------------------------------------------- #
@@ -59,8 +73,11 @@ def test_enum_tolerates_whitespace_from_wire():
     "value,fmt,expected",
     [
         (10.5, "%5.3m", "10:30"),
+        (10.5, "%8.5m", " 10:30.0"),
         (10.5, "%8.6m", "10:30:00"),
         (-10.5, "%8.6m", "-10:30:00"),
+        (10.5, "%11.8m", " 10:30:00.0"),
+        (10.5, "%12.9m", " 10:30:00.00"),
         (12.582777778, "%9.6m", " 12:34:58"),  # width-9 field pads the degrees (libindi-faithful)
         (1.0, "%.2f", "1.00"),
     ],
@@ -68,6 +85,18 @@ def test_enum_tolerates_whitespace_from_wire():
 def test_format_number(value, fmt, expected):
     """Formatting matches the expected printf / sexagesimal output."""
     assert format_number(value, fmt) == expected
+
+
+def test_format_number_falls_back_to_repr_for_bad_formats():
+    """An unusable format string falls back to the value's repr."""
+    assert format_number(1.5, "%q") == "1.5"  # ValueError from printf
+    assert format_number(1.5, "no-placeholder") == "1.5"  # TypeError from printf
+
+
+def test_parse_number_empty_returns_zero():
+    """Empty or whitespace-only element text parses to 0.0."""
+    assert parse_number("") == 0.0
+    assert parse_number("   ") == 0.0
 
 
 @pytest.mark.parametrize(
@@ -195,6 +224,47 @@ def test_new_vector_from_client():
     assert back.vector["CCD_EXP"].value == 5.0
 
 
+def test_element_lookup_raises_keyerror_for_unknown_name():
+    """Vector element lookup names the missing element and property."""
+    vec = NumberVector(device="CCD", name="EXPOSURE", elements=[Number(name="secs", value=1.0)])
+    with pytest.raises(KeyError, match="CCD.EXPOSURE"):
+        vec.element("missing")
+
+
+def test_def_blob_vector_carries_element_metadata():
+    """A BLOB def serialises label/format on defBLOB nodes and round-trips."""
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", label="Image", format=".fits")],
+    )
+    xml = to_xml(DefVector(vector=vec)).decode()
+    assert "<defBLOB" in xml
+    assert 'label="Image"' in xml
+    assert 'format=".fits"' in xml
+    back = _reparse(DefVector(vector=vec))
+    assert isinstance(back.vector, BLOBVector)
+    assert back.vector["image"].format == ".fits"
+
+
+def test_serialising_unknown_element_type_raises():
+    """_element_xml rejects an object that is no known element model."""
+    with pytest.raises(TypeError):
+        _element_xml(object(), "def")
+
+
+def test_serialising_unknown_message_type_raises():
+    """to_xml rejects an object that is no known message model."""
+    with pytest.raises(TypeError):
+        to_xml(object())
+
+
+def test_parsing_unknown_element_kind_raises():
+    """_element_from_xml rejects an unknown element kind."""
+    with pytest.raises(ValueError):
+        _element_from_xml(etree.Element("oneThing"), "thing")
+
+
 def test_blob_base64_roundtrip():
     """BLOB binary payloads survive base64 encode/decode with their size."""
     payload = b"\x00\x01\x02FITSDATA\xff"
@@ -286,3 +356,26 @@ def test_stream_parser_is_valid_xml_output():
     )
     # to_xml must always produce well-formed, parseable XML
     etree.fromstring(to_xml(DefVector(vector=vec)))
+
+
+def test_invalid_timestamp_attribute_parses_as_none():
+    """A malformed timestamp attribute is dropped rather than failing parse."""
+    (back,) = parse_indi(
+        "<setNumberVector device='CCD' name='EXPOSURE' timestamp='not-a-date'>"
+        "<oneNumber name='secs'>1</oneNumber></setNumberVector>"
+    )
+    assert isinstance(back, SetVector)
+    assert back.vector.timestamp is None
+    assert back.vector["secs"].value == 1.0
+
+
+def test_comment_nodes_yield_no_message():
+    """message_from_xml returns None for comment/PI nodes."""
+    assert message_from_xml(etree.Comment("noise")) is None
+
+
+def test_unknown_top_level_tag_is_skipped():
+    """An unrecognised top-level element is skipped, later messages parse."""
+    out = parse_indi(b"<wibble attr='x'>text</wibble><getProperties version='1.7'/>")
+    assert len(out) == 1
+    assert isinstance(out[0], GetProperties)

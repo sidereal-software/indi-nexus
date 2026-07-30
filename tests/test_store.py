@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from indi_nexus.client.store import PropertyEvent, PropertyStore
 from indi_nexus.protocol import (
+    BLOB,
+    BLOBVector,
     DefVector,
     DelProperty,
     IPState,
@@ -62,6 +64,89 @@ def test_set_before_def_is_ignored():
     assert store.get("CCD", "EXPOSURE") is None
 
 
+def test_set_skips_elements_never_defined():
+    """A set naming an unknown element merges the known ones and skips it."""
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec(value=1.0)))
+    rogue = NumberVector(
+        device="CCD",
+        name="EXPOSURE",
+        elements=[Number(name="ghost", value=9.0), Number(name="secs", value=2.0)],
+    )
+    store.apply(SetVector(vector=rogue))
+
+    cached = store.get("CCD", "EXPOSURE")
+    assert cached is not None
+    assert cached.element("secs").value == 2.0
+    try:
+        cached.element("ghost")
+        raise AssertionError("unknown element must not be added by a set")
+    except KeyError:
+        pass
+
+
+def test_set_merges_blob_payload_onto_def():
+    """A BLOB set copies data, size, and format onto the cached definition."""
+    store = PropertyStore()
+    store.apply(
+        DefVector(
+            vector=BLOBVector(device="CCD", name="CCD1", elements=[BLOB(name="image")]),
+        )
+    )
+    payload = b"\x00FITS\xff"
+    update = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        state=IPState.OK,
+        elements=[BLOB(name="image", format=".fits", data=payload, size=len(payload))],
+    )
+    store.apply(SetVector(vector=update))
+
+    cached = store.get("CCD", "CCD1")
+    assert cached is not None
+    el = cached.element("image")
+    assert el.data == payload
+    assert el.size == len(payload)
+    assert el.format == ".fits"
+
+    # A later set without a format keeps the previously merged one.
+    store.apply(
+        SetVector(
+            vector=BLOBVector(
+                device="CCD",
+                name="CCD1",
+                elements=[BLOB(name="image", data=b"x", size=1)],
+            )
+        )
+    )
+    assert cached.element("image").format == ".fits"
+    assert cached.element("image").data == b"x"
+
+
+def test_set_carries_timeout_and_message():
+    """A set's timeout and message are copied onto the cached vector."""
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec()))
+    update = _numvec(value=3.0, state=IPState.BUSY)
+    update.timeout = 30.0
+    update.message = "exposing"
+    store.apply(SetVector(vector=update))
+
+    cached = store.get("CCD", "EXPOSURE")
+    assert cached is not None
+    assert cached.timeout == 30.0
+    assert cached.message == "exposing"
+
+
+def test_getitem_and_iteration_expose_devices():
+    """Indexing and iterating the store mirror the device mapping."""
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec()))
+
+    assert "EXPOSURE" in store["CCD"]
+    assert list(iter(store)) == ["CCD"]
+
+
 def test_del_removes_one_property():
     """Deleting a named property drops it (and the now-empty device)."""
     store = PropertyStore()
@@ -97,6 +182,14 @@ def test_del_unknown_returns_none():
     """Deleting something not cached returns None."""
     store = PropertyStore()
     assert store.apply(DelProperty(device="CCD", name="EXPOSURE")) is None
+
+
+def test_del_unknown_property_on_known_device_returns_none():
+    """Deleting a property the device never defined changes nothing."""
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec()))
+    assert store.apply(DelProperty(device="CCD", name="OTHER")) is None
+    assert store.get("CCD", "EXPOSURE") is not None
 
 
 def test_non_property_message_is_ignored():
