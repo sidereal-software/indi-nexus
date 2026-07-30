@@ -14,6 +14,7 @@ The class deliberately avoids pyINDI's libindi-C surface (``IUFind``,
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import inspect
 from collections.abc import Callable
@@ -74,6 +75,9 @@ class Device:
         self._new_handlers: dict[str, NewHandler] = dict(iter_new_handlers(self))
         self._emit: Emit | None = None
         self._setup_done = False
+        # Set once setup() has run; periodic (@every) jobs wait on it so they
+        # never touch a property before setup() defines it.
+        self._setup_complete = asyncio.Event()
 
     # -- identity ---------------------------------------------------------- #
     @property
@@ -465,6 +469,7 @@ class Device:
         if not self._setup_done:
             self._setup_done = True
             await self.setup()
+            self._setup_complete.set()
         else:
             for prop in self._properties.values():
                 self._send(DefVector(vector=prop.vector))

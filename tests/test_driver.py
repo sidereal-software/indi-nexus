@@ -131,6 +131,30 @@ class _Boom(Device):
         raise RuntimeError("boom")
 
 
+class _SetupPoller(Device):
+    """A device whose @every uses a property defined in setup() (ordering guard)."""
+
+    name = "SetupPoller"
+
+    def __init__(self, name: str | None = None) -> None:
+        """Initialise with a zeroed tick count and no stop callback."""
+        super().__init__(name)
+        self.ticks = 0
+        self.stop: Any = None
+
+    async def setup(self) -> None:
+        """Define the property the periodic job writes to."""
+        self.define_number("counters", [Number(name="v")])
+
+    @every(seconds=0.001, start_immediately=True)
+    async def animate(self) -> None:
+        """Write to the setup-defined property; would KeyError before setup."""
+        self.ticks += 1
+        self["counters"].set(v=self.ticks)
+        if self.ticks >= 3 and self.stop is not None:
+            self.stop()
+
+
 class _Handler(Device):
     """A device recording which writes reach its handler vs. the default."""
 
@@ -204,6 +228,7 @@ def test_periodic_task_emits_updates() -> None:
         harness = _Harness()
         dev = _Poller()
         dev.stop = harness.eof  # the 3rd tick ends the session
+        harness.feed("<getProperties/>")  # runs setup(), which releases @every jobs
         async with asyncio.timeout(5):
             await DriverRuntime(dev, harness.read, harness.write).serve()
 
@@ -222,6 +247,7 @@ def test_periodic_task_error_is_isolated() -> None:
         harness = _Harness()
         dev = _Boom()
         dev.stop = harness.eof
+        harness.feed("<getProperties/>")  # runs setup(), which releases @every jobs
         async with asyncio.timeout(5):
             # A raising tick must not propagate out of serve().
             await DriverRuntime(dev, harness.read, harness.write).serve()
@@ -229,6 +255,52 @@ def test_periodic_task_error_is_isolated() -> None:
         msgs = [m for m in harness.messages() if isinstance(m, Message)]
         assert msgs, "expected the failure to be surfaced as an INDI message"
         assert any("boom" in (m.message or "") for m in msgs)
+
+    asyncio.run(scenario())
+
+
+def test_periodic_task_waits_for_setup() -> None:
+    """An @every job that uses a setup-defined property does not run before setup.
+
+    Regression: without gating, ``animate`` fired after its interval before any
+    ``getProperties`` had triggered ``setup()``, so ``self["counters"]`` raised
+    ``KeyError: 'counters'`` (surfaced as an ERROR message).
+    """
+
+    async def scenario() -> None:
+        """Serve briefly with no getProperties, so setup() never runs."""
+        harness = _Harness()
+        dev = _SetupPoller()
+        # No getProperties is ever fed, so setup() must not run and the periodic
+        # job (start_immediately=True) must stay parked rather than KeyError.
+        serve = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.05)  # ample time for a 1ms interval to have fired
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        assert dev.ticks == 0  # the job waited for setup
+        assert not any(isinstance(m, Message) for m in harness.messages())
+
+    asyncio.run(scenario())
+
+
+def test_periodic_task_runs_after_setup() -> None:
+    """Once setup() runs, an @every job may use the properties it defined."""
+
+    async def scenario() -> None:
+        """Feed getProperties so setup() defines the property, then let it tick."""
+        harness = _Harness()
+        dev = _SetupPoller()
+        dev.stop = harness.eof
+        harness.feed("<getProperties/>")
+        async with asyncio.timeout(5):
+            await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert dev.ticks >= 3
+        sets = [m for m in harness.messages() if isinstance(m, SetVector)]
+        assert sets and sets[0].vector.name == "counters"
+        assert not any(isinstance(m, Message) for m in harness.messages())  # no errors
 
     asyncio.run(scenario())
 

@@ -113,7 +113,12 @@ class DriverRuntime:
             await self._write(to_xml(msg) + b"\n")
 
     async def _run_periodic(self, spec: PeriodicSpec, method: Callable[[], Any]) -> None:
-        """Run one ``@every`` job forever, one tick per interval."""
+        """Run one ``@every`` job forever, one tick per interval.
+
+        Waits for the device's ``setup()`` to complete first, so a tick never
+        runs against a property that has not been defined yet.
+        """
+        await self._device._setup_complete.wait()
         if spec.start_immediately:
             await self._tick(method)
         while True:
