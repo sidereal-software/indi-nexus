@@ -13,6 +13,9 @@ tests itself.
   goto/slew/sync interaction (`EQUATORIAL_EOD_COORD` + `ON_COORD_SET`),
   tracking modes with realistic sky drift when not tracking, slew rates,
   motion paddles, park, abort, and timed guide pulses.
+- **`ccd_device.py`** - libindi's CCD Simulator: exposures counting down to a
+  rendered 16-bit FITS star field (the `CCD1` BLOB), frame types, binning,
+  gain/offset, and a TEC cooler with realistic cooling and warm-up physics.
 - **`monitor_client.py`** - the reference client: subscribe to everything and
   print each event.
 - **`demo_bridge.py`** - the whole stack in one process: one or more drivers
@@ -23,7 +26,9 @@ Run any of them in the panel:
 ```bash
 python -m examples.demo_bridge \
     --device examples.telescope_device:TelescopeSimulator \
+    --device examples.ccd_device:CCDSimulator \
     --device examples.dome_device:DomeSimulator
 ```
 
-Or under a real hub: `indiserver ./examples/telescope_device.py ./examples/dome_device.py`.
+Or under a real hub:
+`indiserver ./examples/telescope_device.py ./examples/ccd_device.py ./examples/dome_device.py`.

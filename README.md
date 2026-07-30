@@ -69,6 +69,10 @@ Runnable references live in `examples/`:
   the standard goto/slew/sync interaction (`EQUATORIAL_EOD_COORD` + `ON_COORD_SET`),
   tracking modes with realistic sky drift, slew rates, motion paddles, park, abort, and
   timed guide pulses.
+- **`ccd_device.py`** - libindi's CCD Simulator ported to the INDINexus SDK: exposures
+  that count down and deliver a rendered 16-bit FITS star field as the `CCD1` BLOB,
+  frame types, binning, gain/offset, and a TEC cooler with realistic cooling and
+  warm-up physics.
 - **`monitor_client.py`** - the reference client: subscribe to everything and print each event.
 - **`demo_bridge.py`** - the whole stack in one process: one or more drivers wired straight
   into the web app through in-memory pipes (a miniature `indiserver`), no real `indiserver`
@@ -81,11 +85,12 @@ A driver runs in one of **three modes** - pick the command for what you want to 
 #    Repeat --device to put several devices in one panel:
 python -m examples.demo_bridge \
     --device examples.telescope_device:TelescopeSimulator \
+    --device examples.ccd_device:CCDSimulator \
     --device examples.dome_device:DomeSimulator
 # ...then open http://localhost:8000/  (Messages panel = the INDI log; /debug = raw frames)
 
 # 2. Under a real C indiserver (the production arrangement), serving TCP :7624:
-indiserver ./examples/telescope_device.py ./examples/dome_device.py
+indiserver ./examples/telescope_device.py ./examples/ccd_device.py ./examples/dome_device.py
 # ...then `indi-nexus serve` for the web panel, or `indi-nexus monitor` for a terminal feed.
 
 # 3. Bare stdio (what indiserver itself launches) - for humans, only useful to pipe XML at:

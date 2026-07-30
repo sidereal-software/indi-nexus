@@ -21,12 +21,14 @@ cd web && pnpm install && pnpm -r build && cd ..
 # 3. Run the demo bridge: the web app wired to live in-process drivers
 uv run python -m examples.demo_bridge \
     --device examples.telescope_device:TelescopeSimulator \
+    --device examples.ccd_device:CCDSimulator \
     --device examples.dome_device:DomeSimulator
 ```
 
-Open <http://localhost:8000/> - both simulators appear in the panel's sidebar.
-Connect one, slew it, park it, and watch the Messages log. The raw-frame
-debug inspector lives at <http://localhost:8000/debug>.
+Open <http://localhost:8000/> - all three simulators appear in the panel's
+sidebar. Connect one, slew the telescope, take an exposure, park the dome, and
+watch the Messages log. The raw-frame debug inspector lives at
+<http://localhost:8000/debug>.
 
 ## Your first driver, in one minute
 
