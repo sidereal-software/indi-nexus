@@ -76,7 +76,7 @@ def test_format_event_is_compact():
 
 
 def test_monitor_consumes_updates():
-    """monitor collects a bounded number of events from a live client."""
+    """The monitor helper collects a bounded number of events from a live client."""
 
     async def scenario() -> None:
         server = _Server()
@@ -381,11 +381,9 @@ def test_dome_rejects_commands_while_disconnected():
 
         assert dome["ABS_DOME_POSITION"].vector.state is IPState.IDLE
         assert dome["DOME_SHUTTER"]["SHUTTER_CLOSE"].value is ISState.ON  # unchanged
-        assert _has_message(captured, "Dome is not connected.")
-
-        for _ in range(3):  # the simulation is inert while disconnected
-            await dome.tick()
-        assert _az(dome) == 0.0
+        assert _has_message(captured, "Dome Simulator is not connected.")
+        # (While served, @every(when_connected=True) also pauses the tick; that
+        # runtime gating is covered in tests/test_driver.py.)
 
     asyncio.run(scenario())
 
@@ -397,14 +395,14 @@ def test_dome_connect_enables_commands_and_disconnect_halts_motion():
         dome, captured = await _dome(connect=False)
         await dome._dispatch_new(_dome_switch("CONNECTION", "CONNECT"))
         assert dome["CONNECTION"]["CONNECT"].value is ISState.ON
-        assert _has_message(captured, "Dome connected.")
+        assert _has_message(captured, "Dome Simulator is connected.")
 
         await dome._dispatch_new(_dome_number("ABS_DOME_POSITION", "DOME_ABSOLUTE_POSITION", 90))
         await dome.tick()
         assert _az(dome) == 5.0
 
         await dome._dispatch_new(_dome_switch("CONNECTION", "DISCONNECT"))
-        assert _has_message(captured, "Dome disconnected.")
+        assert _has_message(captured, "Dome Simulator is disconnected.")
         assert dome["ABS_DOME_POSITION"].vector.state is IPState.IDLE  # nothing left Busy
         frozen = _az(dome)
         await dome.tick()
@@ -632,11 +630,10 @@ def test_scope_rejects_commands_while_disconnected():
     async def scenario() -> None:
         scope, captured = await _scope(connect=False)
         await scope._dispatch_new(_scope_numbers("EQUATORIAL_EOD_COORD", RA=3, DEC=3))
-        assert _has_message(captured, "Telescope is not connected.")
-        assert _radec(scope) == (0.0, 90.0)
-        for _ in range(2):
-            await scope.tick()
-        assert _radec(scope) == (0.0, 90.0)  # simulation inert while disconnected
+        assert _has_message(captured, "Telescope Simulator is not connected.")
+        assert _radec(scope) == (0.0, 90.0)  # the refused goto moved nothing
+        # (While served, @every(when_connected=True) pauses the tick; that
+        # runtime gating is covered in tests/test_driver.py.)
 
     asyncio.run(scenario())
 

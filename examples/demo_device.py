@@ -97,11 +97,10 @@ class Demo(Device):
 
         A OneOfMany write names the newly selected member - typically *only* that
         member (`{"on": On}` or `{"off": On}`), though a client may also send the
-        full pair - so the intent is "which element is On in the request", never
-        an assumption that a particular element is present.
+        full pair - so ``selected()`` asks "which element is On in the request",
+        never assuming a particular element is present.
         """
-        selected = next((el.name for el in vector.elements if el.value is ISState.ON), None)
-        turned_on = selected == "on"
+        turned_on = vector.selected() == "on"
         # OneOfMany: setting one member On clears its sibling.
         self["power"].set(**{"on" if turned_on else "off": ISState.ON}, state=IPState.OK)
         if not turned_on:

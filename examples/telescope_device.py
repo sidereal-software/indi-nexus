@@ -59,42 +59,6 @@ TRACK_RATES = {
 SIDEREAL_ARCSEC = TRACK_RATES["TRACK_SIDEREAL"]
 
 
-def _value(vector: NumberVector, name: str, default: float) -> float:
-    """Return the requested value for element ``name``, or ``default``.
-
-    Parameters
-    ----------
-    vector : NumberVector
-        The client's write, which may name only some elements.
-    name : str
-        The element to look for.
-    default : float
-        Returned when the write does not include the element.
-
-    Returns
-    -------
-    value : float
-        The requested or fallback value.
-    """
-    return next((el.value for el in vector.elements if el.name == name), default)
-
-
-def _selected(vector: SwitchVector) -> str | None:
-    """Return the name of the element a client turned On, or `None`.
-
-    Parameters
-    ----------
-    vector : SwitchVector
-        The client's requested switch vector (it may name only one element).
-
-    Returns
-    -------
-    name : str or None
-        The first element whose requested value is On.
-    """
-    return next((el.name for el in vector.elements if el.value is ISState.ON), None)
-
-
 class TelescopeSimulator(Device):
     """A simulated GEM-style mount: goto/sync, track, move, guide, park."""
 
@@ -113,16 +77,7 @@ class TelescopeSimulator(Device):
 
     async def setup(self) -> None:
         """Define the standard INDI telescope properties and announce readiness."""
-        self.define_switch(
-            "CONNECTION",
-            [
-                Switch(name="CONNECT", label="Connect", value=ISState.OFF),
-                Switch(name="DISCONNECT", label="Disconnect", value=ISState.ON),
-            ],
-            rule=ISRule.ONE_OF_MANY,
-            label="Connection",
-            group="Main Control",
-        )
+        self.define_connection()
         self.define_number(
             "EQUATORIAL_EOD_COORD",
             [
@@ -269,18 +224,15 @@ class TelescopeSimulator(Device):
         )
         self.message("Telescope simulator ready.")
 
-    # -- connection -------------------------------------------------------- #
-    @property
-    def _connected(self) -> bool:
-        """Whether the (simulated) mount link is up."""
-        return self["CONNECTION"]["CONNECT"].value is ISState.ON
+    async def on_disconnect(self) -> None:
+        """Halt all motion so nothing is left Busy behind a dead link.
 
-    def _require_connected(self) -> bool:
-        """Return whether commands may run, logging the standard error if not."""
-        if self._connected:
-            return True
-        self.log_error("Telescope is not connected.")
-        return False
+        A real driver would close its serial/network connection here.
+        """
+        self._target = None
+        self._parking = False
+        self._ns_rate = self._we_rate = 0.0
+        self["EQUATORIAL_EOD_COORD"].set(state=IPState.IDLE)
 
     @property
     def _parked(self) -> bool:
@@ -299,27 +251,10 @@ class TelescopeSimulator(Device):
         """Whether sidereal-style tracking is currently on."""
         return self["TELESCOPE_TRACK_STATE"]["TRACK_ON"].value is ISState.ON
 
-    @on_new("CONNECTION")
-    async def _connection(self, vector: SwitchVector) -> None:
-        """Open or close the (simulated) mount link."""
-        connect = _selected(vector) == "CONNECT"
-        self["CONNECTION"].set(
-            **{"CONNECT" if connect else "DISCONNECT": ISState.ON}, state=IPState.OK
-        )
-        if not connect:
-            # Halt all motion so nothing is left Busy behind a dead link.
-            self._target = None
-            self._parking = False
-            self._ns_rate = self._we_rate = 0.0
-            self["EQUATORIAL_EOD_COORD"].set(state=IPState.IDLE)
-        self.message(f"Telescope simulator is {'online' if connect else 'offline'}.")
-
     # -- simulation -------------------------------------------------------- #
-    @every(seconds=1)
+    @every(seconds=1, when_connected=True)
     async def tick(self) -> None:
-        """Advance the mount simulation by one second."""
-        if not self._connected:
-            return
+        """Advance the mount simulation by one second (paused while offline)."""
         if self._target is not None:
             self._tick_slew()
             return
@@ -329,12 +264,9 @@ class TelescopeSimulator(Device):
             self._publish(IPState.IDLE if not self._tracking else IPState.OK)
 
     def _slew_speed(self) -> float:
-        """The selected slew rate in degrees/second."""
+        """Return the selected slew rate in degrees/second."""
         rate = self["TELESCOPE_SLEW_RATE"]
-        selected = next(
-            (el.name for el in rate.vector.elements if el.value is ISState.ON), "SLEW_MAX"
-        )
-        return SLEW_RATES[selected]
+        return SLEW_RATES[rate.vector.selected() or "SLEW_MAX"]
 
     def _tick_slew(self) -> None:
         """Step both axes toward the slew target, finishing when both arrive."""
@@ -393,12 +325,8 @@ class TelescopeSimulator(Device):
         if self._parked:
             return False
         if self._tracking:
-            mode = self["TELESCOPE_TRACK_MODE"]
-            selected = next(
-                (el.name for el in mode.vector.elements if el.value is ISState.ON),
-                "TRACK_SIDEREAL",
-            )
-            arcsec = SIDEREAL_ARCSEC - TRACK_RATES[selected]
+            mode = self["TELESCOPE_TRACK_MODE"].vector.selected() or "TRACK_SIDEREAL"
+            arcsec = SIDEREAL_ARCSEC - TRACK_RATES[mode]
         else:
             arcsec = SIDEREAL_ARCSEC
         if arcsec == 0.0:
@@ -436,14 +364,11 @@ class TelescopeSimulator(Device):
     @on_new("EQUATORIAL_EOD_COORD")
     async def _coords(self, vector: NumberVector) -> None:
         """Goto, slew, or sync to the requested coordinates per ON_COORD_SET."""
-        if not self._require_connected() or not self._require_unparked():
+        if not self.require_connected() or not self._require_unparked():
             return
-        ra = _value(vector, "RA", self._ra) % 24.0
-        dec = min(90.0, max(-90.0, _value(vector, "DEC", self._dec)))
-        action = next(
-            (el.name for el in self["ON_COORD_SET"].vector.elements if el.value is ISState.ON),
-            "TRACK",
-        )
+        ra = vector.get("RA", self._ra) % 24.0
+        dec = min(90.0, max(-90.0, vector.get("DEC", self._dec)))
+        action = self["ON_COORD_SET"].vector.selected() or "TRACK"
         if action == "SYNC":
             self._ra, self._dec = ra, dec
             self._target = None
@@ -456,45 +381,45 @@ class TelescopeSimulator(Device):
     @on_new("ON_COORD_SET")
     async def _on_coord_set(self, vector: SwitchVector) -> None:
         """Select what a coordinate write does (track, slew only, or sync)."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
-        selected = _selected(vector)
+        selected = vector.selected()
         if selected is not None:
             self["ON_COORD_SET"].set(**{selected: ISState.ON}, state=IPState.OK)
 
     @on_new("TELESCOPE_TRACK_STATE")
     async def _track_state(self, vector: SwitchVector) -> None:
         """Turn tracking on or off."""
-        if not self._require_connected() or not self._require_unparked():
+        if not self.require_connected() or not self._require_unparked():
             return
-        on = _selected(vector) == "TRACK_ON"
+        on = vector.selected() == "TRACK_ON"
         self._set_tracking(on)
         self.message(f"Tracking {'enabled' if on else 'disabled'}.")
 
     @on_new("TELESCOPE_TRACK_MODE")
     async def _track_mode(self, vector: SwitchVector) -> None:
         """Select the tracking rate (sidereal, solar, or lunar)."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
-        selected = _selected(vector)
+        selected = vector.selected()
         if selected in TRACK_RATES:
             self["TELESCOPE_TRACK_MODE"].set(**{selected: ISState.ON}, state=IPState.OK)
 
     @on_new("TELESCOPE_SLEW_RATE")
     async def _slew_rate(self, vector: SwitchVector) -> None:
         """Select the slew/paddle speed."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
-        selected = _selected(vector)
+        selected = vector.selected()
         if selected in SLEW_RATES:
             self["TELESCOPE_SLEW_RATE"].set(**{selected: ISState.ON}, state=IPState.OK)
 
     @on_new("TELESCOPE_MOTION_NS")
     async def _motion_ns(self, vector: SwitchVector) -> None:
         """Start or stop the manual North/South paddle."""
-        if not self._require_connected() or not self._require_unparked():
+        if not self.require_connected() or not self._require_unparked():
             return
-        selected = _selected(vector)
+        selected = vector.selected()
         speed = self._slew_speed()
         self._ns_rate = (
             0.0 if selected is None else (speed if selected == "MOTION_NORTH" else -speed)
@@ -508,9 +433,9 @@ class TelescopeSimulator(Device):
     @on_new("TELESCOPE_MOTION_WE")
     async def _motion_we(self, vector: SwitchVector) -> None:
         """Start or stop the manual West/East paddle."""
-        if not self._require_connected() or not self._require_unparked():
+        if not self.require_connected() or not self._require_unparked():
             return
-        selected = _selected(vector)
+        selected = vector.selected()
         speed = self._slew_speed()
         self._we_rate = (
             0.0 if selected is None else (speed if selected == "MOTION_WEST" else -speed)
@@ -524,9 +449,9 @@ class TelescopeSimulator(Device):
     @on_new("TELESCOPE_PARK")
     async def _park(self, vector: SwitchVector) -> None:
         """Park (slew to the pole, stop tracking) or unpark."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
-        if _selected(vector) == "PARK":
+        if vector.selected() == "PARK":
             if self._parked:
                 self.message("Telescope already parked.")
                 return
@@ -544,7 +469,7 @@ class TelescopeSimulator(Device):
     @on_new("TELESCOPE_ABORT_MOTION")
     async def _abort(self, vector: SwitchVector) -> None:
         """Stop any slew and manual motion; tracking state is left as is."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
         self._target = None
         self._parking = False
@@ -562,7 +487,7 @@ class TelescopeSimulator(Device):
     @on_new("GUIDE_RATE")
     async def _guide_rate(self, vector: NumberVector) -> None:
         """Accept new guide rates, clamped to [0, 1] of sidereal."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
         rate = self["GUIDE_RATE"]
         updates = {
@@ -592,33 +517,33 @@ class TelescopeSimulator(Device):
     @on_new("TELESCOPE_TIMED_GUIDE_NS")
     async def _guide_ns(self, vector: NumberVector) -> None:
         """Apply a timed North/South guide pulse (completes immediately)."""
-        if not self._require_connected() or not self._require_unparked():
+        if not self.require_connected() or not self._require_unparked():
             return
         rate = self["GUIDE_RATE"]["GUIDE_RATE_NS"].value
-        ms = _value(vector, "TIMED_GUIDE_N", 0.0) - _value(vector, "TIMED_GUIDE_S", 0.0)
+        ms = vector.get("TIMED_GUIDE_N", 0.0) - vector.get("TIMED_GUIDE_S", 0.0)
         self._guide_pulse("dec", rate * SIDEREAL_ARCSEC * ms / 1000.0)
         self["TELESCOPE_TIMED_GUIDE_NS"].set(TIMED_GUIDE_N=0, TIMED_GUIDE_S=0, state=IPState.OK)
 
     @on_new("TELESCOPE_TIMED_GUIDE_WE")
     async def _guide_we(self, vector: NumberVector) -> None:
         """Apply a timed West/East guide pulse (completes immediately)."""
-        if not self._require_connected() or not self._require_unparked():
+        if not self.require_connected() or not self._require_unparked():
             return
         rate = self["GUIDE_RATE"]["GUIDE_RATE_WE"].value
-        ms = _value(vector, "TIMED_GUIDE_W", 0.0) - _value(vector, "TIMED_GUIDE_E", 0.0)
+        ms = vector.get("TIMED_GUIDE_W", 0.0) - vector.get("TIMED_GUIDE_E", 0.0)
         self._guide_pulse("ra", rate * SIDEREAL_ARCSEC * ms / 1000.0)
         self["TELESCOPE_TIMED_GUIDE_WE"].set(TIMED_GUIDE_W=0, TIMED_GUIDE_E=0, state=IPState.OK)
 
     @on_new("GEOGRAPHIC_COORD")
     async def _location(self, vector: NumberVector) -> None:
         """Store the observing site."""
-        if not self._require_connected():
+        if not self.require_connected():
             return
         site = self["GEOGRAPHIC_COORD"]
         site.set(
-            LAT=min(90.0, max(-90.0, _value(vector, "LAT", site["LAT"].value))),
-            LONG=_value(vector, "LONG", site["LONG"].value) % 360.0,
-            ELEV=_value(vector, "ELEV", site["ELEV"].value),
+            LAT=min(90.0, max(-90.0, vector.get("LAT", site["LAT"].value))),
+            LONG=vector.get("LONG", site["LONG"].value) % 360.0,
+            ELEV=vector.get("ELEV", site["ELEV"].value),
             state=IPState.OK,
         )
         self.message("Site location updated.")
