@@ -33,12 +33,15 @@ class PeriodicSpec:
         Seconds between runs.
     start_immediately : bool
         Whether to run once at startup before the first interval elapses.
+    when_connected : bool
+        Whether ticks are skipped while the device is not connected.
     name : str or None
         Optional label for the job (currently informational).
     """
 
     interval: float
     start_immediately: bool = False
+    when_connected: bool = False
     name: str | None = None
 
 
@@ -48,6 +51,7 @@ def every(
     minutes: float = 0.0,
     hours: float = 0.0,
     start_immediately: bool = False,
+    when_connected: bool = False,
     name: str | None = None,
 ) -> Callable[[F], F]:
     """Tag a device method to run on a fixed interval.
@@ -69,6 +73,9 @@ def every(
     start_immediately : bool, optional
         If `True`, run once right away and then every interval thereafter;
         otherwise the first run is one interval in.
+    when_connected : bool, optional
+        If `True`, ticks are skipped while ``device.connected`` is false - the
+        usual behavior for polling jobs that talk to real hardware.
     name : str, optional
         Optional label for the job.
 
@@ -94,7 +101,12 @@ def every(
     if interval <= 0.0:
         raise ValueError("every(...) requires a positive interval")
 
-    spec = PeriodicSpec(interval=interval, start_immediately=start_immediately, name=name)
+    spec = PeriodicSpec(
+        interval=interval,
+        start_immediately=start_immediately,
+        when_connected=when_connected,
+        name=name,
+    )
 
     def decorator(func: F) -> F:
         """Tag ``func`` with the schedule and return it unchanged."""

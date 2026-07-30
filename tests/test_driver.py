@@ -682,3 +682,159 @@ def test_device_run_serves_over_real_stdio(monkeypatch) -> None:
     defs = [m for m in parse_indi(out.getvalue()) if isinstance(m, DefVector)]
     assert {d.vector.name for d in defs} == {"num", "sw"}
     assert all(d.vector.device == "StdioDev" for d in defs)
+
+
+class _Linked(Device):
+    """A device using the built-in CONNECTION lifecycle."""
+
+    name = "Linked"
+
+    def __init__(self, name: str | None = None) -> None:
+        """Track hook invocations."""
+        super().__init__(name)
+        self.opened = 0
+        self.closed = 0
+
+    async def setup(self) -> None:
+        """Define the standard connection switch."""
+        self.define_connection()
+
+    async def on_connect(self) -> None:
+        """Record the link opening."""
+        self.opened += 1
+
+    async def on_disconnect(self) -> None:
+        """Record the link closing."""
+        self.closed += 1
+
+
+def _connection_write(device: str, element: str) -> str:
+    """Build the XML for a client CONNECTION switch write."""
+    return (
+        f"<newSwitchVector device='{device}' name='CONNECTION'>"
+        f"<oneSwitch name='{element}'>On</oneSwitch></newSwitchVector>"
+    )
+
+
+def test_define_connection_provides_the_standard_lifecycle() -> None:
+    """The built-in CONNECTION handler flips the switch and runs the hooks."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Linked()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.feed(_connection_write("Linked", "CONNECT"))
+        harness.feed(_connection_write("Linked", "DISCONNECT"))
+        harness.eof()
+        await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert dev.opened == 1
+        assert dev.closed == 1
+        assert dev["CONNECTION"].vector.get("DISCONNECT") is ISState.ON
+        messages = [str(m.message) for m in harness.messages() if isinstance(m, Message)]
+        assert any("Linked is connected." in m for m in messages)
+        assert any("Linked is disconnected." in m for m in messages)
+
+    asyncio.run(scenario())
+
+
+def test_connected_property_and_require_connected() -> None:
+    """The connected property follows the switch; no CONNECTION means always up."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Linked()
+        dev._bind(captured.append)
+        await dev.setup()
+        assert dev.connected is False
+        assert dev.require_connected() is False  # logs the standard error
+        assert any(
+            isinstance(m, Message) and "Linked is not connected." in str(m.message)
+            for m in captured
+        )
+
+        await dev._dispatch_new(
+            SwitchVector(
+                device="Linked",
+                name="CONNECTION",
+                elements=[Switch(name="CONNECT", value=ISState.ON)],
+            )
+        )
+        assert dev.connected is True
+        assert dev.require_connected() is True
+
+        plain = _Simple()
+        assert plain.connected is True  # no CONNECTION property: always up
+
+    asyncio.run(scenario())
+
+
+def test_subclass_connection_handler_shadows_the_builtin() -> None:
+    """A driver's own @on_new("CONNECTION") replaces the built-in handler."""
+
+    class _Custom(_Linked):
+        """A device overriding the connection handling entirely."""
+
+        name = "Custom"
+
+        @on_new("CONNECTION")
+        async def _my_connection(self, vector: SwitchVector) -> None:
+            """Record the write without flipping anything."""
+            self.opened += 10
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Custom()
+        dev._bind(captured.append)
+        await dev.setup()
+        await dev._dispatch_new(
+            SwitchVector(
+                device="Custom",
+                name="CONNECTION",
+                elements=[Switch(name="CONNECT", value=ISState.ON)],
+            )
+        )
+        assert dev.opened == 10  # the custom handler ran
+        assert dev.connected is False  # ...and the built-in flip did not
+
+    asyncio.run(scenario())
+
+
+def test_when_connected_jobs_pause_while_disconnected() -> None:
+    """@every(when_connected=True) ticks only while the device is connected."""
+
+    class _Poller(_Linked):
+        """A device whose poll job requires the link to be up."""
+
+        name = "Poller"
+
+        def __init__(self, name: str | None = None) -> None:
+            """Track poll ticks."""
+            super().__init__(name)
+            self.ticks = 0
+
+        @every(seconds=0.01, when_connected=True)
+        async def poll(self) -> None:
+            """Count one gated tick."""
+            self.ticks += 1
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Poller()
+        harness.feed("<getProperties version='1.7'/>")
+        task = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.05)
+        assert dev.ticks == 0  # disconnected: the job is paused
+
+        harness.feed(_connection_write("Poller", "CONNECT"))
+        await asyncio.sleep(0.05)
+        assert dev.ticks >= 1  # connected: the job runs
+
+        harness.eof()
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(scenario())

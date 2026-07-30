@@ -19,7 +19,7 @@ import datetime as dt
 import inspect
 from collections.abc import Callable
 
-from indi_nexus.driver.dispatch import iter_new_handlers
+from indi_nexus.driver.dispatch import iter_new_handlers, on_new
 from indi_nexus.driver.property import BoundProperty
 from indi_nexus.protocol import (
     BLOB,
@@ -30,6 +30,7 @@ from indi_nexus.protocol import (
     IPerm,
     IPState,
     ISRule,
+    ISState,
     Light,
     LightVector,
     Message,
@@ -73,7 +74,12 @@ class Device:
         """
         self._device = name or type(self).name or type(self).__name__
         self._properties: dict[str, BoundProperty] = {}
-        self._new_handlers: dict[str, NewHandler] = dict(iter_new_handlers(self))
+        # iter_new_handlers walks the MRO subclass-first, so keep the *first*
+        # handler per property name: a subclass @on_new shadows any base-class
+        # handler for the same property (e.g. the built-in CONNECTION one).
+        self._new_handlers: dict[str, NewHandler] = {}
+        for prop_name, method in iter_new_handlers(self):
+            self._new_handlers.setdefault(prop_name, method)
         self._emit: Emit | None = None
         self._setup_done = False
         # Set once setup() has run; periodic (@every) jobs wait on it so they
@@ -108,6 +114,112 @@ class Device:
         vector : Vector
             The parsed vector the client asked to change.
         """
+
+    async def on_connect(self) -> None:
+        """Open the device's link. Called when a client turns CONNECT on.
+
+        Override to open your serial/network connection and define any
+        properties that only exist while connected. The base implementation
+        does nothing. Only used with :meth:`define_connection`.
+        """
+
+    async def on_disconnect(self) -> None:
+        """Close the device's link. Called when a client turns DISCONNECT on.
+
+        Override to halt motion and close your serial/network connection. The
+        base implementation does nothing. Only used with
+        :meth:`define_connection`.
+        """
+
+    # -- connection --------------------------------------------------------- #
+    def define_connection(
+        self, *, label: str = "Connection", group: str = "Main Control"
+    ) -> BoundProperty:
+        """Define the standard INDI ``CONNECTION`` switch (initially off).
+
+        Call this first in :meth:`setup` and the device gains the standard
+        connect/disconnect lifecycle for free: the built-in handler flips the
+        switch, calls :meth:`on_connect`/:meth:`on_disconnect`, and announces
+        the transition; :attr:`connected` and :meth:`require_connected` read
+        the state, and ``@every(..., when_connected=True)`` jobs pause while
+        disconnected. (libindi's ``INDI::DefaultDevice`` provides the same
+        property implicitly; here it is one explicit line.)
+
+        Parameters
+        ----------
+        label : str, optional
+            The property label shown by clients.
+        group : str, optional
+            The property group (tab) shown by clients.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle for the CONNECTION property.
+        """
+        return self.define_switch(
+            "CONNECTION",
+            [
+                Switch(name="CONNECT", label="Connect", value=ISState.OFF),
+                Switch(name="DISCONNECT", label="Disconnect", value=ISState.ON),
+            ],
+            rule=ISRule.ONE_OF_MANY,
+            label=label,
+            group=group,
+        )
+
+    @property
+    def connected(self) -> bool:
+        """Whether the device link is up.
+
+        `True` when the ``CONNECTION`` switch is on - or always, for a device
+        that has no ``CONNECTION`` property (no connection semantics).
+        """
+        prop = self._properties.get("CONNECTION")
+        if prop is None:
+            return True
+        return prop.vector.get("CONNECT") is ISState.ON
+
+    def require_connected(self) -> bool:
+        """Return whether commands may run, logging the standard error if not.
+
+        The one-line guard for ``@on_new`` handlers::
+
+            if not self.require_connected():
+                return
+
+        Returns
+        -------
+        allowed : bool
+            `True` when connected (or connection-less); otherwise `False`
+            after sending the standard "not connected" error message.
+        """
+        if self.connected:
+            return True
+        self.log_error(f"{self._device} is not connected.")
+        return False
+
+    @on_new("CONNECTION")
+    async def _on_connection_write(self, vector: SwitchVector) -> None:
+        """Apply a client's connect/disconnect request (built-in handler).
+
+        Flips the switch, runs the :meth:`on_connect`/:meth:`on_disconnect`
+        hook, and announces the transition. A subclass ``@on_new("CONNECTION")``
+        handler shadows this entirely; a device without a ``CONNECTION``
+        property falls through to :meth:`on_new_default`.
+        """
+        if "CONNECTION" not in self:
+            await self.on_new_default(vector)
+            return
+        connect = vector.selected() == "CONNECT"
+        prop = self._properties["CONNECTION"]
+        if connect:
+            prop.set(CONNECT=ISState.ON, state=IPState.OK)
+            await self.on_connect()
+        else:
+            prop.set(DISCONNECT=ISState.ON, state=IPState.OK)
+            await self.on_disconnect()
+        self.message(f"{self._device} is {'connected' if connect else 'disconnected'}.")
 
     # -- property definition ---------------------------------------------- #
     def define(self, vector: Vector) -> BoundProperty:

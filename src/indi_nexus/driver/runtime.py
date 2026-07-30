@@ -126,13 +126,17 @@ class DriverRuntime:
         """Run one ``@every`` job forever, one tick per interval.
 
         Waits for the device's ``setup()`` to complete first, so a tick never
-        runs against a property that has not been defined yet.
+        runs against a property that has not been defined yet. Jobs declared
+        with ``when_connected=True`` skip ticks while the device is not
+        connected.
         """
         await self._device._setup_complete.wait()
-        if spec.start_immediately:
+        if spec.start_immediately and (not spec.when_connected or self._device.connected):
             await self._tick(method)
         while True:
             await asyncio.sleep(spec.interval)
+            if spec.when_connected and not self._device.connected:
+                continue
             await self._tick(method)
 
     async def _tick(self, method: Callable[[], Any]) -> None:
