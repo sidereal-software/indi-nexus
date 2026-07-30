@@ -73,17 +73,21 @@ function ThemeToggle() {
   );
 }
 
-/** The left sidebar: brand, connection state, device list, settings. */
+/** The left sidebar: brand, connection state, device list, messages toggle, settings. */
 function DeviceSidebar({
   devices,
   active,
   onSelect,
+  messagesOpen,
+  onToggleMessages,
   debug,
   onDebugChange,
 }: {
   devices: readonly string[];
   active: string | null;
   onSelect: (device: string) => void;
+  messagesOpen: boolean;
+  onToggleMessages: () => void;
   debug: boolean;
   onDebugChange: (on: boolean) => void;
 }) {
@@ -119,6 +123,23 @@ function DeviceSidebar({
                   </SidebarMenuItem>
                 ))
               )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={messagesOpen}
+                  aria-pressed={messagesOpen}
+                  onClick={onToggleMessages}
+                  tooltip="Messages"
+                >
+                  <MessageSquareText />
+                  <span>Messages</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -194,6 +215,8 @@ function AppShell() {
         devices={devices}
         active={active}
         onSelect={setSelected}
+        messagesOpen={messagesOpen}
+        onToggleMessages={toggleMessages}
         debug={debug}
         onDebugChange={setDebugPersisted}
       />
@@ -202,17 +225,6 @@ function AppShell() {
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
           <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
-          <div className="ml-auto">
-            <Button
-              variant={messagesOpen ? "secondary" : "outline"}
-              size="sm"
-              aria-pressed={messagesOpen}
-              onClick={toggleMessages}
-            >
-              <MessageSquareText data-icon="inline-start" />
-              Messages
-            </Button>
-          </div>
         </header>
         <div className="flex min-h-0 flex-1">
           <main className="min-w-0 flex-1 overflow-auto p-4">

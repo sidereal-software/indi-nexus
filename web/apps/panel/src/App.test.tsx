@@ -115,7 +115,7 @@ describe("messages panel", () => {
     expect(screen.getByText("[INFO] Dome parked.")).toBeInTheDocument();
   });
 
-  it("collapses and reopens from the header toggle, remembering the choice", () => {
+  it("collapses and reopens from the sidebar toggle, remembering the choice", () => {
     renderApp();
     const toggle = screen.getByRole("button", { name: /Messages/ });
     expect(toggle).toHaveAttribute("aria-pressed", "true");
