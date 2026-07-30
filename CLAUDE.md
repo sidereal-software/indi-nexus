@@ -142,13 +142,17 @@ animation, and an `@on_new` handler).
   Follow these rules exactly - they are the ones most easily gotten wrong:
   - **Every parameter goes on its own entry. Never combine names** on one line
     (`label, group : ...` is wrong - write a separate entry for each).
-  - Each entry is ``name : `type` `` where the type is in **backticks** (so Sphinx links it),
-    then the description indented on the following line(s). Append `, optional` after the
-    type for any parameter that has a default, e.g. ``timeout : `float`, optional``.
+  - Each entry is `name : type` with the type as **plain text, NOT in backticks**
+    (`name : str`, not ``name : `str` ``). Use short type names (`IPState`, not
+    `~indi_nexus.protocol.IPState`), `list of X` for lists, and `X or None` for unions.
+    Then the description is indented on the following line(s). Append `, optional` after
+    the type for any parameter that has a default, e.g. `timeout : float, optional`.
   - Types appear in docstrings **even though the signature is also annotated** - the
     signature is the checker's truth, the docstring type is what renders in the API docs.
-  - `Returns` / `Yields` entries use the same ``name : `type` `` form. `Raises` lists the
+  - `Returns` / `Yields` entries use the same `name : type` form. `Raises` lists the
     exception type then an indented description. Do **not** document `self`.
+  - Inline references inside description prose may use backticks (e.g. `` `True` ``,
+    `` `None` ``); the no-backticks rule is only about the `name : type` type field.
   - Use the imperative mood in the one-line summary ("Return ...", "Send ...").
 - Inline comments explain only what the code and docstring can't - the local "why" behind a
   non-obvious line. Don't restate what the signature or docstring already says.
