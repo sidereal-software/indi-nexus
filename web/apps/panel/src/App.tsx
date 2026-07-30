@@ -73,21 +73,17 @@ function ThemeToggle() {
   );
 }
 
-/** The left sidebar: brand, connection state, device list, messages toggle, settings. */
+/** The left sidebar: brand, connection state, device list, settings. */
 function DeviceSidebar({
   devices,
   active,
   onSelect,
-  messagesOpen,
-  onToggleMessages,
   debug,
   onDebugChange,
 }: {
   devices: readonly string[];
   active: string | null;
   onSelect: (device: string) => void;
-  messagesOpen: boolean;
-  onToggleMessages: () => void;
   debug: boolean;
   onDebugChange: (on: boolean) => void;
 }) {
@@ -123,23 +119,6 @@ function DeviceSidebar({
                   </SidebarMenuItem>
                 ))
               )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={messagesOpen}
-                  aria-pressed={messagesOpen}
-                  onClick={onToggleMessages}
-                  tooltip="Messages"
-                >
-                  <MessageSquareText />
-                  <span>Messages</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -225,8 +204,6 @@ function AppShell() {
         devices={devices}
         active={active}
         onSelect={setSelected}
-        messagesOpen={messagesOpen}
-        onToggleMessages={toggleMessages}
         debug={debug}
         onDebugChange={setDebugPersisted}
       />
@@ -235,6 +212,16 @@ function AppShell() {
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
           <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-auto size-7"
+            aria-label="Toggle messages"
+            aria-pressed={messagesOpen}
+            onClick={toggleMessages}
+          >
+            <MessageSquareText />
+          </Button>
         </header>
         <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
           {active ? (
