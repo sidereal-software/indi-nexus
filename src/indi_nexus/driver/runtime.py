@@ -45,11 +45,11 @@ class DriverRuntime:
 
     Parameters
     ----------
-    device:
+    device : `~indi_nexus.driver.Device`
         The device to serve.
-    read:
+    read : `~collections.abc.Callable`
         Awaitable returning the next chunk of inbound bytes, or ``b""`` at EOF.
-    write:
+    write : `~collections.abc.Callable`
         Awaitable that writes one serialised message to the transport.
     """
 
@@ -138,7 +138,18 @@ class DriverRuntime:
 
 
 def task_name(method: Callable[..., Any]) -> str:
-    """Return a readable name for a scheduled ``method`` for log messages."""
+    """Return a readable name for a scheduled method, for log messages.
+
+    Parameters
+    ----------
+    method : `~collections.abc.Callable`
+        The scheduled method.
+
+    Returns
+    -------
+    name : `str`
+        The method's ``__name__`` if present, else its `repr`.
+    """
     return getattr(method, "__name__", repr(method))
 
 
@@ -179,7 +190,7 @@ def run(device: Device) -> None:
 
     Parameters
     ----------
-    device:
+    device : `~indi_nexus.driver.Device`
         The device to run as an ``indiserver`` stdio child.
     """
     asyncio.run(serve_stdio(device))

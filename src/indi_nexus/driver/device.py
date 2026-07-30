@@ -52,7 +52,7 @@ class Device:
 
     Attributes
     ----------
-    name:
+    name : `str`
         Class attribute; override to set the INDI device name. Empty means "use
         the class name".
     """
@@ -65,7 +65,7 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`, optional
             Instance-level device name override. Falls back to the class
             :attr:`name`, then to the class name.
         """
@@ -100,7 +100,7 @@ class Device:
 
         Parameters
         ----------
-        vector:
+        vector : `~indi_nexus.protocol.Vector`
             The parsed vector the client asked to change.
         """
 
@@ -110,13 +110,13 @@ class Device:
 
         Parameters
         ----------
-        vector:
+        vector : `~indi_nexus.protocol.Vector`
             The vector to define. If its ``device`` is unset, this device's name
             is filled in.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle used to push later updates for this property.
         """
         if not vector.device:
@@ -141,22 +141,24 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`
             The property name.
-        elements:
+        elements : `list` [`~indi_nexus.protocol.Number`]
             The number elements the vector contains.
-        label, group:
-            Optional display label and GUI group.
-        state:
+        label : `str`, optional
+            Display label.
+        group : `str`, optional
+            GUI group the property belongs to.
+        state : `~indi_nexus.protocol.IPState`, optional
             Initial vector state.
-        perm:
+        perm : `~indi_nexus.protocol.IPerm`, optional
             Client access permission.
-        timeout:
-            Optional worst-case update time, in seconds.
+        timeout : `float`, optional
+            Worst-case update time, in seconds.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle for the newly defined property.
         """
         return self.define(
@@ -187,22 +189,24 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`
             The property name.
-        elements:
+        elements : `list` [`~indi_nexus.protocol.Text`]
             The text elements the vector contains.
-        label, group:
-            Optional display label and GUI group.
-        state:
+        label : `str`, optional
+            Display label.
+        group : `str`, optional
+            GUI group the property belongs to.
+        state : `~indi_nexus.protocol.IPState`, optional
             Initial vector state.
-        perm:
+        perm : `~indi_nexus.protocol.IPerm`, optional
             Client access permission.
-        timeout:
-            Optional worst-case update time, in seconds.
+        timeout : `float`, optional
+            Worst-case update time, in seconds.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle for the newly defined property.
         """
         return self.define(
@@ -234,24 +238,26 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`
             The property name.
-        elements:
+        elements : `list` [`~indi_nexus.protocol.Switch`]
             The switch elements the vector contains.
-        rule:
+        rule : `~indi_nexus.protocol.ISRule`, optional
             The switch constraint (e.g. ``OneOfMany``).
-        label, group:
-            Optional display label and GUI group.
-        state:
+        label : `str`, optional
+            Display label.
+        group : `str`, optional
+            GUI group the property belongs to.
+        state : `~indi_nexus.protocol.IPState`, optional
             Initial vector state.
-        perm:
+        perm : `~indi_nexus.protocol.IPerm`, optional
             Client access permission.
-        timeout:
-            Optional worst-case update time, in seconds.
+        timeout : `float`, optional
+            Worst-case update time, in seconds.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle for the newly defined property.
         """
         return self.define(
@@ -283,18 +289,20 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`
             The property name.
-        elements:
+        elements : `list` [`~indi_nexus.protocol.Light`]
             The light elements the vector contains.
-        label, group:
-            Optional display label and GUI group.
-        state:
+        label : `str`, optional
+            Display label.
+        group : `str`, optional
+            GUI group the property belongs to.
+        state : `~indi_nexus.protocol.IPState`, optional
             Initial vector state.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle for the newly defined property.
         """
         return self.define(
@@ -323,22 +331,24 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`
             The property name.
-        elements:
+        elements : `list` [`~indi_nexus.protocol.BLOB`]
             The BLOB elements the vector contains.
-        label, group:
-            Optional display label and GUI group.
-        state:
+        label : `str`, optional
+            Display label.
+        group : `str`, optional
+            GUI group the property belongs to.
+        state : `~indi_nexus.protocol.IPState`, optional
             Initial vector state.
-        perm:
+        perm : `~indi_nexus.protocol.IPerm`, optional
             Client access permission.
-        timeout:
-            Optional worst-case update time, in seconds.
+        timeout : `float`, optional
+            Worst-case update time, in seconds.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle for the newly defined property.
         """
         return self.define(
@@ -360,18 +370,18 @@ class Device:
 
         Parameters
         ----------
-        name:
+        name : `str`
             The property name passed to a ``define_*`` call.
 
         Returns
         -------
-        BoundProperty
+        prop : `~indi_nexus.driver.BoundProperty`
             The handle for that property.
 
         Raises
         ------
         KeyError
-            If no property with that name has been defined.
+            Raised if no property with that name has been defined.
         """
         return self._properties[name]
 
@@ -391,11 +401,11 @@ class Device:
 
         Parameters
         ----------
-        text:
+        text : `str`
             The message body.
-        level:
+        level : `str`, optional
             A severity label prefixed to the text (e.g. ``INFO``, ``ERROR``).
-        timestamp:
+        timestamp : `~datetime.datetime`, optional
             Message timestamp; defaults to now.
         """
         self._send(
@@ -411,7 +421,7 @@ class Device:
 
         Parameters
         ----------
-        text:
+        text : `str`
             The error text.
         """
         self.message(text, level="ERROR")
@@ -422,7 +432,7 @@ class Device:
 
         Parameters
         ----------
-        emit:
+        emit : `~collections.abc.Callable`
             Callback the device uses to queue outbound messages.
         """
         self._emit = emit
@@ -432,13 +442,13 @@ class Device:
 
         Parameters
         ----------
-        msg:
+        msg : `~indi_nexus.protocol.IndiMessage`
             The message to send.
 
         Raises
         ------
         RuntimeError
-            If the device is not attached to a runtime.
+            Raised if the device is not attached to a runtime.
         """
         if self._emit is None:
             raise RuntimeError(
@@ -464,7 +474,7 @@ class Device:
 
         Parameters
         ----------
-        vector:
+        vector : `~indi_nexus.protocol.Vector`
             The parsed vector the client asked to change.
         """
         handler = self._new_handlers.get(vector.name)
@@ -479,8 +489,8 @@ class Device:
 
         Parameters
         ----------
-        name:
-            Optional device-name override passed to the constructor.
+        name : `str`, optional
+            Device-name override passed to the constructor.
         """
         from indi_nexus.driver.runtime import run
 

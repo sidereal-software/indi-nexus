@@ -25,12 +25,12 @@ def on_new(name: str) -> Callable[[F], F]:
 
     Parameters
     ----------
-    name:
+    name : `str`
         The property name (the vector's ``name``) this handler serves.
 
     Returns
     -------
-    Callable
+    decorator : `~collections.abc.Callable`
         A decorator that tags and returns the method unchanged.
 
     Examples
@@ -56,13 +56,15 @@ def iter_new_handlers(obj: object) -> Iterator[tuple[str, Callable[..., Any]]]:
 
     Parameters
     ----------
-    obj:
-        The instance to scan (typically a :class:`~indi_nexus.driver.device.Device`).
+    obj : `object`
+        The instance to scan (typically a `~indi_nexus.driver.device.Device`).
 
     Yields
     ------
-    tuple of (str, Callable)
-        The property name and the bound handler for it.
+    name : `str`
+        The property name a handler serves.
+    method : `~collections.abc.Callable`
+        The bound handler for that property.
     """
     seen: set[str] = set()
     for klass in type(obj).__mro__:

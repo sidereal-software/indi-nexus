@@ -29,11 +29,11 @@ class PeriodicSpec:
 
     Attributes
     ----------
-    interval:
+    interval : `float`
         Seconds between runs.
-    start_immediately:
+    start_immediately : `bool`
         Whether to run once at startup before the first interval elapses.
-    name:
+    name : `str` or `None`
         Optional label for the job (currently informational).
     """
 
@@ -59,24 +59,28 @@ def every(
 
     Parameters
     ----------
-    seconds, minutes, hours:
-        Interval components; summed to the total period. Must total a positive
-        duration.
-    start_immediately:
-        If ``True``, run once right away and then every interval thereafter;
+    seconds : `float`, optional
+        Seconds component of the interval.
+    minutes : `float`, optional
+        Minutes component of the interval.
+    hours : `float`, optional
+        Hours component of the interval. The three components are summed and
+        must total a positive duration.
+    start_immediately : `bool`, optional
+        If `True`, run once right away and then every interval thereafter;
         otherwise the first run is one interval in.
-    name:
+    name : `str`, optional
         Optional label for the job.
 
     Returns
     -------
-    Callable
+    decorator : `~collections.abc.Callable`
         A decorator that tags and returns the method unchanged.
 
     Raises
     ------
     ValueError
-        If the combined interval is not positive.
+        Raised if the combined interval is not positive.
 
     Examples
     --------
@@ -109,13 +113,15 @@ def iter_periodic(obj: object) -> Iterator[tuple[PeriodicSpec, Callable[[], Any]
 
     Parameters
     ----------
-    obj:
-        The instance to scan (typically a :class:`~indi_nexus.driver.device.Device`).
+    obj : `object`
+        The instance to scan (typically a `~indi_nexus.driver.device.Device`).
 
     Yields
     ------
-    tuple of (PeriodicSpec, Callable)
-        The schedule and the bound method to run for each tagged job.
+    spec : `PeriodicSpec`
+        The schedule for a tagged job.
+    method : `~collections.abc.Callable`
+        The bound method to run for that job.
     """
     seen: set[str] = set()
     for klass in type(obj).__mro__:
