@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A reference INDINexus driver - the modern take on pyINDI's ``testdevice.py``.
+"""A reference INDINexus driver.
 
 It exposes one of every INDI vector kind, uses ``@every`` to animate them once a
 second, and handles a client write to the switch vector with ``@on_new``. Run it

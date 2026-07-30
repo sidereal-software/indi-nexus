@@ -2,9 +2,9 @@
 
 A modern, typed Python framework for
 [INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf) astronomical instrument
-control - the successor to pyINDI. Write drivers in clean async Python, watch
-them from a typed client, and put a polished React UI in front of your
-observatory - all on one shared, validated protocol model.
+control. Write drivers in clean async Python, watch them from a typed client,
+and put a polished React UI in front of your observatory - all on one shared,
+validated protocol model.
 
 <div class="grid cards" markdown>
 

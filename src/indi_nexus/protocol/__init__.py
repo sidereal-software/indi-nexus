@@ -3,8 +3,7 @@
 This package is the single source of truth for the INDI 1.7 wire format. Every
 property is a validated Pydantic model that serializes to *both* canonical INDI
 XML (for interoperability with ``indiserver`` and existing C++ drivers/clients)
-and to JSON (for modern web clients). It replaces pyINDI's runtime DTD
-reflection and the ``int``-subclass enum machinery.
+and to JSON (for modern web clients).
 """
 
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState

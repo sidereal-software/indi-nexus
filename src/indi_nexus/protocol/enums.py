@@ -2,8 +2,7 @@
 
 Each enum subclasses :class:`enum.StrEnum`, so a member *is* the exact token used
 on the INDI wire (e.g. ``IPState.OK == "Ok"`` is ``True``) and Pydantic serialises
-it to that token directly. This replaces pyINDI's ``INDIEnumMember(int)`` trick,
-which subclassed ``int`` and overloaded ``__eq__`` to compare against strings.
+it to that token directly.
 """
 
 from __future__ import annotations

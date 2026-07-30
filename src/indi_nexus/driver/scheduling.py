@@ -1,12 +1,6 @@
 """The ``@every`` decorator: declarative periodic jobs for a driver.
 
-This is the modern replacement for pyINDI's ``@device.repeat(millis)``. The
-legacy decorator stored callbacks in *class-level* dictionaries
-(``device._registrants``), so every instance shared - and could clobber - the
-same schedule; it also re-implemented interval timing by hand with chained
-``call_later`` closures.
-
-Here the decorator only **tags** a method with a small :class:`PeriodicSpec`.
+The decorator only **tags** a method with a small :class:`PeriodicSpec`.
 Discovery and execution are per-instance: the runtime scans the concrete device
 object for tagged methods (:func:`iter_periodic`) and supervises one asyncio task
 per method. No shared mutable state, so two device instances never interfere.

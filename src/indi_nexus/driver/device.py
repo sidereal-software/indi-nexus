@@ -8,8 +8,8 @@ A driver is a subclass of :class:`Device` that
   returns - typically from ``@every`` polling jobs,
 * and handles client writes with ``@on_new`` methods.
 
-The class deliberately avoids pyINDI's libindi-C surface (``IUFind``,
-``IDSetNumber``, ``IEAddTimer``); the vocabulary here is plain Python.
+The vocabulary is plain Python rather than the libindi C surface (``IUFind``,
+``IDSetNumber``, ``IEAddTimer``).
 """
 
 from __future__ import annotations

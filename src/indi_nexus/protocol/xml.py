@@ -7,9 +7,8 @@ Two directions:
   and C++ INDI clients expect.
 * :class:`XMLStreamParser` consumes the raw byte stream from a socket or stdio
   pipe and yields fully-formed :data:`~indi_nexus.protocol.models.IndiMessage`
-  objects as complete top-level elements arrive. This replaces pyINDI's
-  "accumulate input and retry ``etree.fromstring`` until it parses" loop and its
-  separate SAX handler for BLOBs.
+  objects as complete top-level elements arrive, reassembling messages across
+  arbitrary chunk boundaries (BLOB payloads included).
 
 Number values honour the INDI printf-style ``format``, including the ``%m``
 sexagesimal form used for RA/Dec, so values round-trip faithfully with libindi.

@@ -9,7 +9,7 @@ The fastest way to see everything - backend, bridge, and web panel - with no
 `indiserver` needed:
 
 ```bash
-git clone https://github.com/mmtobservatory/indi-nexus && cd indi-nexus
+git clone https://github.com/sidereal-software/indi-nexus && cd indi-nexus
 
 # 1. Backend: create the venv and install
 uv venv --python 3.12

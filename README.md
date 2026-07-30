@@ -3,10 +3,13 @@
 A modern, typed Python framework for [INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf)
 (Instrument Neutral Distributed Interface) astronomical instrument control.
 
-INDINexus is the successor to [pyINDI](https://github.com/mmtobservatory/pyindi). It
-keeps the proven INDI architecture - drivers running under the C `indiserver` hub - but
-rebuilds the Python layers on a modern, fully-typed foundation: a Pydantic v2 protocol
-core, an async client, a FastAPI + WebSocket web bridge, and a TypeScript/React frontend.
+INDINexus keeps the proven INDI architecture - drivers running under the C `indiserver`
+hub - and builds the Python layers on a modern, fully-typed foundation: a Pydantic v2
+protocol core, an async client, a FastAPI + WebSocket web bridge, and a TypeScript/React
+frontend.
+
+**Documentation:** <https://sidereal.software/indi-nexus/> (guides, live demo, and the
+full Python + TypeScript API reference).
 
 > Status: **early development.** The backend (protocol core, driver SDK, async
 > client, web bridge, CLI) and the frontend (framework-agnostic client library,
@@ -103,8 +106,6 @@ pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxie
 
 ```bash
 python -m examples.demo_bridge              # web panel + live demo device, no indiserver (open :8000)
-python -m examples.demo_bridge --device examples.dome_device:DomeSimulator
-                                            # same, but serving the dome simulator
 indi-nexus new my_driver.py                 # scaffold a runnable driver file to start from
 indi-nexus serve                            # web panel against a real indiserver (open :8000)
 indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
@@ -174,10 +175,8 @@ indiserver ./examples/telescope_device.py ./examples/dome_device.py
 echo '<getProperties version="1.7"/>' | python -m examples.dome_device
 ```
 
-Note that mode 3 is what you get from `python -m examples.dome_device` alone: a raw INDI
-driver speaking XML on stdin/stdout. Per the protocol it waits **silently** for a
-`getProperties` before saying anything - it is not hung, it just has no client. For an
-interactive UI, use mode 1 or 2.
+Mode 3 waits **silently** for a `getProperties` before saying anything - it is not hung,
+it just has no client yet. For an interactive UI, use mode 1 or 2.
 
 ## Project layout
 
@@ -315,9 +314,6 @@ send writes (handy for exercising a driver's `@on_new` handlers). Other endpoint
   upstream. Messages are the protocol models as JSON, so the frontend contract is the
   backend model schema.
 
-Other CLI commands: `indi-nexus run examples.demo_device:Demo` (serve a driver over stdio),
-`indi-nexus monitor` (print live updates).
-
 ## Frontend
 
 The TypeScript frontend lives in `web/` as a `pnpm` workspace with three layers, all built
@@ -346,15 +342,12 @@ available (via `hatch_build.py`); to package offline, run `pnpm -r build` first 
 pre-built panel is bundled as-is. If neither is possible the wheel is built without the panel
 and the bridge falls back to the debug page.
 
-To see it end-to-end with **no `indiserver`**, run the in-process demo bridge - it wires the
-demo driver straight into the web app:
+To see it end-to-end with **no `indiserver`**, run the demo bridge from the
+[Quickstart](#quickstart) - it serves the built panel at `http://localhost:8000/`.
 
-```bash
-python -m examples.demo_bridge      # then open http://localhost:8000/
-```
-
-For panel development with hot reload, run the bridge (above, or `indi-nexus serve` against a
-real `indiserver`) and the Vite dev server, which proxies `/ws` and `/api` to it:
+For panel development with hot reload, run the bridge (`python -m examples.demo_bridge`, or
+`indi-nexus serve` against a real `indiserver`) and the Vite dev server, which proxies
+`/ws` and `/api` to it:
 
 ```bash
 pnpm --filter @indi-nexus/panel dev

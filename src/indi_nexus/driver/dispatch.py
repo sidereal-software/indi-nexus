@@ -1,10 +1,8 @@
 """The ``@on_new`` decorator: route client writes to typed handlers.
 
-pyINDI made a driver override ``ISNewNumber`` / ``ISNewText`` / ``ISNewSwitch``
-and then hand-dispatch on the property name with an ``if/elif`` chain over raw
-XML tags. Here a handler is tagged with the property name it serves; the device
-builds a per-instance ``name -> handler`` map and hands each incoming
-``newXxxVector`` to the matching handler as a fully typed, parsed vector.
+A handler is tagged with the property name it serves; the device builds a
+per-instance ``name -> handler`` map and hands each incoming ``newXxxVector``
+to the matching handler as a fully typed, parsed vector.
 """
 
 from __future__ import annotations

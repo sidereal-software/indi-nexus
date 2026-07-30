@@ -2,8 +2,8 @@ site_name: INDINexus
 site_description: >-
   A modern, typed Python framework for INDI astronomical instrument control -
   Python drivers, an async client, a web bridge, and React components.
-site_url: https://mmtobservatory.github.io/indi-nexus/
-repo_url: https://github.com/mmtobservatory/indi-nexus
+site_url: https://sidereal.software/indi-nexus/
+repo_url: https://github.com/sidereal-software/indi-nexus
 repo_name: indi-nexus
 
 theme:

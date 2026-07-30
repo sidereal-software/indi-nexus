@@ -6,13 +6,14 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 INDINexus (`indi-nexus`) is a modern, typed Python framework for the
 [INDI protocol](http://www.clearskyinstitute.com/INDI/INDI.pdf) (astronomical instrument
-control). It is the successor to [pyINDI](https://github.com/mmtobservatory/pyindi),
-which is used in production at MMT Observatory and Steward Observatory. The legacy pyINDI
-source is available in the sibling `../pyINDI` directory for reference.
+control).
 
-INDINexus rebuilds pyINDI's Python layers - the driver SDK, the async client, and the web
-bridge - on a fully-typed Pydantic v2 + FastAPI foundation, with a TypeScript/React
-frontend. It does **not** reimplement the C `indiserver` binary.
+INDINexus provides the Python layers of an INDI system - the driver SDK, the async
+client, and the web bridge - on a fully-typed Pydantic v2 + FastAPI foundation, with a
+TypeScript/React frontend. It does **not** reimplement the C `indiserver` binary.
+
+Docs are published at <https://sidereal.software/indi-nexus/> from `main` by
+`.github/workflows/docs.yml`.
 
 ## Locked architectural decisions
 
@@ -77,9 +78,9 @@ Driver (driver/) <-stdin/stdout XML-> indiserver:7624 <-TCP-> client/  ->  web/ 
 
 ### The protocol layer (`src/indi_nexus/protocol/`)
 
-The single source of truth for the INDI 1.7 wire format. It replaces three fragile pieces
-of pyINDI: runtime DTD reflection, `int`-subclass enums that compared against wire strings,
-and the "accumulate stdin and retry `etree.fromstring`" framing loop.
+The single source of truth for the INDI 1.7 wire format: typed models, exact wire-token
+enums, and a real streaming parser (no runtime DTD reflection, no "accumulate stdin and
+retry `etree.fromstring`" framing loop).
 
 - `enums.py` - `IPState`, `IPerm`, `ISRule`, `ISState`, `BLOBPolicy`. Each subclasses
   `enum.StrEnum`, so a member **is** its exact wire token (`IPState.OK == "Ok"`) and
@@ -116,10 +117,9 @@ and the "accumulate stdin and retry `etree.fromstring`" framing loop.
 
 ### The driver SDK (`src/indi_nexus/driver/`)
 
-What a driver author subclasses. It rebuilds pyINDI's `device.py` on the M1 models and
-fixes its known warts (class-global `@repeat` registry, the hand-rolled
-`etree.fromstring` retry loop, the `if/elif`-on-XML-tag `ISNew*` dispatch, and the
-libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
+What a driver author subclasses, built on the M1 models. The vocabulary is plain Python
+throughout - no libindi-C surface (`IUFind`/`IDSet*`/`IEAddTimer`), no per-tag `ISNew*`
+dispatch, no class-global registries.
 
 - `device.py` - `Device`, the base class. Override `async def setup()` to declare
   properties with the `define_number/text/switch/light/blob(...)` helpers (each returns a
@@ -133,8 +133,8 @@ libindi-C surface `IUFind`/`IDSet*`/`IEAddTimer`).
   vector. `.set(RA=1.2, DEC=3.4, state=IPState.OK)` mutates elements **and** emits one
   `setXxxVector`; it honors `OneOfMany` switch rules (turning one On clears siblings). The
   protocol models stay behavior-free - this wrapper is where "and tell the client" lives.
-- `scheduling.py` - `@every(seconds=…, minutes=…, hours=…)`, the modern replacement for
-  pyINDI's `@device.repeat`. It only *tags* a method; discovery/execution is **per
+- `scheduling.py` - `@every(seconds=…, minutes=…, hours=…)` declares a periodic job.
+  It only *tags* a method; discovery/execution is **per
   instance** (no shared class state), one supervised task each, with per-tick error
   isolation (a failing tick logs and continues, never kills the driver).
   `@every(..., when_connected=True)` pauses a job while `device.connected` is false.
@@ -155,9 +155,7 @@ animation gated on its power switch, and an `@on_new` handler).
 ### The client (`src/indi_nexus/client/`)
 
 A reconnecting `asyncio` TCP client to `indiserver` that mirrors server state into a typed
-cache and lets code watch it and send updates - always as M1 models, never raw XML. It
-replaces pyINDI's `client.py`/`utils.py` (raw XML strings, subclass-override, singleton
-hacks, a SAX handler, and *no* cache).
+cache and lets code watch it and send updates - always as M1 models, never raw XML.
 
 - `store.py` - `PropertyStore`, the pure cache (behavior-free w.r.t. sockets, so trivially
   testable). `apply(msg)` folds one message in following INDI semantics (`def` defines,
@@ -184,8 +182,7 @@ in-memory pipes - a full driver<->client round-trip with no `indiserver`.
 ### The web bridge (`src/indi_nexus/web/`)
 
 A FastAPI app that puts one shared `IndiClient` behind an HTTP/WebSocket surface and
-relays it to browsers as typed JSON. Replaces pyINDI's Tornado `webclient.py` (raw XML,
-SAX BLOB handler, server-side HTML/JS9 coupling).
+relays it to browsers as typed JSON.
 
 - `bridge.py` - `Bridge` owns the client and fans its activity out to a set of browser
   WebSocket sinks: property events become `def`/`set`/`delProperty` JSON, `on_message`
