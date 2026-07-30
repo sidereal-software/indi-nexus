@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/*
+ * Reuse the library's theme tokens and scan its components, both via direct
+ * monorepo-relative paths (the panel lives beside the package). A standalone app
+ * would instead `@import "@indi-nexus/react/theme.css"` and
+ * `@source "./node_modules/@indi-nexus/react/dist"`.
+ */
+@import "../../../packages/react/src/theme.css";
+@source "../../../packages/react/src/**/*.{ts,tsx}";
+
+html,
+body,
+#root {
+  height: 100%;
+}
