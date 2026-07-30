@@ -12,6 +12,7 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  Badge,
   Button,
   ConnectionStatus,
   DevicePanel,
@@ -36,8 +37,12 @@ import {
   SidebarTrigger,
   Switch,
   Toaster,
+  Tooltip,
+  TooltipContent,
   TooltipProvider,
+  TooltipTrigger,
   useDevices,
+  useIndiClient,
 } from "@indi-nexus/react";
 import { MessageSquareText, Moon, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -45,6 +50,14 @@ import { useTheme } from "./use-theme";
 
 /** localStorage key remembering whether the messages panel is open. */
 const MESSAGES_KEY = "indi-messages";
+
+/**
+ * Maximum messages the panel shows: the client's whole rolling buffer
+ * (`messageLogLimit`, which itself covers the bridge's 100-message replay for a
+ * freshly opened page). Older history belongs to the server logs, not a UI
+ * strip, and 200 compact rows keep the DOM light.
+ */
+const MESSAGE_LIMIT = 200;
 
 /** localStorage key remembering whether debug info (raw INDI names) shows. */
 const DEBUG_KEY = "indi-debug";
@@ -71,9 +84,16 @@ function initialDebug(): boolean {
 function ThemeToggle() {
   const { theme, toggle } = useTheme();
   return (
-    <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
-      {theme === "dark" ? <Sun /> : <Moon />}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
+          {theme === "dark" ? <Sun /> : <Moon />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -153,10 +173,9 @@ function DeviceSidebar({
  * region above it - and the log scrolls independently inside, following the
  * newest entry.
  *
- * The log shows up to 200 messages: the client's whole rolling buffer
- * (`messageLogLimit`, which itself covers the bridge's 100-message replay for
- * a freshly opened page). Older history belongs to the server logs, not a UI
- * strip, and 200 compact rows keep the DOM light.
+ * While collapsed, a badge on the bar counts the messages received since the
+ * log was last in view (from the client's total received, so the rolling
+ * buffer's eviction cannot under-count) and clears as soon as the log opens.
  */
 function MessagesPanel({
   open,
@@ -165,6 +184,15 @@ function MessagesPanel({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const client = useIndiClient();
+  const [received, setReceived] = useState(0);
+  const [seen, setSeen] = useState(0);
+  useEffect(() => client.onMessage(() => setReceived((count) => count + 1)), [client]);
+  useEffect(() => {
+    if (open) setSeen(received);
+  }, [open, received]);
+  const unread = open ? 0 : received - seen;
+
   return (
     <aside aria-label="Messages" className="shrink-0 border-t bg-background">
       <Accordion
@@ -174,14 +202,19 @@ function MessagesPanel({
         onValueChange={(value) => onOpenChange(value === "messages")}
       >
         <AccordionItem value="messages" className="border-b-0">
-          <AccordionTrigger className="rounded-none px-3 py-2">
+          <AccordionTrigger className="h-14 items-center rounded-none px-3 py-0">
             <span className="flex items-center gap-2">
               <MessageSquareText className="size-4 text-muted-foreground" />
               Messages
+              {unread > 0 ? (
+                <Badge className="h-5 min-w-5 rounded-full px-1 font-mono tabular-nums">
+                  {unread > 99 ? "99+" : unread}
+                </Badge>
+              ) : null}
             </span>
           </AccordionTrigger>
           <AccordionContent className="p-0">
-            <MessageLog className="h-56" limit={200} />
+            <MessageLog className="h-56" limit={MESSAGE_LIMIT} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
@@ -236,7 +269,12 @@ function AppShell() {
           own region and the messages strip below it stays visible. */}
       <SidebarInset className="h-svh">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
-          <SidebarTrigger />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SidebarTrigger />
+            </TooltipTrigger>
+            <TooltipContent>Toggle the device sidebar</TooltipContent>
+          </Tooltip>
           <Separator orientation="vertical" className="h-5" />
           <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
         </header>

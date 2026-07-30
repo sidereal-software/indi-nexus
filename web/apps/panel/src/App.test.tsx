@@ -7,7 +7,7 @@
  * and device panel - through real JSON frames.
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -141,6 +141,36 @@ describe("messages panel", () => {
       "false",
     );
     expect(screen.queryByText("No messages yet.")).not.toBeInTheDocument();
+  });
+
+  it("counts unseen messages on the collapsed bar and clears the badge on open", () => {
+    localStorage.setItem("indi-messages", "closed");
+    const { socket } = renderApp();
+    const bar = screen.getByRole("complementary", { name: "Messages" });
+    expect(within(bar).queryByText("1")).not.toBeInTheDocument();
+
+    act(() =>
+      socket.receive(
+        JSON.stringify({ tag: "message", device: "Dome", message: "[INFO] Dome parked." }),
+      ),
+    );
+    act(() =>
+      socket.receive(
+        JSON.stringify({ tag: "message", device: "Dome", message: "[INFO] Shutter open." }),
+      ),
+    );
+    expect(within(bar).getByText("2")).toBeInTheDocument();
+
+    // Opening the log marks everything seen; the badge disappears and stays
+    // away while messages stream in with the log in view.
+    fireEvent.click(screen.getByRole("button", { name: /messages/i }));
+    expect(within(bar).queryByText("2")).not.toBeInTheDocument();
+    act(() =>
+      socket.receive(
+        JSON.stringify({ tag: "message", device: "Dome", message: "[INFO] Dome slewing." }),
+      ),
+    );
+    expect(within(bar).queryByText("1")).not.toBeInTheDocument();
   });
 });
 
