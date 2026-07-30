@@ -22,13 +22,15 @@ These were decided at project start; do not revisit them without explicit direct
    web layer is a TCP client of it. We modernize only the Python and frontend layers.
 2. **Dual protocol.** Canonical INDI 1.7 **XML** on the `indiserver` wire (interop with the
    wider INDI ecosystem); typed **JSON** to browsers.
-3. **Monorepo.** Python package under `src/indi_nexus/` plus a planned `pnpm` JS workspace
-   under `web/`. The wire contract is shared across the boundary (types generated from the
-   backend models).
-4. **Frontend is TypeScript + React (Vite), over WebSockets.** Distribution is three
-   layers: `@indi-nexus/client` (framework-agnostic transport + property store),
-   `@indi-nexus/react` (hooks + components), and a reference panel app. Both
-   "batteries-included app" and "build your own UI on the library" are first-class.
+3. **Monorepo.** Python package under `src/indi_nexus/` plus a `pnpm` JS workspace under
+   `web/`. The wire contract is shared across the boundary. Because INDI 1.7 is frozen, the
+   browser-side wire types are **hand-authored** TypeScript mirroring the Pydantic models
+   (no codegen); keep them in sync when the protocol models change.
+4. **Frontend is TypeScript + React (Vite), over WebSockets, styled with shadcn/ui.**
+   Distribution is three layers: `@indi-nexus/client` (framework-agnostic transport +
+   property store), `@indi-nexus/react` (hooks + shadcn/ui components + the shared theme),
+   and a reference panel app. Both "batteries-included app" and "build your own UI on the
+   library" are first-class.
 
 ## Commands
 
@@ -56,8 +58,13 @@ src/indi_nexus/
 ├── driver/       DONE   driver SDK: subclass a base device; stdio XML under indiserver
 ├── client/       DONE   reconnecting asyncio TCP client to indiserver + property cache
 ├── transport.py  DONE   shared ReadFn/WriteFn byte-stream contract + TCP adapter
-├── web/          DONE   FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + debug page
+├── web/          DONE   FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
 └── cli.py        DONE   Typer CLI (serve web, run driver, monitor)
+
+web/              DONE   pnpm workspace: the TypeScript frontend (see below)
+├── packages/client/     @indi-nexus/client - framework-agnostic transport + property store
+├── packages/react/      @indi-nexus/react  - hooks + shadcn/ui components + shared theme
+└── apps/panel/          the reference panel, built into src/indi_nexus/web/static/panel/
 ```
 
 Data flow (unchanged from the INDI model):
@@ -190,6 +197,47 @@ SAX BLOB handler, server-side HTML/JS9 coupling).
 Typer app, the `indi-nexus` entrypoint. `serve` runs the web bridge (uvicorn); `run
 module:attr` imports a `Device` subclass and serves it over stdio; `monitor` prints live
 updates from `indiserver`. Heavy imports (uvicorn/fastapi) are lazy so `--help` stays fast.
+
+### The frontend workspace (`web/`)
+
+A `pnpm` workspace holding the TypeScript frontend - a professional, reusable library plus
+the reference panel that ships with `indi-nexus`. Tooling: **tsup** builds the libraries
+(ESM + `.d.ts`), **Vite** builds the app, **Vitest** runs tests, **Biome** lints/formats
+(config at `web/biome.json`; the vendored shadcn `ui/` files are excluded). Run everything
+through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, `pnpm lint`.
+
+- `packages/client/` - **`@indi-nexus/client`**, a faithful TS port of the Python client,
+  framework-agnostic (only needs a `WebSocket`). `types.ts`/`enums.ts` are the hand-authored
+  wire contract (mirroring `protocol/models.py`/`enums.py`); `store.ts` is `PropertyStore`
+  with the same `def`/`set`-merge/`del` semantics as `client/store.py`, except **merges are
+  immutable** (a `set` replaces the vector/element objects) so React can detect changes by
+  reference; `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts`
+  is `IndiClient` mirroring the Python surface (`subscribe`/`onMessage`/`onConnection`/
+  `waitFor`/`setNumber`/... and `getProperties`/`enableBlob`). It tracks two connection
+  states - `transport` (browser<->bridge) and `upstream` (bridge<->indiserver, from the
+  bridge's `connection` control frame).
+- `packages/react/` - **`@indi-nexus/react`**. `IndiProvider` + `useIndiClient`, hooks
+  (`useConnection`/`useDevices`/`useDevice`/`useProperty`/`useMessages`, all via
+  `useSyncExternalStore` over the immutable store), and INDI-aware components
+  (`PropertyVectorCard`, `DevicePanel`, per-kind element controls, `StateBadge`,
+  `ConnectionStatus`, `MessageLog`). shadcn/ui primitives live in `src/ui/` (added via the
+  shadcn CLI, `components.json`) and are re-exported. The theme is the user-supplied shadcn
+  tokens in `src/theme.css` (plus `--state-*` tokens for INDI Idle/Ok/Busy/Alert); the build
+  emits a prebuilt `dist/styles.css` (`@indi-nexus/react/styles.css`, batteries-included) and
+  copies the source `theme.css` (`@indi-nexus/react/theme.css`, for consumers running their
+  own Tailwind). Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup`, etc. per the
+  shadcn skill rules; don't hand-edit `src/ui/`.
+- `apps/panel/` - the reference frontend (Vite + `@tailwindcss/vite`), composed entirely from
+  `@indi-nexus/react`: a device sidebar with connection status + light/dark toggle, a
+  `DevicePanel` per device, and a `MessageLog` sheet. `vite build` emits into
+  `src/indi_nexus/web/static/panel/`, where `web/app.py` serves it at `/` (falling back to
+  the debug page, which stays at `/debug`) - the **serve-from-dist** integration. The wheel
+  bundles that built panel (`hatch_build.py` build hook + `artifacts` in `pyproject.toml`,
+  which rebuilds it with pnpm when missing), so `pip install` ships the UI.
+
+`examples/demo_bridge.py` wires the demo driver to the web app over in-memory pipes (no
+`indiserver`) so the whole stack - panel included - can be run and tested end-to-end with
+`python -m examples.demo_bridge`.
 
 ## Conventions
 

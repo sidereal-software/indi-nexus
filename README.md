@@ -8,8 +8,10 @@ keeps the proven INDI architecture - drivers running under the C `indiserver` hu
 rebuilds the Python layers on a modern, fully-typed foundation: a Pydantic v2 protocol
 core, an async client, a FastAPI + WebSocket web bridge, and a TypeScript/React frontend.
 
-> Status: **early development.** The protocol core, driver SDK, and async client
-> (Milestones 1-3) are complete and tested. See [Roadmap](#roadmap).
+> Status: **early development.** The backend (protocol core, driver SDK, async
+> client, web bridge, CLI) and the frontend (framework-agnostic client library,
+> React components, and the reference panel) - Milestones 1-5 - are complete and
+> tested. See [Roadmap](#roadmap).
 
 ## What it is
 
@@ -47,8 +49,9 @@ INDINexus provides three things, all built on one shared, typed protocol model:
 | Lint / format | Ruff |
 | Type checking | mypy (strict) |
 | Tests | pytest + pytest-asyncio |
-| Language (frontend) | TypeScript + React (Vite) *(planned)* |
-| JS packaging | pnpm workspace *(planned)* |
+| Language (frontend) | TypeScript + React (Vite) |
+| UI components / theme | shadcn/ui + Tailwind CSS v4 |
+| JS packaging | pnpm workspace, tsup, Biome, Vitest |
 
 ## Getting started
 
@@ -99,9 +102,12 @@ indi-nexus/
 │   ├── transport.py         # DONE: shared read/write byte-stream contract + TCP adapter
 │   ├── web/                 # DONE: FastAPI bridge (WS + REST) + static/debug.html
 │   └── cli.py               # DONE: Typer CLI (serve / run / monitor)
-├── examples/                # runnable reference driver + client
+├── examples/                # runnable reference driver, client, and demo bridge
 ├── tests/                   # pytest suite
-└── web/                     # planned: pnpm workspace (client lib, React bindings, app)
+└── web/                     # DONE: pnpm workspace (TypeScript frontend)
+    ├── packages/client/     #   @indi-nexus/client - framework-agnostic transport + store
+    ├── packages/react/      #   @indi-nexus/react  - hooks + shadcn/ui components + theme
+    └── apps/panel/          #   the reference panel (built into web/static/panel)
 ```
 
 ## The protocol core
@@ -194,6 +200,73 @@ send writes (handy for exercising a driver's `@on_new` handlers). Other endpoint
 Other CLI commands: `indi-nexus run examples.demo_device:Demo` (serve a driver over stdio),
 `indi-nexus monitor` (print live updates).
 
+## Frontend
+
+The TypeScript frontend lives in `web/` as a `pnpm` workspace with three layers, all built
+on one shared wire contract and themed with [shadcn/ui](https://ui.shadcn.com):
+
+- **`@indi-nexus/client`** - a framework-agnostic, reconnecting client for the bridge's
+  WebSocket and a typed property store (a TS port of the Python client). No UI dependency.
+- **`@indi-nexus/react`** - `IndiProvider`, hooks (`useProperty`, `useDevice`,
+  `useConnection`, ...), INDI-aware components (`PropertyVectorCard`, `DevicePanel`,
+  `StateBadge`, `ConnectionStatus`, `MessageLog`), and the themed shadcn/ui primitives.
+- **`apps/panel`** - the reference panel that ships with `indi-nexus`.
+
+### Build and run the reference panel
+
+```bash
+cd web
+pnpm install
+pnpm -r build          # builds the libraries + panel into src/indi_nexus/web/static/panel/
+```
+
+Once built, the FastAPI app serves the panel at `/` (the debug inspector stays at `/debug`).
+
+**Packaging:** the panel is bundled into the wheel, so `pip install indi-nexus` ships the UI.
+Building a distribution (`uv build`) runs the frontend build automatically when Node/pnpm are
+available (via `hatch_build.py`); to package offline, run `pnpm -r build` first and the
+pre-built panel is bundled as-is. If neither is possible the wheel is built without the panel
+and the bridge falls back to the debug page.
+
+To see it end-to-end with **no `indiserver`**, run the in-process demo bridge - it wires the
+demo driver straight into the web app:
+
+```bash
+python -m examples.demo_bridge      # then open http://localhost:8000/
+```
+
+For panel development with hot reload, run the bridge (above, or `indi-nexus serve` against a
+real `indiserver`) and the Vite dev server, which proxies `/ws` and `/api` to it:
+
+```bash
+pnpm --filter @indi-nexus/panel dev
+```
+
+### Build your own UI on the library
+
+Install `@indi-nexus/react`, import the theme once, and compose the hooks and components:
+
+```tsx
+import { IndiProvider, useProperty, PropertyVectorCard } from "@indi-nexus/react";
+import "@indi-nexus/react/styles.css"; // batteries-included theme (no Tailwind needed)
+
+function Exposure() {
+  const vector = useProperty("CCD", "EXPOSURE");
+  return vector ? <PropertyVectorCard vector={vector} /> : null;
+}
+
+export function App() {
+  return (
+    <IndiProvider url="ws://localhost:8000/ws">
+      <Exposure />
+    </IndiProvider>
+  );
+}
+```
+
+If you run Tailwind yourself, `@import "@indi-nexus/react/theme.css"` instead of the prebuilt
+stylesheet and let your own build generate the utilities.
+
 ## Roadmap
 
 - [x] **M1 - Protocol core**: enums, typed models, XML codec, streaming parser.
@@ -203,8 +276,9 @@ Other CLI commands: `indi-nexus run examples.demo_device:Demo` (serve a driver o
   subscriptions, `wait_for`, and `enableBLOB`.
 - [x] **M4 - Web bridge + CLI**: FastAPI WebSocket bridge (XML↔JSON), REST snapshot, a
   built-in debug inspector page, and the Typer CLI.
-- [ ] **M5 - Frontend**: pnpm workspace (client lib, React bindings, reference app).
-- [ ] **M5 - Frontend**: `@indi-nexus/client`, `@indi-nexus/react`, reference panel app.
+- [x] **M5 - Frontend**: a `pnpm` workspace with `@indi-nexus/client` (framework-agnostic
+  transport + typed property store), `@indi-nexus/react` (hooks + shadcn/ui components +
+  the shared theme), and the reference panel app that ships with `indi-nexus`.
 
 ## License
 
