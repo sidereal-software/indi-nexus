@@ -3,7 +3,8 @@
 :func:`create_app` builds a FastAPI app that serves, on top of one shared
 :class:`~indi_nexus.client.IndiClient`:
 
-* ``GET /`` - a self-contained debug inspector page;
+* ``GET /`` - the built reference panel if present, else the debug inspector page;
+* ``GET /debug`` - the self-contained debug inspector page;
 * ``GET /health`` - liveness and upstream connection state;
 * ``GET /api/devices`` and ``/api/devices/{device}[/{name}]`` - a read-only JSON
   snapshot of the property cache;
@@ -23,11 +24,13 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from indi_nexus.client import IndiClient
 from indi_nexus.web.bridge import Bridge
 
 _STATIC = Path(__file__).parent / "static"
+_PANEL = _STATIC / "panel"
 
 
 def create_app(
@@ -111,9 +114,21 @@ def create_app(
         finally:
             bridge.remove_sink(websocket.send_text)
 
-    @app.get("/")
-    async def index() -> FileResponse:
+    @app.get("/debug")
+    async def debug_page() -> FileResponse:
         """Serve the self-contained debug inspector page."""
         return FileResponse(_STATIC / "debug.html")
+
+    # Serve the built reference panel at the root when it is present (produced by
+    # ``pnpm --filter @indi-nexus/panel build``); otherwise fall back to the debug
+    # page. The static mount is added last so the API/WS/debug routes above win.
+    if (_PANEL / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=_PANEL, html=True), name="panel")
+    else:
+
+        @app.get("/")
+        async def index() -> FileResponse:
+            """Serve the debug page when the reference panel is not built."""
+            return FileResponse(_STATIC / "debug.html")
 
     return app

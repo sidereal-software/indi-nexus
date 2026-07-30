@@ -99,14 +99,23 @@ def test_rest_snapshot_reflects_cache():
         assert tc.get("/api/devices/CCD/Nope").status_code == 404
 
 
-def test_index_serves_debug_page():
-    """GET / serves the self-contained debug inspector page."""
+def test_debug_page_served():
+    """GET /debug serves the self-contained debug inspector page."""
+    app, _ = _app_and_server()
+    with TestClient(app) as tc:
+        resp = tc.get("/debug")
+        assert resp.status_code == 200
+        assert "INDINexus" in resp.text
+        assert "websocket" in resp.text.lower()
+
+
+def test_index_serves_a_page():
+    """GET / serves an HTML page (the built panel if present, else the debug page)."""
     app, _ = _app_and_server()
     with TestClient(app) as tc:
         resp = tc.get("/")
         assert resp.status_code == 200
-        assert "INDINexus" in resp.text
-        assert "websocket" in resp.text.lower()
+        assert resp.headers["content-type"].startswith("text/html")
 
 
 def test_ws_sends_snapshot_and_live_updates():
