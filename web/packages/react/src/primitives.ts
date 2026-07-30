@@ -12,6 +12,7 @@ export { cn } from "@/lib/utils";
 export * from "@/ui/badge";
 export * from "@/ui/button";
 export * from "@/ui/card";
+export * from "@/ui/drawer";
 export * from "@/ui/dropdown-menu";
 export * from "@/ui/field";
 export * from "@/ui/input";
