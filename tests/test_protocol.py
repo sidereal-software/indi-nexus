@@ -37,6 +37,7 @@ from indi_nexus.protocol.xml import format_number, parse_number
 # Enums                                                                        #
 # --------------------------------------------------------------------------- #
 def test_enum_compares_and_serializes_as_wire_token():
+    """Enum members equal, construct from, and stringify to their wire token."""
     assert IPState.OK == "Ok"
     assert IPState("Ok") is IPState.OK
     assert ISState.ON.value == "On"
@@ -44,6 +45,7 @@ def test_enum_compares_and_serializes_as_wire_token():
 
 
 def test_enum_tolerates_whitespace_from_wire():
+    """Enum lookup ignores surrounding whitespace on wire tokens."""
     assert IPState(" Busy ") is IPState.BUSY
     assert ISState("On\n") is ISState.ON
 
@@ -62,6 +64,7 @@ def test_enum_tolerates_whitespace_from_wire():
     ],
 )
 def test_format_number(value, fmt, expected):
+    """Formatting matches the expected printf / sexagesimal output."""
     assert format_number(value, fmt) == expected
 
 
@@ -75,10 +78,12 @@ def test_format_number(value, fmt, expected):
     ],
 )
 def test_parse_number(text, expected):
+    """Parsing handles decimal and sexagesimal inputs."""
     assert parse_number(text) == expected
 
 
 def test_sexagesimal_roundtrip():
+    """A value survives format-then-parse through the sexagesimal form."""
     original = 23.456
     text = format_number(original, "%9.6m")
     assert parse_number(text) == pytest.approx(original, abs=1e-3)
@@ -88,12 +93,24 @@ def test_sexagesimal_roundtrip():
 # def / set / new round-trips                                                 #
 # --------------------------------------------------------------------------- #
 def _reparse(msg):
-    """Serialize then parse back a single message."""
+    """Serialise then parse back a single message.
+
+    Parameters
+    ----------
+    msg:
+        The message model to round-trip.
+
+    Returns
+    -------
+    IndiMessage
+        The message parsed back from the serialised XML.
+    """
     (result,) = parse_indi(to_xml(msg))
     return result
 
 
 def test_number_vector_def_roundtrip():
+    """A number-vector def survives serialise-then-parse with its metadata."""
     vec = NumberVector(
         device="CCD",
         name="EXPOSURE",
@@ -115,6 +132,7 @@ def test_number_vector_def_roundtrip():
 
 
 def test_switch_vector_keeps_rule_and_state():
+    """A switch-vector def preserves its rule and per-switch state."""
     vec = SwitchVector(
         device="Mount",
         name="TRACK",
@@ -131,6 +149,7 @@ def test_switch_vector_keeps_rule_and_state():
 
 
 def test_light_vector_has_no_perm_attribute_on_wire():
+    """A light vector serialises without a perm attribute (lights are RO)."""
     vec = LightVector(
         device="Dome",
         name="STATUS",
@@ -144,6 +163,7 @@ def test_light_vector_has_no_perm_attribute_on_wire():
 
 
 def test_text_set_roundtrip():
+    """A text-vector set survives serialise-then-parse."""
     vec = TextVector(device="Focuser", name="INFO", elements=[Text(name="MODEL", value="ZWO")])
     back = _reparse(SetVector(vector=vec))
     assert isinstance(back, SetVector)
@@ -151,6 +171,7 @@ def test_text_set_roundtrip():
 
 
 def test_set_vector_omits_def_only_metadata():
+    """A set message emits one* nodes without def-only element metadata."""
     vec = NumberVector(
         device="CCD",
         name="TEMP",
@@ -163,6 +184,7 @@ def test_set_vector_omits_def_only_metadata():
 
 
 def test_new_vector_from_client():
+    """A client new-vector serialises to newXxxVector and parses back."""
     vec = NumberVector(device="CCD", name="EXPOSURE", elements=[Number(name="CCD_EXP", value=5.0)])
     xml = to_xml(NewVector(vector=vec)).decode()
     assert xml.startswith("<newNumberVector")
@@ -172,6 +194,7 @@ def test_new_vector_from_client():
 
 
 def test_blob_base64_roundtrip():
+    """BLOB binary payloads survive base64 encode/decode with their size."""
     payload = b"\x00\x01\x02FITSDATA\xff"
     vec = BLOBVector(
         device="CCD",
@@ -187,6 +210,7 @@ def test_blob_base64_roundtrip():
 # Non-property messages                                                        #
 # --------------------------------------------------------------------------- #
 def test_get_properties_roundtrip():
+    """A device/name-scoped getProperties round-trips its fields."""
     back = _reparse(GetProperties(device="CCD", name="EXPOSURE"))
     assert isinstance(back, GetProperties)
     assert back.device == "CCD"
@@ -194,12 +218,14 @@ def test_get_properties_roundtrip():
 
 
 def test_get_properties_all_devices():
+    """A bare getProperties serialises with a version and no device."""
     xml = to_xml(GetProperties()).decode()
     assert xml.startswith("<getProperties")
     assert "version=" in xml
 
 
 def test_message_and_delproperty():
+    """message and delProperty messages round-trip to their model types."""
     assert isinstance(_reparse(Message(device="CCD", message="hello")), Message)
     d = _reparse(DelProperty(device="CCD", name="EXPOSURE"))
     assert isinstance(d, DelProperty)
@@ -210,6 +236,7 @@ def test_message_and_delproperty():
 # Streaming parser                                                             #
 # --------------------------------------------------------------------------- #
 def test_stream_parser_across_chunk_boundaries():
+    """The stream parser reassembles a message fed one byte at a time."""
     vec = NumberVector(device="CCD", name="EXPOSURE", elements=[Number(name="CCD_EXP", value=1.0)])
     blob = to_xml(DefVector(vector=vec))
     parser = XMLStreamParser()
@@ -223,6 +250,7 @@ def test_stream_parser_across_chunk_boundaries():
 
 
 def test_stream_parser_multiple_messages_one_feed():
+    """The stream parser emits every message present in one fed chunk."""
     a = to_xml(Message(message="one"))
     b = to_xml(Message(message="two"))
     parser = XMLStreamParser()
@@ -231,6 +259,7 @@ def test_stream_parser_multiple_messages_one_feed():
 
 
 def test_stream_parser_is_valid_xml_output():
+    """to_xml always produces well-formed, parseable XML."""
     vec = SwitchVector(
         device="Mount", name="PARK", elements=[Switch(name="PARK", value=ISState.ON)]
     )

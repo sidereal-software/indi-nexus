@@ -33,23 +33,35 @@ class _Harness:
     """A controllable stdin (feed/eof) and a capturing stdout."""
 
     def __init__(self) -> None:
+        """Create an empty inbox queue and output buffer."""
         # ``b""`` is the read-side EOF signal, matching a real closed pipe.
         self._inbox: asyncio.Queue[bytes] = asyncio.Queue()
         self.outputs: list[bytes] = []
 
     def feed(self, data: str | bytes) -> None:
+        """Queue inbound bytes for the runtime's reader.
+
+        Parameters
+        ----------
+        data:
+            The bytes (or text) to deliver as the next read.
+        """
         self._inbox.put_nowait(data.encode() if isinstance(data, str) else data)
 
     def eof(self) -> None:
+        """Signal end-of-input to the reader."""
         self._inbox.put_nowait(b"")
 
     async def read(self) -> bytes:
+        """Return the next queued chunk (``b""`` at EOF)."""
         return await self._inbox.get()
 
     async def write(self, data: bytes) -> None:
+        """Capture one outbound chunk from the runtime's writer."""
         self.outputs.append(data)
 
     def messages(self) -> list[IndiMessage]:
+        """Parse everything written so far into message models."""
         return parse_indi(b"".join(self.outputs))
 
 
@@ -57,13 +69,17 @@ class _Harness:
 # Test devices                                                                 #
 # --------------------------------------------------------------------------- #
 class _Simple(Device):
+    """A minimal device that defines two properties and counts setup calls."""
+
     name = "Simple"
 
     def __init__(self, name: str | None = None) -> None:
+        """Initialise with a zeroed setup counter."""
         super().__init__(name)
         self.setup_calls = 0
 
     async def setup(self) -> None:
+        """Define a number and a switch vector, tracking the call count."""
         self.setup_calls += 1
         self.define_number("num", [Number(name="v", value=1.0)], state=IPState.OK)
         self.define_switch(
@@ -74,15 +90,19 @@ class _Simple(Device):
 
 
 class _Poller(Device):
+    """A device whose periodic job defines a property and emits each tick."""
+
     name = "Poller"
 
     def __init__(self, name: str | None = None) -> None:
+        """Initialise with a zeroed tick count and no stop callback."""
         super().__init__(name)
         self.count = 0
         self.stop: Any = None
 
     @every(seconds=0.001, start_immediately=True)
     async def tick(self) -> None:
+        """Count up, emit an update, and stop the session after three ticks."""
         if "x" not in self:
             self.define_number("x", [Number(name="v")])
         self.count += 1
@@ -92,15 +112,19 @@ class _Poller(Device):
 
 
 class _Boom(Device):
+    """A device whose periodic job always raises, to test error isolation."""
+
     name = "Boom"
 
     def __init__(self, name: str | None = None) -> None:
+        """Initialise with a zeroed tick count and no stop callback."""
         super().__init__(name)
         self.ticks = 0
         self.stop: Any = None
 
     @every(seconds=0.001, start_immediately=True)
     async def bad(self) -> None:
+        """Stop the session after two ticks, then raise on every tick."""
         self.ticks += 1
         if self.ticks >= 2 and self.stop is not None:
             self.stop()
@@ -108,18 +132,23 @@ class _Boom(Device):
 
 
 class _Handler(Device):
+    """A device recording which writes reach its handler vs. the default."""
+
     name = "Handler"
 
     def __init__(self, name: str | None = None) -> None:
+        """Initialise with no recorded handled/fallback vectors."""
         super().__init__(name)
         self.handled: SwitchVector | None = None
         self.fallback: Any = None
 
     @on_new("power")
     async def _power(self, vector: SwitchVector) -> None:
+        """Record a client write routed to the ``power`` handler."""
         self.handled = vector
 
     async def on_new_default(self, vector: Any) -> None:
+        """Record a client write with no matching handler."""
         self.fallback = vector
 
 
@@ -127,7 +156,10 @@ class _Handler(Device):
 # Lifecycle                                                                    #
 # --------------------------------------------------------------------------- #
 def test_get_properties_runs_setup_once_and_defines() -> None:
+    """A first ``getProperties`` runs ``setup`` once and emits every def."""
+
     async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
         harness = _Harness()
         dev = _Simple()
         harness.feed("<getProperties version='1.7'/>")
@@ -142,7 +174,10 @@ def test_get_properties_runs_setup_once_and_defines() -> None:
 
 
 def test_second_get_properties_reannounces_without_rerunning_setup() -> None:
+    """A repeat ``getProperties`` re-announces defs without re-running setup."""
+
     async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
         harness = _Harness()
         dev = _Simple()
         harness.feed("<getProperties/>")
@@ -162,7 +197,10 @@ def test_second_get_properties_reannounces_without_rerunning_setup() -> None:
 # @every                                                                       #
 # --------------------------------------------------------------------------- #
 def test_periodic_task_emits_updates() -> None:
+    """An ``@every`` job emits one set per tick until the session ends."""
+
     async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
         harness = _Harness()
         dev = _Poller()
         dev.stop = harness.eof  # the 3rd tick ends the session
@@ -177,7 +215,10 @@ def test_periodic_task_emits_updates() -> None:
 
 
 def test_periodic_task_error_is_isolated() -> None:
+    """A raising tick is surfaced as a message and never crashes the driver."""
+
     async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
         harness = _Harness()
         dev = _Boom()
         dev.stop = harness.eof
@@ -196,7 +237,10 @@ def test_periodic_task_error_is_isolated() -> None:
 # @on_new dispatch                                                             #
 # --------------------------------------------------------------------------- #
 def test_on_new_routes_to_handler_and_default() -> None:
+    """Client writes route to the matching handler, else ``on_new_default``."""
+
     async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
         harness = _Harness()
         dev = _Handler()
         harness.feed(
@@ -223,6 +267,7 @@ def test_on_new_routes_to_handler_and_default() -> None:
 # BoundProperty                                                                #
 # --------------------------------------------------------------------------- #
 def test_set_one_of_many_clears_siblings_and_round_trips() -> None:
+    """Setting one OneOfMany switch On clears siblings and round-trips."""
     captured: list[IndiMessage] = []
     vec = SwitchVector(
         device="d",
@@ -246,6 +291,7 @@ def test_set_one_of_many_clears_siblings_and_round_trips() -> None:
 
 
 def test_reserved_element_name_via_values_dict() -> None:
+    """The positional values dict sets an element whose name is reserved."""
     captured: list[IndiMessage] = []
     vec = SwitchVector(
         device="d",
@@ -265,6 +311,7 @@ def test_reserved_element_name_via_values_dict() -> None:
 # Instance isolation (guards the legacy class-global @repeat regression)       #
 # --------------------------------------------------------------------------- #
 def test_periodic_discovery_is_per_instance() -> None:
+    """Periodic jobs and handler maps are bound per instance, not shared."""
     a = _Poller("A")
     b = _Poller("B")
     ((_, a_tick),) = list(iter_periodic(a))
