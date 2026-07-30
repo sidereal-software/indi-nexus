@@ -1,16 +1,17 @@
-"""Run the web bridge against the in-process demo device, without ``indiserver``.
+"""Run the web bridge against an in-process driver, without ``indiserver``.
 
-This wires the reference :class:`~examples.demo_device.Demo` driver directly to an
-:class:`~indi_nexus.client.IndiClient` through two in-memory byte pipes (the same
-technique as ``tests/test_integration.py``), hands that client to the FastAPI app,
-and serves it with uvicorn. The result is the full web stack - bridge, REST, and
-the reference panel at ``/`` - backed by live demo data, with no external
-``indiserver`` required. It is meant for local development and end-to-end testing
-of the frontend.
+This wires a driver (the reference :class:`~examples.demo_device.Demo` by
+default, or any ``Device`` subclass named with ``--device module:attr``) directly
+to an :class:`~indi_nexus.client.IndiClient` through two in-memory byte pipes
+(the same technique as ``tests/test_integration.py``), hands that client to the
+FastAPI app, and serves it with uvicorn. The result is the full web stack -
+bridge, REST, and the reference panel at ``/`` - backed by a live driver, with no
+external ``indiserver`` required. It is meant for local development and
+end-to-end testing of the frontend.
 
-Run it from the repository root with ``python -m examples.demo_bridge`` (optionally
-``--host``/``--port``), then open the printed URL, or point the panel's Vite dev
-server at it.
+Run it from the repository root with ``python -m examples.demo_bridge``
+(optionally ``--host``/``--port``/``--device``), then open the printed URL, or
+point the panel's Vite dev server at it.
 """
 
 from __future__ import annotations
@@ -20,9 +21,9 @@ import asyncio
 
 import uvicorn
 
-from examples.demo_device import Demo
+from indi_nexus.cli import load_device
 from indi_nexus.client import IndiClient
-from indi_nexus.driver import DriverRuntime
+from indi_nexus.driver import Device, DriverRuntime
 from indi_nexus.transport import CloseFn, ReadFn, WriteFn
 from indi_nexus.web import create_app
 
@@ -47,8 +48,8 @@ class _Pipe:
         self._queue.put_nowait(b"")
 
 
-async def _serve(host: str, port: int) -> None:
-    """Wire the demo driver to the web app and serve it until interrupted.
+async def _serve(host: str, port: int, device: Device) -> None:
+    """Wire a driver to the web app and serve it until interrupted.
 
     Parameters
     ----------
@@ -56,11 +57,13 @@ async def _serve(host: str, port: int) -> None:
         The interface uvicorn binds to.
     port : int
         The TCP port uvicorn listens on.
+    device : Device
+        The driver instance to serve.
     """
     to_client = _Pipe()  # driver -> client
     to_driver = _Pipe()  # client -> driver
 
-    runtime = DriverRuntime(Demo(), to_driver.read, to_client.write)
+    runtime = DriverRuntime(device, to_driver.read, to_client.write)
 
     async def connect() -> tuple[ReadFn, WriteFn, CloseFn]:
         """Wire the client's read/write onto the two in-memory pipes."""
@@ -87,8 +90,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1", help="interface to bind (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="port to listen on (default 8000)")
+    parser.add_argument(
+        "--device",
+        default="examples.demo_device:Demo",
+        help="driver to serve, as 'module:attr' (default examples.demo_device:Demo)",
+    )
     args = parser.parse_args()
-    asyncio.run(_serve(args.host, args.port))
+    asyncio.run(_serve(args.host, args.port, load_device(args.device)()))
 
 
 if __name__ == "__main__":
