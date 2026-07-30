@@ -8,9 +8,11 @@ updates - always as M1 typed models, never raw XML.
 Concurrency is plain :mod:`asyncio`: a background connection loop reconnects with
 a fixed delay, and per connection a reader task folds inbound messages into the
 store (dispatching to subscribers) while a writer task drains an outbox queue. The
-transport is injectable (a ``connect`` coroutine returning ``read``/``write``
-callables) so tests drive the client over in-memory streams; the default opens a
-real TCP connection via :func:`indi_nexus.transport.open_tcp`.
+transport is injectable (a ``connect`` coroutine returning ``read``/``write``/
+``close`` callables) so tests drive the client over in-memory streams; the default
+opens a real TCP connection via :func:`indi_nexus.transport.open_tcp`. The
+``close`` callable is invoked whenever a connection ends - EOF, error, or
+:meth:`IndiClient.aclose` - so the OS socket never lingers between reconnects.
 """
 
 from __future__ import annotations
@@ -42,9 +44,9 @@ from indi_nexus.protocol import (
     XMLStreamParser,
     to_xml,
 )
-from indi_nexus.transport import ReadFn, WriteFn, open_tcp
+from indi_nexus.transport import CloseFn, ReadFn, WriteFn, open_tcp
 
-Connect = Callable[[], Awaitable[tuple[ReadFn, WriteFn]]]
+Connect = Callable[[], Awaitable[tuple[ReadFn, WriteFn, CloseFn]]]
 MessageCallback = Callable[[Message], object]
 ConnectionCallback = Callable[[bool], object]
 Predicate = Callable[[Vector], bool]
@@ -86,8 +88,9 @@ class IndiClient:
     reconnect_delay : float, optional
         Seconds to wait between a lost connection and the next attempt.
     connect : Connect, optional
-        Injectable connection factory returning ``(read, write)`` callables; used
-        by tests. Defaults to a real TCP connection to ``host``/``port``.
+        Injectable connection factory returning ``(read, write, close)``
+        callables; used by tests. Defaults to a real TCP connection to
+        ``host``/``port``.
     """
 
     def __init__(
@@ -120,7 +123,7 @@ class IndiClient:
         self._ready = asyncio.Event()
 
     # -- lifecycle --------------------------------------------------------- #
-    async def _default_connect(self) -> tuple[ReadFn, WriteFn]:
+    async def _default_connect(self) -> tuple[ReadFn, WriteFn, CloseFn]:
         """Open the default TCP connection to the configured host and port."""
         return await open_tcp(self._host, self._port, connect_timeout=self._connect_timeout)
 
@@ -157,7 +160,7 @@ class IndiClient:
         """Connect, serve, and reconnect until :meth:`aclose` is called."""
         while not self._closing:
             try:
-                read, write = await self._connect()
+                read, write, close = await self._connect()
             except (OSError, TimeoutError):
                 await asyncio.sleep(self._reconnect_delay)
                 continue
@@ -171,6 +174,10 @@ class IndiClient:
                 pass
             finally:
                 self._connected = False
+                # Always release the socket - on EOF, error, or cancellation via
+                # aclose() - so the peer sees FIN instead of a half-open socket.
+                with contextlib.suppress(OSError):
+                    await close()
                 await self._dispatch_connection(False)
             if self._closing:
                 break

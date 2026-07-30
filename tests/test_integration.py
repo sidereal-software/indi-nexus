@@ -50,9 +50,13 @@ def test_driver_and_client_interoperate():
         runtime = DriverRuntime(device, to_driver.read, to_client.write)
         driver_task = asyncio.create_task(runtime.serve())
 
-        async def connect() -> tuple[object, object]:
+        async def connect() -> tuple[object, object, object]:
             """Wire the client's read/write onto the two pipes."""
-            return to_client.read, to_driver.write
+
+            async def close() -> None:
+                """Nothing to release for the in-memory pipes."""
+
+            return to_client.read, to_driver.write, close
 
         client = IndiClient(connect=connect)
         try:
@@ -90,9 +94,13 @@ def test_bridge_relays_driver_to_a_browser_sink():
         runtime = DriverRuntime(device, to_driver.read, to_client.write)
         driver_task = asyncio.create_task(runtime.serve())
 
-        async def connect() -> tuple[object, object]:
+        async def connect() -> tuple[object, object, object]:
             """Wire the client's read/write onto the two pipes."""
-            return to_client.read, to_driver.write
+
+            async def close() -> None:
+                """Nothing to release for the in-memory pipes."""
+
+            return to_client.read, to_driver.write, close
 
         client = IndiClient(connect=connect)
         bridge = Bridge(client)

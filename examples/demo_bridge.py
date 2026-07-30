@@ -23,7 +23,7 @@ import uvicorn
 from examples.demo_device import Demo
 from indi_nexus.client import IndiClient
 from indi_nexus.driver import DriverRuntime
-from indi_nexus.transport import ReadFn, WriteFn
+from indi_nexus.transport import CloseFn, ReadFn, WriteFn
 from indi_nexus.web import create_app
 
 
@@ -62,9 +62,13 @@ async def _serve(host: str, port: int) -> None:
 
     runtime = DriverRuntime(Demo(), to_driver.read, to_client.write)
 
-    async def connect() -> tuple[ReadFn, WriteFn]:
+    async def connect() -> tuple[ReadFn, WriteFn, CloseFn]:
         """Wire the client's read/write onto the two in-memory pipes."""
-        return to_client.read, to_driver.write
+
+        async def close() -> None:
+            """Nothing to release for in-memory pipes; EOF is sent at shutdown."""
+
+        return to_client.read, to_driver.write, close
 
     client = IndiClient(connect=connect)
     app = create_app(client=client)
