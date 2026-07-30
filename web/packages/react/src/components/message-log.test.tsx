@@ -16,7 +16,7 @@ describe("MessageLog", () => {
     expect(screen.getByText("No messages yet.")).toBeInTheDocument();
   });
 
-  it("renders device, text, and a local time for each message", () => {
+  it("stacks a time/device header above each message's text", () => {
     const { socket } = renderConnected(<MessageLog />);
     receive(socket, {
       tag: "message",
@@ -24,10 +24,12 @@ describe("MessageLog", () => {
       message: "exposure started",
       timestamp: "2026-07-30T12:34:56Z",
     });
-    expect(screen.getByText("CCD")).toBeInTheDocument();
-    const line = screen.getByText("exposure started").parentElement;
+    // The header line (time + device) sits directly above the message text, so
+    // long messages wrap at the panel margin instead of mid-row.
+    const header = screen.getByText("exposure started").previousElementSibling;
+    expect(header).toHaveTextContent("CCD");
     // The exact rendering is locale-dependent; just require a non-empty time.
-    expect(line?.querySelector(".tabular-nums")?.textContent).not.toBe("");
+    expect(header?.querySelector(".tabular-nums")?.textContent).not.toBe("");
   });
 
   it("renders no time for a missing or unparseable timestamp", () => {
