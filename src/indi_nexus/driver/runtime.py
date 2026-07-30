@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any
 
 from indi_nexus.driver.device import Device
@@ -33,9 +33,7 @@ from indi_nexus.protocol import (
     XMLStreamParser,
     to_xml,
 )
-
-ReadFn = Callable[[], Awaitable[bytes]]
-WriteFn = Callable[[bytes], Awaitable[None]]
+from indi_nexus.transport import ReadFn, WriteFn
 
 _READ_CHUNK = 65536
 
