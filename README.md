@@ -53,39 +53,70 @@ INDINexus provides three things, all built on one shared, typed protocol model:
 | UI components / theme | shadcn/ui + Tailwind CSS v4 |
 | JS packaging | pnpm workspace, tsup, Biome, Vitest |
 
-## Getting started
+## Quickstart
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+.
+Requires [uv](https://docs.astral.sh/uv/) (Python 3.12+) and, for the frontend,
+[pnpm](https://pnpm.io) (Node 20+). The fastest way to see the **whole stack** - backend,
+bridge, and the web panel - with **no `indiserver`** needed:
 
 ```bash
-# Create the virtualenv and install the package with dev dependencies
+# 1. Backend: create the venv and install (first time)
 uv venv --python 3.12
 uv pip install -e ".[dev]"
+
+# 2. Frontend: build the TypeScript panel into the package (first time / after UI changes)
+cd web && pnpm install && pnpm -r build && cd ..
+
+# 3. Run the demo bridge: the web app wired to a live in-process demo device
+python -m examples.demo_bridge
 ```
 
-## Development
+Then open <http://localhost:8000/> for the reference panel (toggle the Demo device's switch and
+watch state update), or <http://localhost:8000/debug> for the raw debug inspector.
 
-All commands run through `uv`, which uses the project virtualenv automatically.
+## Command reference
+
+**Backend** (Python, run through `uv`):
 
 ```bash
-# Run the test suite
-uv run pytest
-
-# Run a single test
-uv run pytest -k "test_number_vector_def_roundtrip"
-
-# Lint
-uv run ruff check src tests
-
-# Auto-format
-uv run ruff format src tests
-
-# Type-check (strict)
-uv run mypy src
+uv run pytest                     # run the test suite
+uv run pytest -k "name"           # run a single test by name
+uv run ruff check src tests       # lint
+uv run ruff format src tests      # auto-format
+uv run mypy src                   # type-check (strict)
 ```
 
-Before committing, the expected green baseline is: `ruff check` clean, `mypy src` clean,
-and `pytest` passing.
+**Frontend** (TypeScript, run with `pnpm` from `web/`):
+
+```bash
+pnpm install                          # install workspace deps (first time)
+pnpm -r build                         # build the libraries + panel (into the Python package)
+pnpm -r test                          # run all package tests (Vitest)
+pnpm -r typecheck                     # type-check every package
+pnpm lint                             # lint + format check (Biome)
+pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxies to :8000)
+```
+
+**Run it**:
+
+```bash
+python -m examples.demo_bridge              # bridge + live demo device, no indiserver (open :8000)
+indi-nexus serve                            # bridge against a real indiserver (open :8000)
+indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
+indi-nexus monitor                          # print live INDI updates from indiserver
+indi-nexus --help                           # all CLI commands and options
+```
+
+**Package**:
+
+```bash
+uv build                          # build sdist + wheel; the panel is bundled, so pip install ships the UI
+```
+
+The expected green baseline before committing: `ruff check` + `mypy src` + `pytest` clean, and
+in `web/`, `pnpm lint` + `pnpm -r typecheck` + `pnpm -r test` + `pnpm -r build` clean. CI
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of these plus a check that the
+wheel bundles the panel.
 
 ## Project layout
 
