@@ -1,8 +1,8 @@
 /** A streaming, scrollable feed of INDI `message` notifications. */
 
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/ui/scroll-area";
 import { useMessages } from "../hooks";
-import { cn } from "../lib/utils";
-import { ScrollArea } from "../ui/scroll-area";
 
 /** Render an ISO timestamp as a local time string, or empty when absent. */
 function formatTime(timestamp: string | null | undefined): string {

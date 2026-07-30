@@ -228,5 +228,10 @@ web/**/dist/
 web/**/*.tsbuildinfo
 .turbo/
 
+# The Python `lib/` rule above also matches JS source dirs named `lib/` under web/
+# (e.g. shadcn's `cn` helper at packages/react/src/lib); keep the frontend's source tracked.
+!web/**/lib/
+!web/**/lib/**
+
 # Built reference panel, emitted into the package by `pnpm --filter panel build`
 src/indi_nexus/web/static/panel/

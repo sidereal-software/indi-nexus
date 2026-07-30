@@ -1,8 +1,8 @@
 /** A card presenting one INDI property vector: header + kind-specific control. */
 
 import type { Vector } from "@indi-nexus/client";
-import { cn } from "../lib/utils";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { VectorControl } from "./element-controls";
 import { StateBadge } from "./state-badge";
 

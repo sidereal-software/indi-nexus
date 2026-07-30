@@ -27,12 +27,12 @@ import {
   type Vector,
 } from "@indi-nexus/client";
 import type { FormEvent } from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/ui/field";
+import { Input } from "@/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { useIndiClient } from "../context";
-import { cn } from "../lib/utils";
-import { Button } from "../ui/button";
-import { Field, FieldGroup, FieldLabel } from "../ui/field";
-import { Input } from "../ui/input";
-import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 
 /** Tailwind background classes per light/vector state. */
 const STATE_DOT: Record<IPState, string> = {

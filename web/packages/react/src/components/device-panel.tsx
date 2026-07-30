@@ -1,8 +1,8 @@
 /** All of one device's properties, grouped by INDI group, as a grid of cards. */
 
 import type { DeviceSnapshot, Vector } from "@indi-nexus/client";
+import { cn } from "@/lib/utils";
 import { useDevice } from "../hooks";
-import { cn } from "../lib/utils";
 import { PropertyVectorCard } from "./property-vector-card";
 
 /** Group a device's vectors by their `group`, sorted by group then name. */
