@@ -12,6 +12,7 @@ import {
   ConnectionStatus,
   DevicePanel,
   DisplaySettingsProvider,
+  type IndiClient,
   IndiProvider,
   Label,
   MessageLog,
@@ -230,10 +231,19 @@ function AppShell() {
   );
 }
 
+/** Props for {@link App}. */
+export interface AppProps {
+  /**
+   * An existing client to use (e.g. a simulated one for demos/tests); by
+   * default the panel connects to the serving bridge's `/ws`.
+   */
+  client?: IndiClient;
+}
+
 /** The panel root: providers + shell. */
-export default function App() {
+export default function App({ client }: AppProps) {
   return (
-    <IndiProvider>
+    <IndiProvider client={client}>
       <TooltipProvider delayDuration={150}>
         <SidebarProvider>
           <AppShell />
