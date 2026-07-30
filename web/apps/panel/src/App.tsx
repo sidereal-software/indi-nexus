@@ -160,16 +160,26 @@ function DeviceSidebar({
   );
 }
 
-/** The docked messages panel: the INDI log, always at hand like a status bar. */
-function MessagesPanel() {
+/** The right sidebar: the INDI message log, a mirror of the device sidebar. */
+function MessagesSidebar() {
   return (
-    <aside aria-label="Messages" className="flex w-80 shrink-0 flex-col border-l bg-background">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3 text-sm font-medium">
-        <MessageSquareText className="size-4 text-muted-foreground" />
-        Messages
-      </div>
-      <MessageLog className="min-h-0 flex-1" />
-    </aside>
+    <Sidebar
+      side="right"
+      collapsible="none"
+      role="complementary"
+      aria-label="Messages"
+      className="h-svh shrink-0 border-l"
+    >
+      <SidebarHeader className="p-3">
+        <div className="flex items-center gap-2">
+          <MessageSquareText className="size-5 text-primary" />
+          <span className="text-sm font-semibold">Messages</span>
+        </div>
+      </SidebarHeader>
+      <SidebarContent className="overflow-hidden">
+        <MessageLog className="min-h-0 flex-1" />
+      </SidebarContent>
+    </Sidebar>
   );
 }
 
@@ -226,19 +236,17 @@ function AppShell() {
           <Separator orientation="vertical" className="h-5" />
           <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
         </header>
-        <div className="flex min-h-0 flex-1">
-          <main className="min-w-0 flex-1 overflow-auto p-4">
-            {active ? (
-              <DevicePanel device={active} />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Waiting for devices from indiserver…
-              </div>
-            )}
-          </main>
-          {messagesOpen ? <MessagesPanel /> : null}
-        </div>
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+          {active ? (
+            <DevicePanel device={active} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Waiting for devices from indiserver…
+            </div>
+          )}
+        </main>
       </SidebarInset>
+      {messagesOpen ? <MessagesSidebar /> : null}
     </DisplaySettingsProvider>
   );
 }
