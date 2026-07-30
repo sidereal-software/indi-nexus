@@ -9,6 +9,7 @@
 
 export { useIsMobile } from "@/hooks/use-mobile";
 export { cn } from "@/lib/utils";
+export * from "@/ui/accordion";
 export * from "@/ui/badge";
 export * from "@/ui/button";
 export * from "@/ui/card";
