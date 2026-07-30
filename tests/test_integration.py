@@ -1,0 +1,76 @@
+"""End-to-end test wiring the driver SDK and the client over the shared contract.
+
+No ``indiserver`` is involved: a :class:`DriverRuntime` (M2) and an
+:class:`IndiClient` (M3) are cross-connected through two in-memory byte pipes
+(driver output -> client input, client output -> driver input). This proves the
+two halves interoperate purely through the M1 protocol models.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+from examples.demo_device import Demo
+from indi_nexus.client import IndiClient
+from indi_nexus.driver import DriverRuntime
+from indi_nexus.protocol import IPState, ISState
+
+
+class _Pipe:
+    """A one-way in-memory byte channel with an EOF sentinel."""
+
+    def __init__(self) -> None:
+        """Create the channel's backing queue."""
+        self._q: asyncio.Queue[bytes] = asyncio.Queue()
+
+    async def read(self) -> bytes:
+        """Return the next chunk written to the channel (``b""`` at EOF)."""
+        return await self._q.get()
+
+    async def write(self, data: bytes) -> None:
+        """Write one chunk to the channel."""
+        self._q.put_nowait(data)
+
+    def eof(self) -> None:
+        """Signal end-of-stream to the reader."""
+        self._q.put_nowait(b"")
+
+
+def test_driver_and_client_interoperate():
+    """A client drives the demo device end-to-end: enumerate, set, confirm."""
+
+    async def scenario() -> None:
+        to_client = _Pipe()  # driver -> client
+        to_driver = _Pipe()  # client -> driver
+
+        device = Demo()
+        runtime = DriverRuntime(device, to_driver.read, to_client.write)
+        driver_task = asyncio.create_task(runtime.serve())
+
+        async def connect() -> tuple[object, object]:
+            """Wire the client's read/write onto the two pipes."""
+            return to_client.read, to_driver.write
+
+        client = IndiClient(connect=connect)
+        try:
+            async with client:
+                # getProperties (sent on connect) -> driver setup() -> defs arrive.
+                power = await client.wait_for("Demo", "power", timeout=2)
+                assert power is not None
+                assert "Demo" in client.store
+
+                # Client turns the switch on; the driver's @on_new echoes it back.
+                await client.set_switch("Demo", "power", {"on": True})
+                confirmed = await client.wait_for(
+                    "Demo",
+                    "power",
+                    lambda v: v.element("on").value == ISState.ON and v.state == IPState.OK,
+                    timeout=2,
+                )
+                assert confirmed.element("on").value == ISState.ON
+                assert confirmed.element("off").value == ISState.OFF  # OneOfMany cleared it
+        finally:
+            to_driver.eof()
+            await asyncio.wait_for(driver_task, timeout=2)
+
+    asyncio.run(scenario())
