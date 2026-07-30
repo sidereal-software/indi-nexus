@@ -10,7 +10,8 @@ import type {
 } from "@indi-nexus/client";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { renderConnected } from "../testing/render";
+import { useProperty } from "../hooks";
+import { receive, renderConnected } from "../testing/render";
 import {
   BlobVectorControl,
   LightVectorControl,
@@ -79,6 +80,19 @@ describe("ValueVectorControl", () => {
     expect(input).toHaveAttribute("step", "0.5");
   });
 
+  it("uses step=any when the element declares no step", () => {
+    // HTML number inputs default to step=1, which would make fractional values
+    // (RA 5.5h) fail native validation and silently block the submit.
+    renderConnected(
+      <ValueVectorControl
+        vector={numberVec({
+          elements: [{ kind: "number", name: "RA", value: 0, min: 0, max: 24 }],
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("RA")).toHaveAttribute("step", "any");
+  });
+
   it("sends only the non-blank number inputs on Set", () => {
     const vector = numberVec({
       elements: [
@@ -95,6 +109,51 @@ describe("ValueVectorControl", () => {
     const frame = socket.lastSent<NewVector>();
     expect(frame.tag).toBe("new");
     expect(frame.vector.elements).toEqual([{ kind: "number", name: "RA", value: 5 }]);
+  });
+
+  it("shows a live current-value readout beside a writable input", () => {
+    // The readout is telemetry (where the device is now); the input is only the
+    // requested new value, so a slewing dome must update the readout while
+    // leaving whatever the operator typed in the input untouched.
+    function Probe() {
+      const vector = useProperty("Dome", "ABS_DOME_POSITION");
+      return vector?.kind === "number" ? <ValueVectorControl vector={vector} /> : null;
+    }
+    const { socket } = renderConnected(<Probe />);
+    const vector: NumberVector = {
+      kind: "number",
+      device: "Dome",
+      name: "ABS_DOME_POSITION",
+      state: "Busy",
+      perm: "rw",
+      elements: [{ kind: "number", name: "az", format: "%.2f", value: 10 }],
+    };
+    receive(socket, { tag: "def", vector });
+
+    const input = screen.getByLabelText("az") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "120" } });
+
+    receive(socket, {
+      tag: "set",
+      vector: { ...vector, elements: [{ kind: "number", name: "az", value: 15 }] },
+    });
+    expect(screen.getByTitle("Current value")).toHaveTextContent("15.00");
+    expect(input.value).toBe("120"); // the operator's pending request survives
+
+    receive(socket, {
+      tag: "set",
+      vector: { ...vector, elements: [{ kind: "number", name: "az", value: 20 }] },
+    });
+    expect(screen.getByTitle("Current value")).toHaveTextContent("20.00");
+  });
+
+  it("renders a sexagesimal readout for %m formats", () => {
+    const vector = numberVec({
+      perm: "ro",
+      elements: [{ kind: "number", name: "RA", format: "%9.6m", value: 12.582777778 }],
+    });
+    renderConnected(<ValueVectorControl vector={vector} />);
+    expect(screen.getByText("12:34:58")).toBeInTheDocument();
   });
 
   it("sends every text value on Set", () => {

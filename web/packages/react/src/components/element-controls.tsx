@@ -16,6 +16,7 @@
 
 import {
   type BlobVector,
+  formatNumber,
   type IPState,
   isWritable,
   type LightVector,
@@ -42,23 +43,26 @@ const STATE_DOT: Record<IPState, string> = {
   Alert: "bg-state-alert",
 };
 
-/** Format a number for display, honouring a simple printf `%.Nf` precision. */
-function formatNumber(element: NumberElement): string {
-  const match = element.format?.match(/\.(\d+)f/);
-  if (match) return element.value.toFixed(Number(match[1]));
-  return String(element.value);
+/** The display text for an element's current value (numbers per their format). */
+function currentValue(element: NumberElement | TextElement): string {
+  if (element.kind === "number") return formatNumber(element.value, element.format).trim();
+  return element.value;
 }
 
 /** Extract `min`/`max`/`step` HTML attributes from a number element. */
 function numberInputProps(element: NumberElement): {
   min?: number;
   max?: number;
-  step?: number;
+  step: number | "any";
 } {
-  const props: { min?: number; max?: number; step?: number } = {};
+  // Without an explicit step, HTML number inputs default to step=1, which makes
+  // fractional values (e.g. RA 5.5h) fail native validation and silently block
+  // the form submit. INDI's "no step" (absent or 0) must mean "any".
+  const props: { min?: number; max?: number; step: number | "any" } = {
+    step: element.step ? element.step : "any",
+  };
   if (element.min != null) props.min = element.min;
   if (element.max != null) props.max = element.max;
-  if (element.step != null) props.step = element.step;
   return props;
 }
 
@@ -85,7 +89,7 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
               {element.label ?? element.name}
             </FieldLabel>
             <span className="ml-auto truncate font-mono text-sm tabular-nums">
-              {element.kind === "number" ? formatNumber(element) : element.value}
+              {currentValue(element)}
             </span>
           </Field>
         ))}
@@ -120,15 +124,28 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
           const id = `${vector.device}.${vector.name}.${element.name}`;
           return (
             <Field key={element.name} orientation="horizontal">
-              <FieldLabel htmlFor={id} className="text-muted-foreground">
+              <FieldLabel
+                htmlFor={id}
+                title={element.label ?? element.name}
+                className="min-w-0 truncate text-muted-foreground"
+              >
                 {element.label ?? element.name}
               </FieldLabel>
+              {/* Live telemetry: the device's current value, updating with each
+                  set; the input beside it is only the *requested* new value. The
+                  readout never shrinks away - the label truncates instead. */}
+              <span
+                title="Current value"
+                className="ml-auto shrink-0 font-mono text-sm tabular-nums"
+              >
+                {currentValue(element)}
+              </span>
               <Input
                 id={id}
                 name={element.name}
                 type={element.kind === "number" ? "number" : "text"}
                 defaultValue={String(element.value)}
-                className="ml-auto w-44 font-mono tabular-nums"
+                className="w-28 shrink-0 font-mono tabular-nums"
                 {...(element.kind === "number" ? numberInputProps(element) : {})}
               />
             </Field>
