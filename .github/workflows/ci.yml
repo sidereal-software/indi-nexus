@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv --python 3.12
+      - run: uv pip install -e ".[dev]"
+      - name: Lint
+        run: uv run ruff check src tests examples hatch_build.py
+      - name: Format check
+        run: uv run ruff format --check src tests examples hatch_build.py
+      - name: Type-check
+        run: uv run mypy src
+      - name: Test
+        run: uv run pytest
+
+  frontend:
+    name: Frontend (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint + format
+        run: pnpm lint
+      - name: Type-check
+        run: pnpm -r typecheck
+      - name: Test
+        run: pnpm -r test
+      - name: Build
+        run: pnpm -r build
+
+  package:
+    name: Package (wheel bundles the panel)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - uses: astral-sh/setup-uv@v5
+      - name: Build the frontend
+        run: |
+          cd web
+          pnpm install --frozen-lockfile
+          pnpm -r build
+      - name: Build the wheel
+        run: uv build --wheel
+      - name: Verify the panel is bundled
+        run: |
+          unzip -l dist/*.whl | grep -q 'indi_nexus/web/static/panel/index.html' || {
+            echo "::error::the reference panel is missing from the wheel"; exit 1; }
+          unzip -l dist/*.whl | grep -q 'indi_nexus/web/static/panel/assets/' || {
+            echo "::error::the panel assets are missing from the wheel"; exit 1; }
+          echo "OK: the wheel bundles the reference panel"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
