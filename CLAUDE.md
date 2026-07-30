@@ -56,8 +56,8 @@ src/indi_nexus/
 ├── driver/       DONE   driver SDK: subclass a base device; stdio XML under indiserver
 ├── client/       DONE   reconnecting asyncio TCP client to indiserver + property cache
 ├── transport.py  DONE   shared ReadFn/WriteFn byte-stream contract + TCP adapter
-├── web/          planned  FastAPI app: WebSocket bridge translating INDI XML <-> JSON
-└── cli.py        planned  Typer CLI (run driver, serve web, scan)
+├── web/          DONE   FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + debug page
+└── cli.py        DONE   Typer CLI (serve web, run driver, monitor)
 ```
 
 Data flow (unchanged from the INDI model):
@@ -99,6 +99,10 @@ and the "accumulate stdin and retry `etree.fromstring`" framing loop.
   - Number values honor the INDI printf `format`, including the `%m` sexagesimal form
     (`format_number` / `parse_number` mirror libindi's `fs_sexa` / `f_scansexa`). This
     matters for RA/Dec interop; `%9.6m` etc. are field-width padded like libindi.
+- `json.py` - the JSON codec for browsers. `to_json(msg)` / `from_json(data)` mirror
+  `to_xml`/`parse_indi` over a `TypeAdapter(IndiMessage)` (the `tag` literals discriminate
+  the union). Same models, so the JSON is the frontend contract; BLOB bytes travel as
+  base64 (`ser_json_bytes="base64"` on the base model).
 
 ### The driver SDK (`src/indi_nexus/driver/`)
 
@@ -158,6 +162,34 @@ hacks, a SAX handler, and *no* cache).
 `examples/monitor_client.py` is the reference client (subscribe to all events, print each).
 `tests/test_integration.py` cross-wires a `DriverRuntime` and an `IndiClient` through
 in-memory pipes - a full driver<->client round-trip with no `indiserver`.
+
+### The web bridge (`src/indi_nexus/web/`)
+
+A FastAPI app that puts one shared `IndiClient` behind an HTTP/WebSocket surface and
+relays it to browsers as typed JSON. Replaces pyINDI's Tornado `webclient.py` (raw XML,
+SAX BLOB handler, server-side HTML/JS9 coupling).
+
+- `bridge.py` - `Bridge` owns the client and fans its activity out to a set of browser
+  WebSocket sinks: property events become `def`/`set`/`delProperty` JSON, `on_message`
+  becomes `message` JSON, and `on_connection` becomes a small `{"event":"connection"}`
+  **control** frame (the one non-INDI frame; UI needs it, the protocol has no message for
+  it). `snapshot()` primes a new browser with the current cache; `handle_incoming(text)`
+  parses a browser frame with `from_json` and forwards it via `client.send`.
+- `app.py` - `create_app(*, client=None, indi_host=, indi_port=)`. Lifespan starts/stops
+  the bridge. `GET /health`; `GET /api/devices[/{device}[/{name}]]` (read-only JSON
+  snapshot); `WS /ws` (snapshot on connect, then live, browser frames forwarded upstream);
+  `GET /` serves the debug page. `client` is injectable so tests use `TestClient` over an
+  in-memory upstream.
+- `static/debug.html` - a self-contained (no external requests) live inspector: color-coded
+  property tree grouped by device/group, editable RW vectors + clickable switches that send
+  writes (exercise a driver's `@on_new` from the browser), and a streaming color-coded raw
+  message feed. Aimed at driver authors.
+
+### The CLI (`src/indi_nexus/cli.py`)
+
+Typer app, the `indi-nexus` entrypoint. `serve` runs the web bridge (uvicorn); `run
+module:attr` imports a `Device` subclass and serves it over stdio; `monitor` prints live
+updates from `indiserver`. Heavy imports (uvicorn/fastapi) are lazy so `--help` stays fast.
 
 ## Conventions
 

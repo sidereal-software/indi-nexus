@@ -97,8 +97,8 @@ indi-nexus/
 │   ├── driver/              # DONE: driver SDK (stdio under indiserver)
 │   ├── client/              # DONE: reconnecting async client + property cache
 │   ├── transport.py         # DONE: shared read/write byte-stream contract + TCP adapter
-│   ├── web/                 # planned: FastAPI + WebSocket bridge
-│   └── cli.py               # planned: Typer CLI
+│   ├── web/                 # DONE: FastAPI bridge (WS + REST) + static/debug.html
+│   └── cli.py               # DONE: Typer CLI (serve / run / monitor)
 ├── examples/                # runnable reference driver + client
 ├── tests/                   # pytest suite
 └── web/                     # planned: pnpm workspace (client lib, React bindings, app)
@@ -172,6 +172,28 @@ async with IndiClient("localhost", 7624) as client:
     )
 ```
 
+## Run the web bridge
+
+The bridge connects to `indiserver`, keeps a typed cache, and relays it to browsers as
+JSON over a WebSocket. Everything runs through the `indi-nexus` CLI:
+
+```bash
+indi-nexus serve --indi-host localhost --indi-port 7624 --port 8000
+```
+
+Then open `http://localhost:8000/` for the built-in **debug inspector** - a live,
+color-coded property tree, a streaming message feed, and clickable/editable controls to
+send writes (handy for exercising a driver's `@on_new` handlers). Other endpoints:
+
+- `GET /health` - liveness + upstream connection state.
+- `GET /api/devices`, `GET /api/devices/{device}[/{name}]` - read-only JSON snapshot.
+- `WS /ws` - live stream (snapshot on connect, then updates); browser frames are forwarded
+  upstream. Messages are the protocol models as JSON, so the frontend contract is the
+  backend model schema.
+
+Other CLI commands: `indi-nexus run examples.demo_device:Demo` (serve a driver over stdio),
+`indi-nexus monitor` (print live updates).
+
 ## Roadmap
 
 - [x] **M1 - Protocol core**: enums, typed models, XML codec, streaming parser.
@@ -179,7 +201,8 @@ async with IndiClient("localhost", 7624) as client:
   `indiserver`.
 - [x] **M3 - Async client**: reconnecting `indiserver` client with a typed property cache,
   subscriptions, `wait_for`, and `enableBLOB`.
-- [ ] **M4 - Web bridge + CLI**: FastAPI WebSocket bridge (XML↔JSON), Typer CLI.
+- [x] **M4 - Web bridge + CLI**: FastAPI WebSocket bridge (XML↔JSON), REST snapshot, a
+  built-in debug inspector page, and the Typer CLI.
 - [ ] **M5 - Frontend**: pnpm workspace (client lib, React bindings, reference app).
 - [ ] **M5 - Frontend**: `@indi-nexus/client`, `@indi-nexus/react`, reference panel app.
 

@@ -1,19 +1,22 @@
-"""End-to-end test wiring the driver SDK and the client over the shared contract.
+"""End-to-end tests wiring the driver SDK, client, and web bridge together.
 
 No ``indiserver`` is involved: a :class:`DriverRuntime` (M2) and an
 :class:`IndiClient` (M3) are cross-connected through two in-memory byte pipes
-(driver output -> client input, client output -> driver input). This proves the
-two halves interoperate purely through the M1 protocol models.
+(driver output -> client input, client output -> driver input), proving the
+layers interoperate purely through the M1 protocol models. The second test adds
+the M4 :class:`Bridge` on top with a fake browser sink.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 
 from examples.demo_device import Demo
 from indi_nexus.client import IndiClient
 from indi_nexus.driver import DriverRuntime
 from indi_nexus.protocol import IPState, ISState
+from indi_nexus.web import Bridge
 
 
 class _Pipe:
@@ -70,6 +73,66 @@ def test_driver_and_client_interoperate():
                 assert confirmed.element("on").value == ISState.ON
                 assert confirmed.element("off").value == ISState.OFF  # OneOfMany cleared it
         finally:
+            to_driver.eof()
+            await asyncio.wait_for(driver_task, timeout=2)
+
+    asyncio.run(scenario())
+
+
+def test_bridge_relays_driver_to_a_browser_sink():
+    """A browser (fake sink) drives the demo device through the full bridge stack."""
+
+    async def scenario() -> None:
+        to_client = _Pipe()  # driver -> client
+        to_driver = _Pipe()  # client -> driver
+
+        device = Demo()
+        runtime = DriverRuntime(device, to_driver.read, to_client.write)
+        driver_task = asyncio.create_task(runtime.serve())
+
+        async def connect() -> tuple[object, object]:
+            """Wire the client's read/write onto the two pipes."""
+            return to_client.read, to_driver.write
+
+        client = IndiClient(connect=connect)
+        bridge = Bridge(client)
+        frames: list[str] = []
+
+        async def sink(text: str) -> None:
+            """Stand in for a browser WebSocket, recording broadcast frames."""
+            frames.append(text)
+
+        await bridge.start()
+        try:
+            await client.wait_for("Demo", "power", timeout=2)
+            bridge.add_sink(sink)
+
+            # A browser turns the power switch on; it flows bridge -> client ->
+            # driver -> @on_new -> back to the client and out to the sink.
+            await bridge.handle_incoming(
+                json.dumps(
+                    {
+                        "tag": "new",
+                        "vector": {
+                            "kind": "switch",
+                            "device": "Demo",
+                            "name": "power",
+                            "elements": [{"kind": "switch", "name": "on", "value": "On"}],
+                        },
+                    }
+                )
+            )
+            confirmed = await client.wait_for(
+                "Demo",
+                "power",
+                lambda v: v.element("on").value == ISState.ON and v.state == IPState.OK,
+                timeout=2,
+            )
+            assert confirmed.state == IPState.OK
+            # The fake browser saw the confirming set for the power vector.
+            assert any('"name":"power"' in f and '"tag":"set"' in f for f in frames)
+        finally:
+            await bridge.aclose()
             to_driver.eof()
             await asyncio.wait_for(driver_task, timeout=2)
 
