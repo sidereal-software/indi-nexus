@@ -8,9 +8,12 @@
  */
 
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
   Button,
   ConnectionStatus,
-  cn,
   DevicePanel,
   DisplaySettingsProvider,
   type IndiClient,
@@ -33,7 +36,6 @@ import {
   SidebarTrigger,
   Switch,
   Toaster,
-  Toggle,
   TooltipProvider,
   useDevices,
 } from "@indi-nexus/react";
@@ -143,37 +145,47 @@ function DeviceSidebar({
 
 /**
  * The bottom messages panel: a VS Code-style log strip docked below the device
- * area.
+ * area, disclosed by its own title bar.
  *
- * The strip is sticky - the vector cards scroll in their own region above it -
- * and the log scrolls independently inside, following the newest entry. It
- * stays mounted and animates its height with the same duration/easing as the
- * device sidebar; while closed it is hidden from the accessibility tree and
- * inert.
+ * The strip is a single-item accordion: the "Messages" bar is always visible
+ * and clicking it expands or collapses the log beneath, chevron and height
+ * animation included. The bar is sticky - the vector cards scroll in their own
+ * region above it - and the log scrolls independently inside, following the
+ * newest entry.
  *
  * The log shows up to 200 messages: the client's whole rolling buffer
  * (`messageLogLimit`, which itself covers the bridge's 100-message replay for
  * a freshly opened page). Older history belongs to the server logs, not a UI
  * strip, and 200 compact rows keep the DOM light.
  */
-function MessagesPanel({ open }: { open: boolean }) {
+function MessagesPanel({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
-    <div
-      aria-hidden={!open}
-      inert={!open}
-      className={cn(
-        "shrink-0 overflow-hidden transition-[height] duration-200 ease-linear",
-        open ? "h-56" : "h-0",
-      )}
-    >
-      <aside aria-label="Messages" className="flex h-56 flex-col border-t bg-background">
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-sm font-medium">
-          <MessageSquareText className="size-4 text-muted-foreground" />
-          Messages
-        </div>
-        <MessageLog className="min-h-0 flex-1" limit={200} />
-      </aside>
-    </div>
+    <aside aria-label="Messages" className="shrink-0 border-t bg-background">
+      <Accordion
+        type="single"
+        collapsible
+        value={open ? "messages" : ""}
+        onValueChange={(value) => onOpenChange(value === "messages")}
+      >
+        <AccordionItem value="messages" className="border-b-0">
+          <AccordionTrigger className="rounded-none px-3 py-2">
+            <span className="flex items-center gap-2">
+              <MessageSquareText className="size-4 text-muted-foreground" />
+              Messages
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="p-0">
+            <MessageLog className="h-56" limit={200} />
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    </aside>
   );
 }
 
@@ -227,15 +239,6 @@ function AppShell() {
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
           <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
-          <Toggle
-            size="sm"
-            className="ml-auto size-7 min-w-7 p-0"
-            pressed={messagesOpen}
-            onPressedChange={setMessagesOpenPersisted}
-            aria-label="Toggle messages"
-          >
-            <MessageSquareText />
-          </Toggle>
         </header>
         <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
           {active ? (
@@ -246,7 +249,7 @@ function AppShell() {
             </div>
           )}
         </div>
-        <MessagesPanel open={messagesOpen} />
+        <MessagesPanel open={messagesOpen} onOpenChange={setMessagesOpenPersisted} />
       </SidebarInset>
     </DisplaySettingsProvider>
   );

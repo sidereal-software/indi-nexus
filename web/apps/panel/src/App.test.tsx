@@ -115,25 +115,32 @@ describe("messages panel", () => {
     expect(screen.getByText("[INFO] Dome parked.")).toBeInTheDocument();
   });
 
-  it("collapses and reopens from the header toggle, remembering the choice", () => {
+  it("collapses and reopens from its own title bar, remembering the choice", () => {
     renderApp();
-    const toggle = screen.getByRole("button", { name: /toggle messages/i });
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    const trigger = screen.getByRole("button", { name: /messages/i });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
 
-    fireEvent.click(toggle);
-    expect(screen.queryByRole("complementary", { name: "Messages" })).not.toBeInTheDocument();
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("No messages yet.")).not.toBeInTheDocument();
     expect(localStorage.getItem("indi-messages")).toBe("closed");
 
-    fireEvent.click(toggle);
-    expect(screen.getByRole("complementary", { name: "Messages" })).toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("No messages yet.")).toBeInTheDocument();
     expect(localStorage.getItem("indi-messages")).toBe("open");
   });
 
-  it("starts collapsed when the last session closed it", () => {
+  it("starts collapsed when the last session closed it, title bar still shown", () => {
     localStorage.setItem("indi-messages", "closed");
     renderApp();
-    expect(screen.queryByRole("complementary", { name: "Messages" })).not.toBeInTheDocument();
+    // The title bar (the disclosure) is always visible; only the log is hidden.
+    expect(screen.getByRole("complementary", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /messages/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByText("No messages yet.")).not.toBeInTheDocument();
   });
 });
 
