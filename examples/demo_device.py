@@ -78,7 +78,13 @@ class Demo(Device):
 
     @every(seconds=1)
     async def animate(self) -> None:
-        """Advance the counter and cycle every property through the states."""
+        """Advance the counter and cycle every property through the states.
+
+        Only ticks while the power switch is on, so the demo sits quietly at
+        startup until a client flips it.
+        """
+        if self["power"]["on"].value is not ISState.ON:
+            return
         self._tick += 1
         state = _STATES[self._tick % len(_STATES)]
         self["counters"].set(count=self._tick, ra=(self._tick % 24), state=state)
@@ -87,12 +93,22 @@ class Demo(Device):
 
     @on_new("power")
     async def _power(self, vector: SwitchVector) -> None:
-        """Echo the client's requested power switch back as the confirmed state."""
-        turned_on = vector["on"].value == ISState.ON
-        self["power"].set(
-            on=ISState.ON if turned_on else ISState.OFF,
-            state=IPState.OK,
-        )
+        """Apply the client's requested power state and confirm it.
+
+        A OneOfMany write names the newly selected member - typically *only* that
+        member (`{"on": On}` or `{"off": On}`), though a client may also send the
+        full pair - so the intent is "which element is On in the request", never
+        an assumption that a particular element is present.
+        """
+        selected = next((el.name for el in vector.elements if el.value is ISState.ON), None)
+        turned_on = selected == "on"
+        # OneOfMany: setting one member On clears its sibling.
+        self["power"].set(**{"on" if turned_on else "off": ISState.ON}, state=IPState.OK)
+        if not turned_on:
+            # Park the animated properties in a quiet Idle state.
+            self["counters"].set(state=IPState.IDLE)
+            self["status_text"].set(value="Idle", state=IPState.IDLE)
+            self["status_light"].set(value=IPState.IDLE, state=IPState.IDLE)
         self.message(f"Power turned {'on' if turned_on else 'off'}.")
 
 
