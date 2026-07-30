@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Agent skill tooling (npx skills / shadcn) - installed locally, not part of the source
+.agents/
+.claude/
+skills-lock.json
+
+# JS/TS frontend workspace (web/)
+node_modules/
+web/**/dist/
+web/**/*.tsbuildinfo
+.turbo/
+
+# Built reference panel, emitted into the package by `pnpm --filter panel build`
+src/indi_nexus/web/static/panel/
