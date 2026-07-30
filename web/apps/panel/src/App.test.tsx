@@ -137,26 +137,6 @@ describe("messages panel", () => {
   });
 });
 
-describe("messages drawer (mobile)", () => {
-  it("shows no docked rail and opens the log in a bottom drawer instead", async () => {
-    vi.stubGlobal("innerWidth", 500);
-    const { socket } = renderApp();
-    act(() =>
-      socket.receive(
-        JSON.stringify({ tag: "message", device: "Dome", message: "[INFO] Dome parked." }),
-      ),
-    );
-
-    // The desktop rail is not rendered on mobile, even though the persisted
-    // preference defaults to open.
-    expect(screen.queryByRole("complementary", { name: "Messages" })).not.toBeInTheDocument();
-    expect(screen.queryByText("[INFO] Dome parked.")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /toggle messages/i }));
-    expect(await screen.findByText("[INFO] Dome parked.")).toBeInTheDocument();
-  });
-});
-
 describe("debug info", () => {
   /** Prime the app with one defined device property. */
   function primeExposure(socket: FakeWebSocket) {

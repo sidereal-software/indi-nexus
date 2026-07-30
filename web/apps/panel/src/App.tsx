@@ -13,10 +13,6 @@ import {
   cn,
   DevicePanel,
   DisplaySettingsProvider,
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
   type IndiClient,
   IndiProvider,
   Label,
@@ -40,7 +36,6 @@ import {
   Toggle,
   TooltipProvider,
   useDevices,
-  useIsMobile,
 } from "@indi-nexus/react";
 import { MessageSquareText, Moon, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -147,75 +142,46 @@ function DeviceSidebar({
 }
 
 /**
- * The desktop right rail: the INDI message log, a mirror of the device sidebar.
+ * The bottom messages panel: a VS Code-style log strip docked below the device
+ * area.
  *
- * Stays mounted and animates its width with the same duration/easing as the
- * device sidebar, so opening feels identical; while closed it is hidden from
- * the accessibility tree and inert.
+ * The strip is sticky - the vector cards scroll in their own region above it -
+ * and the log scrolls independently inside, following the newest entry. It
+ * stays mounted and animates its height with the same duration/easing as the
+ * device sidebar; while closed it is hidden from the accessibility tree and
+ * inert.
+ *
+ * The log shows up to 200 messages: the client's whole rolling buffer
+ * (`messageLogLimit`, which itself covers the bridge's 100-message replay for
+ * a freshly opened page). Older history belongs to the server logs, not a UI
+ * strip, and 200 compact rows keep the DOM light.
  */
-function MessagesSidebar({ open }: { open: boolean }) {
+function MessagesPanel({ open }: { open: boolean }) {
   return (
     <div
       aria-hidden={!open}
       inert={!open}
       className={cn(
-        "shrink-0 overflow-hidden transition-[width] duration-200 ease-linear",
-        open ? "w-(--sidebar-width)" : "w-0",
+        "shrink-0 overflow-hidden transition-[height] duration-200 ease-linear",
+        open ? "h-56" : "h-0",
       )}
     >
-      <Sidebar
-        side="right"
-        collapsible="none"
-        role="complementary"
-        aria-label="Messages"
-        className="h-svh w-(--sidebar-width) border-l"
-      >
-        <SidebarHeader className="p-3">
-          <div className="flex items-center gap-2">
-            <MessageSquareText className="size-5 text-primary" />
-            <span className="text-sm font-semibold">Messages</span>
-          </div>
-        </SidebarHeader>
-        <SidebarContent className="overflow-hidden">
-          <MessageLog className="min-h-0 flex-1" />
-        </SidebarContent>
-      </Sidebar>
+      <aside aria-label="Messages" className="flex h-56 flex-col border-t bg-background">
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-sm font-medium">
+          <MessageSquareText className="size-4 text-muted-foreground" />
+          Messages
+        </div>
+        <MessageLog className="min-h-0 flex-1" limit={200} />
+      </aside>
     </div>
-  );
-}
-
-/** The mobile presentation: the same log in a swipe-dismissable bottom drawer. */
-function MessagesDrawer({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle className="flex items-center justify-center gap-2">
-            <MessageSquareText className="size-5 text-primary" />
-            Messages
-          </DrawerTitle>
-        </DrawerHeader>
-        <MessageLog className="h-[50svh]" />
-      </DrawerContent>
-    </Drawer>
   );
 }
 
 /** The main content: header + the selected device's property panel. */
 function AppShell() {
   const devices = useDevices();
-  const isMobile = useIsMobile();
   const [selected, setSelected] = useState<string | null>(null);
   const [messagesOpen, setMessagesOpen] = useState(initialMessagesOpen);
-  // The mobile drawer is transient and never persisted: it must not cover the
-  // controls on load just because the desktop rail was left open.
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [debug, setDebug] = useState(initialDebug);
 
   // Auto-select the first device (and recover if the selected one disappears).
@@ -254,7 +220,9 @@ function AppShell() {
         debug={debug}
         onDebugChange={setDebugPersisted}
       />
-      <SidebarInset>
+      {/* h-svh pins the shell to the viewport: the vector area scrolls in its
+          own region and the messages strip below it stays visible. */}
+      <SidebarInset className="h-svh">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
@@ -262,16 +230,14 @@ function AppShell() {
           <Toggle
             size="sm"
             className="ml-auto size-7 min-w-7 p-0"
-            pressed={isMobile ? drawerOpen : messagesOpen}
-            onPressedChange={(pressed) =>
-              isMobile ? setDrawerOpen(pressed) : setMessagesOpenPersisted(pressed)
-            }
+            pressed={messagesOpen}
+            onPressedChange={setMessagesOpenPersisted}
             aria-label="Toggle messages"
           >
             <MessageSquareText />
           </Toggle>
         </header>
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
           {active ? (
             <DevicePanel device={active} />
           ) : (
@@ -279,13 +245,9 @@ function AppShell() {
               Waiting for devices from indiserver…
             </div>
           )}
-        </main>
+        </div>
+        <MessagesPanel open={messagesOpen} />
       </SidebarInset>
-      {isMobile ? (
-        <MessagesDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
-      ) : (
-        <MessagesSidebar open={messagesOpen} />
-      )}
     </DisplaySettingsProvider>
   );
 }
