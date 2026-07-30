@@ -151,3 +151,72 @@ def test_module_entrypoint_runs_the_app(monkeypatch):
         with pytest.raises(SystemExit) as excinfo:
             runpy.run_module("indi_nexus.cli", run_name="__main__")
     assert excinfo.value.code == 0
+
+
+def test_new_scaffolds_a_runnable_driver(tmp_path):
+    """`indi-nexus new` writes an executable driver that actually serves.
+
+    The generated file is imported and driven over an in-memory runtime -
+    getProperties defines its properties and a switch write round-trips -
+    so the template can never rot into a broken starting point.
+    """
+    import importlib.util
+
+    from indi_nexus.driver import Device, DriverRuntime
+    from indi_nexus.protocol import DefVector, parse_indi
+
+    target = tmp_path / "roof_driver.py"
+    result = runner.invoke(app, ["new", str(target)])
+    assert result.exit_code == 0, result.output
+    assert "roof_driver:RoofDriver" in result.output
+    assert target.stat().st_mode & 0o111  # executable, ready for indiserver
+
+    spec = importlib.util.spec_from_file_location("roof_driver", target)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    device = module.RoofDriver()
+    assert isinstance(device, Device)
+    assert device.device == "Roof Driver"
+
+    async def scenario():
+        """Serve the scaffolded driver over in-memory pipes."""
+        inbox = asyncio.Queue()
+        outputs = []
+
+        async def read():
+            return await inbox.get()
+
+        async def write(data):
+            outputs.append(data)
+
+        inbox.put_nowait(b"<getProperties version='1.7'/>")
+        inbox.put_nowait(
+            b"<newSwitchVector device='Roof Driver' name='CONNECTION'>"
+            b"<oneSwitch name='CONNECT'>On</oneSwitch></newSwitchVector>"
+        )
+        inbox.put_nowait(
+            b"<newSwitchVector device='Roof Driver' name='POWER'>"
+            b"<oneSwitch name='ON'>On</oneSwitch></newSwitchVector>"
+        )
+        inbox.put_nowait(b"")
+        await DriverRuntime(device, read, write).serve()
+        return parse_indi(b"".join(outputs))
+
+    messages = asyncio.run(scenario())
+    defined = {m.vector.name for m in messages if isinstance(m, DefVector)}
+    assert {"CONNECTION", "TELEMETRY", "POWER"} <= defined
+    assert device.connected is True
+    assert b"Power turned on." in b"".join(
+        m.message.encode() for m in messages if hasattr(m, "message") and m.message
+    )
+
+
+def test_new_refuses_to_overwrite():
+    """`indi-nexus new` never clobbers an existing file."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".py") as existing:
+        result = runner.invoke(app, ["new", existing.name])
+        assert result.exit_code != 0
+        assert "refusing to overwrite" in result.output
