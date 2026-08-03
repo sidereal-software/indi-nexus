@@ -8,8 +8,10 @@
  *   viewport units so the board fills whatever it is plugged into, and the one
  *   thing that matters - can we open? - is the largest thing on it by a wide
  *   margin.
- * - **Nobody touches it.** No hover, no tooltips, no controls, no scrolling.
- *   Everything is on one screen or it does not exist.
+ * - **Nobody touches it.** No hover, no tooltips, no controls. Everything is on
+ *   one screen or it does not exist - above `lg`, where a wallboard actually
+ *   lives. A phone is not a wallboard, so below that the same board reflows to
+ *   one scrolling column rather than clipping half the readings away.
  * - **Stale data is dangerous.** A wallboard quietly showing last hour's numbers
  *   is worse than a blank one, so when the driver loses its source the readings
  *   blank out and the board says so, rather than leaving numbers up.
@@ -73,16 +75,18 @@ function Tile({
   live: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col justify-between gap-[1vh]">
-      <p className="truncate font-medium text-[clamp(0.7rem,1.05vw,1.15rem)] text-muted-foreground uppercase tracking-widest">
+    <div className="flex min-w-0 flex-col justify-between gap-1 lg:gap-[1vh]">
+      <p className="truncate font-medium text-[clamp(0.65rem,1.05vw,1.15rem)] text-muted-foreground uppercase tracking-widest">
         {label}
       </p>
-      <p className="font-semibold text-[clamp(1.6rem,3.4vw,3.75rem)] leading-none">
+      <p className="font-semibold text-[clamp(1.5rem,3.4vw,3.75rem)] leading-none">
         {live && value !== undefined ? value : "--"}
         <span className="ml-1 text-[0.4em] text-muted-foreground">{unit}</span>
       </p>
-      <div className="space-y-[0.6vh]">
-        <div className={`h-[0.7vh] w-full rounded-full ${STATE_BAR[live ? state : "Idle"]}`} />
+      <div className="space-y-1 lg:space-y-[0.6vh]">
+        <div
+          className={`h-1 w-full rounded-full lg:h-[0.7vh] ${STATE_BAR[live ? state : "Idle"]}`}
+        />
         {/* The state as a word: at four metres, and for a protanope at any
             distance, amber and red are the same colour. */}
         <p className="font-medium text-[clamp(0.65rem,0.95vw,1rem)] text-muted-foreground uppercase tracking-wider">
@@ -129,10 +133,14 @@ export function SkyReport() {
   const phase = moon?.match(/\(([\d.]+)\)/)?.[1];
 
   return (
-    <div className="flex h-dvh w-full flex-col gap-[2vh] overflow-hidden bg-background p-[3vh]">
-      {/* Top rail. Right-padded so the demo's view switcher never sits on it;
-          a real board has no switcher. */}
-      <header className="flex shrink-0 items-baseline justify-between gap-6 pr-[20rem] text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground uppercase tracking-widest">
+    // A wallboard is one screen with no scrolling - but a phone is not a
+    // wallboard, and clipping the readings off the bottom of one is worse than
+    // scrolling. Below `lg` the board becomes a tall single column that scrolls;
+    // from `lg` up it locks to the viewport and behaves as designed.
+    <div className="flex min-h-dvh w-full flex-col gap-5 bg-background p-4 pt-14 sm:p-6 sm:pt-16 lg:h-dvh lg:min-h-0 lg:gap-[2vh] lg:overflow-hidden lg:p-[3vh] lg:pt-[3vh]">
+      {/* Top rail. On a wide screen it is right-padded so the demo's view
+          switcher never sits on it; a real board has no switcher. */}
+      <header className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-6 gap-y-1 text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground uppercase tracking-widest lg:pr-[20rem]">
         <span className="font-medium">Sky conditions</span>
         <span className="tabular-nums">
           {latitude?.toFixed(2) ?? "--"}, {longitude?.toFixed(2) ?? "--"}
@@ -140,63 +148,74 @@ export function SkyReport() {
       </header>
 
       {/* The one thing the board exists to say. */}
-      <section className="flex min-h-0 flex-1 items-stretch gap-[3vw]">
-        <div className="flex min-w-0 flex-[3] flex-col justify-center gap-[1.5vh]">
-          <div className="flex items-center gap-[1.5vw]">
+      <section className="flex min-h-0 flex-col items-stretch gap-5 lg:flex-1 lg:flex-row lg:gap-[3vw]">
+        <div className="flex min-w-0 flex-col justify-center gap-3 lg:flex-[3] lg:gap-[1.5vh]">
+          <div className="flex items-center gap-3 lg:gap-[1.5vw]">
             <div
-              className={`h-[12vh] w-[1.2vw] shrink-0 rounded-full ${STATE_BAR[live ? overall : "Idle"]}`}
+              className={`h-16 w-1.5 shrink-0 rounded-full lg:h-[12vh] lg:w-[1.2vw] ${STATE_BAR[live ? overall : "Idle"]}`}
             />
-            <p className="font-semibold text-[clamp(3rem,10vw,11rem)] leading-[0.9] tracking-tight">
+            <p className="font-semibold text-[clamp(3rem,14vw,11rem)] leading-[0.9] tracking-tight lg:text-[clamp(3rem,10vw,11rem)]">
               {verdict}
             </p>
           </div>
-          <p className="text-[clamp(1rem,2.1vw,2.25rem)] text-muted-foreground leading-tight">
+          <p className="text-[clamp(1rem,4vw,2.25rem)] text-muted-foreground leading-tight lg:text-[clamp(1rem,2.1vw,2.25rem)]">
             {because}
           </p>
-          <p className="text-[clamp(0.9rem,1.6vw,1.75rem)]">
+          <p className="text-[clamp(0.9rem,3.4vw,1.75rem)] lg:text-[clamp(0.9rem,1.6vw,1.75rem)]">
             {conditions || "Waiting for data"}
             <span className="text-muted-foreground"> · {daylight || "--"}</span>
           </p>
         </div>
 
         <Separator orientation="vertical" className="hidden lg:block" />
+        <Separator className="lg:hidden" />
 
-        <div className="flex min-w-0 flex-[2] flex-col justify-center gap-[2vh]">
-          <div className="flex items-center justify-between gap-[2vw]">
+        <div className="flex min-w-0 flex-col justify-center gap-4 lg:flex-[2] lg:gap-[2vh]">
+          <div className="flex items-center justify-between gap-4 lg:gap-[2vw]">
             <div>
-              <p className="font-semibold text-[clamp(2.5rem,6vw,6.5rem)] leading-none">
+              <p className="font-semibold text-[clamp(2.5rem,11vw,6.5rem)] leading-none lg:text-[clamp(2.5rem,6vw,6.5rem)]">
                 {live && temperature.value !== undefined ? temperature.value : "--"}
                 <span className="align-top text-[0.4em] text-muted-foreground">°</span>
               </p>
               {live && feelsLike !== undefined && (
-                <p className="mt-[1vh] text-[clamp(0.8rem,1.3vw,1.4rem)] text-muted-foreground">
+                <p className="mt-1 text-[clamp(0.8rem,2.6vw,1.4rem)] text-muted-foreground lg:mt-[1vh] lg:text-[clamp(0.8rem,1.3vw,1.4rem)]">
                   feels like {feelsLike}°
                 </p>
               )}
             </div>
-            <div className="flex flex-col items-center gap-[0.8vh]">
-              <MoonDisc phase={phase === undefined ? undefined : Number(phase)} size={96} />
+            <div className="flex shrink-0 flex-col items-center gap-1 lg:gap-[0.8vh]">
+              <MoonDisc
+                phase={phase === undefined ? undefined : Number(phase)}
+                size={96}
+                className="size-16 lg:size-[7vh]"
+              />
               <p className="text-center text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground">
                 {moon?.replace(/\s*\([\d.]+\)/, "") ?? "--"}
               </p>
             </div>
           </div>
-          <div className="space-y-[1vh]">
+          <div className="space-y-2 lg:space-y-[1vh]">
             <p className="text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground uppercase tracking-widest">
               Daylight
             </p>
             <DaylightBar sunrise={sunrise} sunset={sunset} />
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center opacity-70">
-            <SiteMap latitude={latitude} longitude={longitude} />
+          {/* Capped on a phone: the globe is context, not the headline, and at
+              full column width it out-sizes the verdict above it. */}
+          <div className="flex min-h-0 items-center justify-center opacity-70 lg:flex-1">
+            <div className="w-full max-w-64 sm:max-w-sm lg:max-w-none">
+              <SiteMap latitude={latitude} longitude={longitude} />
+            </div>
           </div>
         </div>
       </section>
 
       <Separator className="shrink-0" />
 
-      {/* The numbers behind the verdict, plus where the wind is coming from. */}
-      <section className="grid shrink-0 grid-cols-[repeat(5,minmax(0,1fr))_auto] items-end gap-[2vw] pb-[1vh]">
+      {/* The numbers behind the verdict, plus where the wind is coming from.
+          Five tiles across only once there is room for five; on a phone they
+          reflow two-up and the compass takes a row of its own. */}
+      <section className="grid shrink-0 grid-cols-2 items-end gap-x-6 gap-y-5 pb-2 sm:grid-cols-3 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:gap-[2vw] lg:pb-[1vh]">
         <Tile label="Cloud" value={cloud.value} unit="%" state={cloud.state} live={live} />
         <Tile label="Humidity" value={humidity.value} unit="%" state={humidity.state} live={live} />
         <Tile label="Wind" value={wind.value} unit="mph" state={wind.state} live={live} />
@@ -208,13 +227,13 @@ export function SkyReport() {
           state={pressure.state}
           live={live}
         />
-        <div className="flex flex-col items-center gap-[0.8vh]">
+        <div className="col-span-2 flex flex-col items-center gap-1 sm:col-span-1 lg:gap-[0.8vh]">
           <WindCompass
             direction={live ? direction : undefined}
             speed={live ? wind.value : undefined}
             gust={live ? gust.value : undefined}
             state={wind.state}
-            size="h-[22vh] w-[22vh]"
+            size="h-32 w-32 lg:h-[22vh] lg:w-[22vh]"
           />
           <p className="font-medium text-[clamp(0.65rem,0.95vw,1rem)] text-muted-foreground uppercase tracking-wider">
             {live && direction !== undefined ? `from ${bearingName(direction)}` : "wind"}

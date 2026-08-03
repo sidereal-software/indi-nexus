@@ -113,7 +113,7 @@ function DeviceSidebar({
 }) {
   return (
     <Sidebar>
-      <SidebarHeader className="gap-3 p-3">
+      <SidebarHeader className="gap-3 p-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
           <Telescope className="size-5 text-primary" />
           <span className="text-sm font-semibold">
@@ -147,7 +147,7 @@ function DeviceSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="gap-2 p-3">
+      <SidebarFooter className="gap-2 p-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between">
           <Label htmlFor="debug-info" className="text-xs font-normal text-muted-foreground">
             Debug info
@@ -194,7 +194,10 @@ function MessagesPanel({
   const unread = open ? 0 : received - seen;
 
   return (
-    <aside aria-label="Messages" className="shrink-0 border-t bg-background">
+    <aside
+      aria-label="Messages"
+      className="shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]"
+    >
       <Accordion
         type="single"
         collapsible
@@ -268,7 +271,12 @@ function AppShell() {
       {/* h-svh pins the shell to the viewport: the vector area scrolls in its
           own region and the messages strip below it stays visible. */}
       <SidebarInset className="h-svh">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+        {/* The bar grows by the notch inset and pads by it, so the title keeps
+            its 3.5rem of bar whether or not the browser reports one. The
+            underscores are Tailwind's spaces: `calc(3.5rem+env(…))` without
+            whitespace around the `+` is invalid CSS and the whole declaration
+            is dropped, which silently collapses the bar to its content. */}
+        <header className="flex h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center gap-3 border-b px-4 pt-[env(safe-area-inset-top)]">
           <Tooltip>
             <TooltipTrigger asChild>
               <SidebarTrigger />

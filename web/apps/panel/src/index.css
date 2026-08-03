@@ -9,6 +9,15 @@
 @import "../../../packages/react/src/theme.css";
 @source "../../../packages/react/src/**/*.{ts,tsx}";
 
+/*
+ * The panel's own sources, named explicitly rather than left to automatic
+ * detection: that is rooted at the *Vite* root, and the documentation demos
+ * build with `root: "demo"` - so without this line every class used only in
+ * `src/` (the header, the messages strip) is silently missing from the demo's
+ * stylesheet while the app build looks fine.
+ */
+@source "./**/*.{ts,tsx}";
+
 html,
 body,
 #root {

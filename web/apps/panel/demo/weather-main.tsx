@@ -61,8 +61,16 @@ function WeatherDemo() {
           value={view}
           onValueChange={(next) => next && setView(next as "panel" | "custom")}
         >
-          <ToggleGroupItem value="panel">Stock panel</ToggleGroupItem>
-          <ToggleGroupItem value="custom">Custom UI</ToggleGroupItem>
+          {/* Short labels on a phone: the switcher floats over the panel's own
+              header, and the full ones cover its device title. */}
+          <ToggleGroupItem value="panel">
+            <span className="sm:hidden">Panel</span>
+            <span className="hidden sm:inline">Stock panel</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem value="custom">
+            <span className="sm:hidden">Custom</span>
+            <span className="hidden sm:inline">Custom UI</span>
+          </ToggleGroupItem>
         </ToggleGroup>
       </div>
 

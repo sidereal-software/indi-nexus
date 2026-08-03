@@ -181,7 +181,10 @@ export function WindCompass({
 export interface MoonDiscProps {
   /** Open-Meteo's phase fraction: 0 and 1 are new, 0.5 is full. */
   phase?: number;
+  /** Drawing units; also the rendered size unless `className` overrides it. */
   size?: number;
+  /** Tailwind sizing classes, so the disc can grow with the breakpoint. */
+  className?: string;
 }
 
 /**
@@ -191,7 +194,7 @@ export interface MoonDiscProps {
  * is `r·|cos 2πp|`, which is what makes a crescent bow one way and a gibbous the
  * other. Waning phases are the waxing construction mirrored.
  */
-export function MoonDisc({ phase, size = 56 }: MoonDiscProps) {
+export function MoonDisc({ phase, size = 56, className }: MoonDiscProps) {
   const r = size / 2 - 1;
   if (phase === undefined) {
     return (
@@ -199,6 +202,7 @@ export function MoonDisc({ phase, size = 56 }: MoonDiscProps) {
         viewBox={`0 0 ${size} ${size}`}
         width={size}
         height={size}
+        className={className}
         role="img"
         aria-label="Moon phase unknown"
       >
@@ -220,6 +224,7 @@ export function MoonDisc({ phase, size = 56 }: MoonDiscProps) {
       viewBox={`0 0 ${size} ${size}`}
       width={size}
       height={size}
+      className={className}
       role="img"
       aria-label={`Moon ${illumination}% illuminated`}
     >
