@@ -24,7 +24,9 @@ flowchart TB
 
     blocking["blocking hardware call<br/><i>off_thread</i>"] -.->|worker thread| tick
 
-    classDef ext fill:#eee,stroke:#999,color:#333
+    classDef ours fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#111827
+    classDef ext fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
+    class reader,setup,disp,timer,tick,guard,props,outbox,writer ours
     class stdin,stdout,blocking ext
 ```
 

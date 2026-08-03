@@ -40,8 +40,11 @@ flowchart LR
     cli --> web
     web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
 
-    classDef ext fill:#eee,stroke:#999,color:#333
+    classDef ours fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#111827
+    classDef ext fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
+    class drv,cli,web ours
     class hub,hw,ui ext
+    style py fill:#fff7ed,stroke:#fdba74,color:#7c2d12
 ```
 
 Reading left to right: your **driver** talks to the instrument and speaks INDI to
