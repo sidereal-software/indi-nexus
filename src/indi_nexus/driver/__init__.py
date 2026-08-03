@@ -28,13 +28,14 @@ Write a driver by subclassing :class:`Device`, defining properties in
 
 from indi_nexus.driver.device import Device
 from indi_nexus.driver.dispatch import on_new
-from indi_nexus.driver.property import BoundProperty
+from indi_nexus.driver.property import BoundProperty, EmitPolicy
 from indi_nexus.driver.runtime import DriverRuntime, run, serve_stdio
 from indi_nexus.driver.scheduling import every
 
 __all__ = [
     "Device",
     "BoundProperty",
+    "EmitPolicy",
     "every",
     "on_new",
     "DriverRuntime",

@@ -15,12 +15,15 @@ The vocabulary is plain Python rather than the libindi C surface (``IUFind``,
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as dt
 import inspect
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+from typing import Any, cast
 
 from indi_nexus.driver.dispatch import iter_new_handlers, on_new
-from indi_nexus.driver.property import BoundProperty
+from indi_nexus.driver.property import BoundProperty, EmitPolicy
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -58,10 +61,29 @@ class Device:
     name : str
         Class attribute; override to set the INDI device name. Empty means "use
         the class name".
+    serialize_dispatch : bool
+        Class attribute; whether periodic ticks and client writes are run under
+        a per-device lock so they never interleave. On by default.
     """
 
     #: Override to set the INDI device name. Empty means "use the class name".
     name: str = ""
+
+    #: Whether ``@every`` ticks and ``@on_new`` handlers are mutually excluded.
+    #:
+    #: A tick that awaits - and any tick that talks to hardware should, via
+    #: :meth:`off_thread` - yields the event loop mid-flight, so without this a
+    #: client write can land between a tick's read and the properties it
+    #: publishes from that read. The tick then overwrites the write's effect
+    #: with state gathered *before* it: a button springs back out, a target
+    #: reverts. The lock is held across the whole tick and the whole handler, so
+    #: each sees a settled device; it also serialises hardware access, which a
+    #: single serial port or socket wants anyway. The cost is that a client
+    #: write waits for an in-flight tick - usually the correct trade.
+    #:
+    #: Set to `False` for a device whose ticks and handlers provably do not
+    #: share state, or one that must answer writes during a long tick.
+    serialize_dispatch: bool = True
 
     def __init__(self, name: str | None = None) -> None:
         """Initialise the device and discover its ``@on_new`` handlers.
@@ -73,7 +95,7 @@ class Device:
             :attr:`name`, then to the class name.
         """
         self._device = name or type(self).name or type(self).__name__
-        self._properties: dict[str, BoundProperty] = {}
+        self._properties: dict[str, BoundProperty[Any]] = {}
         # iter_new_handlers walks the MRO subclass-first, so keep the *first*
         # handler per property name: a subclass @on_new shadows any base-class
         # handler for the same property (e.g. the built-in CONNECTION one).
@@ -85,6 +107,8 @@ class Device:
         # Set once setup() has run; periodic (@every) jobs wait on it so they
         # never touch a property before setup() defines it.
         self._setup_complete = asyncio.Event()
+        # Guards ticks against handlers; see the serialize_dispatch docstring.
+        self._dispatch_lock = asyncio.Lock()
 
     # -- identity ---------------------------------------------------------- #
     @property
@@ -134,7 +158,7 @@ class Device:
     # -- connection --------------------------------------------------------- #
     def define_connection(
         self, *, label: str = "Connection", group: str = "Main Control"
-    ) -> BoundProperty:
+    ) -> BoundProperty[SwitchVector]:
         """Define the standard INDI ``CONNECTION`` switch (initially off).
 
         Call this first in :meth:`setup` and the device gains the standard
@@ -204,41 +228,54 @@ class Device:
         """Apply a client's connect/disconnect request (built-in handler).
 
         Flips the switch, runs the :meth:`on_connect`/:meth:`on_disconnect`
-        hook, and announces the transition. A subclass ``@on_new("CONNECTION")``
-        handler shadows this entirely; a device without a ``CONNECTION``
-        property falls through to :meth:`on_new_default`.
+        hook, and announces the transition. A hook that raises - the usual way
+        for hardware to report that it is not there - rolls the switch back and
+        leaves the property in ``Alert`` with the reason attached, so the device
+        never sits claiming a link it does not have. A subclass
+        ``@on_new("CONNECTION")`` handler shadows this entirely; a device without
+        a ``CONNECTION`` property falls through to :meth:`on_new_default`.
         """
         if "CONNECTION" not in self:
             await self.on_new_default(vector)
             return
         connect = vector.selected() == "CONNECT"
         prop = self._properties["CONNECTION"]
-        if connect:
-            prop.set(CONNECT=ISState.ON, state=IPState.OK)
-            await self.on_connect()
-        else:
-            prop.set(DISCONNECT=ISState.ON, state=IPState.OK)
-            await self.on_disconnect()
+        member = "CONNECT" if connect else "DISCONNECT"
+        prop.set({member: ISState.ON}, state=IPState.BUSY)
+        try:
+            await (self.on_connect() if connect else self.on_disconnect())
+        except Exception as exc:  # noqa: BLE001 - reported to the client below
+            rollback = "DISCONNECT" if connect else "CONNECT"
+            prop.set({rollback: ISState.ON}, state=IPState.ALERT)
+            self.log_error(f"{self._device} failed to {member.lower()}: {exc}")
+            return
+        prop.set(state=IPState.OK)
         self.message(f"{self._device} is {'connected' if connect else 'disconnected'}.")
 
     # -- property definition ---------------------------------------------- #
-    def define(self, vector: Vector) -> BoundProperty:
+    def define[VectorT: Vector](
+        self, vector: VectorT, *, emit: EmitPolicy = "always"
+    ) -> BoundProperty[VectorT]:
         """Register a property vector, emit its ``def``, and return its handle.
 
         Parameters
         ----------
-        vector : Vector
+        vector : VectorT
             The vector to define. If its ``device`` is unset, this device's name
             is filled in.
+        emit : str, optional
+            When later ``set`` calls reach the wire; see
+            `~indi_nexus.driver.property.EmitPolicy`.
 
         Returns
         -------
         prop : BoundProperty
-            The handle used to push later updates for this property.
+            The handle used to push later updates for this property, typed by
+            the vector kind that was defined.
         """
         if not vector.device:
             vector.device = self._device
-        prop = BoundProperty(vector, self._send)
+        prop = BoundProperty(vector, self._send, policy=emit)
         self._properties[vector.name] = prop
         self._send(DefVector(vector=vector))
         return prop
@@ -253,7 +290,8 @@ class Device:
         state: IPState = IPState.IDLE,
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
-    ) -> BoundProperty:
+        emit: EmitPolicy = "always",
+    ) -> BoundProperty[NumberVector]:
         """Define a number vector property.
 
         Parameters
@@ -272,6 +310,9 @@ class Device:
             Client access permission.
         timeout : float, optional
             Worst-case update time, in seconds.
+        emit : str, optional
+            When later ``set`` calls reach the wire; see
+            `~indi_nexus.driver.property.EmitPolicy`.
 
         Returns
         -------
@@ -288,7 +329,8 @@ class Device:
                 perm=perm,
                 timeout=timeout,
                 elements=elements,
-            )
+            ),
+            emit=emit,
         )
 
     def define_text(
@@ -301,7 +343,8 @@ class Device:
         state: IPState = IPState.IDLE,
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
-    ) -> BoundProperty:
+        emit: EmitPolicy = "always",
+    ) -> BoundProperty[TextVector]:
         """Define a text vector property.
 
         Parameters
@@ -320,6 +363,9 @@ class Device:
             Client access permission.
         timeout : float, optional
             Worst-case update time, in seconds.
+        emit : str, optional
+            When later ``set`` calls reach the wire; see
+            `~indi_nexus.driver.property.EmitPolicy`.
 
         Returns
         -------
@@ -336,7 +382,8 @@ class Device:
                 perm=perm,
                 timeout=timeout,
                 elements=elements,
-            )
+            ),
+            emit=emit,
         )
 
     def define_switch(
@@ -350,7 +397,8 @@ class Device:
         state: IPState = IPState.IDLE,
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
-    ) -> BoundProperty:
+        emit: EmitPolicy = "always",
+    ) -> BoundProperty[SwitchVector]:
         """Define a switch vector property.
 
         Parameters
@@ -371,6 +419,9 @@ class Device:
             Client access permission.
         timeout : float, optional
             Worst-case update time, in seconds.
+        emit : str, optional
+            When later ``set`` calls reach the wire; see
+            `~indi_nexus.driver.property.EmitPolicy`.
 
         Returns
         -------
@@ -388,7 +439,8 @@ class Device:
                 rule=rule,
                 timeout=timeout,
                 elements=elements,
-            )
+            ),
+            emit=emit,
         )
 
     def define_light(
@@ -399,7 +451,8 @@ class Device:
         label: str | None = None,
         group: str | None = None,
         state: IPState = IPState.IDLE,
-    ) -> BoundProperty:
+        emit: EmitPolicy = "always",
+    ) -> BoundProperty[LightVector]:
         """Define a light vector property.
 
         Lights are always read-only in INDI, so there is no ``perm`` argument.
@@ -416,6 +469,9 @@ class Device:
             GUI group the property belongs to.
         state : IPState, optional
             Initial vector state.
+        emit : str, optional
+            When later ``set`` calls reach the wire; see
+            `~indi_nexus.driver.property.EmitPolicy`.
 
         Returns
         -------
@@ -430,7 +486,8 @@ class Device:
                 group=group,
                 state=state,
                 elements=elements,
-            )
+            ),
+            emit=emit,
         )
 
     def define_blob(
@@ -443,7 +500,8 @@ class Device:
         state: IPState = IPState.IDLE,
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
-    ) -> BoundProperty:
+        emit: EmitPolicy = "always",
+    ) -> BoundProperty[BLOBVector]:
         """Define a BLOB vector property.
 
         Parameters
@@ -462,6 +520,9 @@ class Device:
             Client access permission.
         timeout : float, optional
             Worst-case update time, in seconds.
+        emit : str, optional
+            When later ``set`` calls reach the wire; see
+            `~indi_nexus.driver.property.EmitPolicy`.
 
         Returns
         -------
@@ -478,12 +539,19 @@ class Device:
                 perm=perm,
                 timeout=timeout,
                 elements=elements,
-            )
+            ),
+            emit=emit,
         )
 
     # -- property access --------------------------------------------------- #
-    def property(self, name: str) -> BoundProperty:
+    def property(self, name: str) -> BoundProperty[Any]:
         """Return the handle for a previously defined property.
+
+        A lookup by name cannot know the vector kind, so the handle it returns
+        is untyped in its vector. When you need ``prop.vector`` to narrow - to
+        iterate elements, say - use :meth:`number`, :meth:`text`, :meth:`switch`,
+        :meth:`light` or :meth:`blob` instead, or keep the handle that
+        ``define_*`` returned.
 
         Parameters
         ----------
@@ -502,13 +570,152 @@ class Device:
         """
         return self._properties[name]
 
-    def __getitem__(self, name: str) -> BoundProperty:
+    def __getitem__(self, name: str) -> BoundProperty[Any]:
         """Return the handle for property ``name`` (see :meth:`property`)."""
         return self._properties[name]
 
     def __contains__(self, name: str) -> bool:
         """Return whether a property named ``name`` has been defined."""
         return name in self._properties
+
+    def _typed[VectorT: Vector](self, name: str, kind: type[VectorT]) -> BoundProperty[VectorT]:
+        """Return the handle for ``name``, checking it wraps a ``kind`` vector.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+        kind : type
+            The vector class the caller expects.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle, now typed by ``kind``.
+
+        Raises
+        ------
+        KeyError
+            Raised if no property with that name has been defined.
+        TypeError
+            Raised if the property is of a different vector kind.
+        """
+        prop = self._properties[name]
+        if not isinstance(prop.vector, kind):
+            raise TypeError(
+                f"{self._device}.{name} is a {type(prop.vector).__name__}, not a {kind.__name__}"
+            )
+        return cast("BoundProperty[VectorT]", prop)
+
+    def number(self, name: str) -> BoundProperty[NumberVector]:
+        """Return the handle for a number property, typed as such.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle, with ``prop.vector.elements`` typed ``list[Number]``.
+        """
+        return self._typed(name, NumberVector)
+
+    def text(self, name: str) -> BoundProperty[TextVector]:
+        """Return the handle for a text property, typed as such.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle, with ``prop.vector.elements`` typed ``list[Text]``.
+        """
+        return self._typed(name, TextVector)
+
+    def switch(self, name: str) -> BoundProperty[SwitchVector]:
+        """Return the handle for a switch property, typed as such.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle, with ``prop.vector.elements`` typed ``list[Switch]``.
+        """
+        return self._typed(name, SwitchVector)
+
+    def light(self, name: str) -> BoundProperty[LightVector]:
+        """Return the handle for a light property, typed as such.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle, with ``prop.vector.elements`` typed ``list[Light]``.
+        """
+        return self._typed(name, LightVector)
+
+    def blob(self, name: str) -> BoundProperty[BLOBVector]:
+        """Return the handle for a BLOB property, typed as such.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle, with ``prop.vector.elements`` typed ``list[BLOB]``.
+        """
+        return self._typed(name, BLOBVector)
+
+    # -- talking to hardware ------------------------------------------------ #
+    @staticmethod
+    async def off_thread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+        """Run a blocking call in a worker thread and await its result.
+
+        Instrument libraries are overwhelmingly synchronous - ``pyserial``, a
+        vendor SDK, a ``requests`` session. Calling one directly from an
+        ``async def`` compiles, reads fine and blocks the event loop for its
+        whole duration: the driver stops answering ``indiserver``, every other
+        property freezes, and nothing reports an error. Route it through here
+        instead::
+
+            reading = await self.off_thread(self._hardware.read_all)
+            self["telemetry"].set(**reading, state=IPState.OK)
+
+        Only the blocking call belongs in the thread. Keep property writes on
+        the event loop, as above: the outbox behind ``set`` is an
+        :class:`asyncio.Queue`, which is not thread-safe.
+
+        Parameters
+        ----------
+        func : Callable
+            The blocking callable to run.
+        *args : object
+            Positional arguments for ``func``.
+        **kwargs : object
+            Keyword arguments for ``func``.
+
+        Returns
+        -------
+        result : T
+            Whatever ``func`` returned.
+        """
+        return await asyncio.to_thread(func, *args, **kwargs)
 
     # -- client messaging -------------------------------------------------- #
     def message(
@@ -544,6 +751,23 @@ class Device:
         self.message(text, level="ERROR")
 
     # -- runtime plumbing (called by DriverRuntime) ------------------------ #
+    def _guard(self) -> AbstractAsyncContextManager[None]:
+        """Return the mutual exclusion ticks and inbound dispatch run under.
+
+        The runtime wraps each ``@every`` tick in this; :meth:`_dispatch_new` and
+        :meth:`_dispatch_get_properties` enter it themselves, so any caller -
+        the runtime, a test harness, the in-process bridge - gets the same
+        guarantee. See :attr:`serialize_dispatch`.
+
+        Returns
+        -------
+        guard : AbstractAsyncContextManager
+            The device lock, or a no-op context when serialisation is off.
+        """
+        if not self.serialize_dispatch:
+            return contextlib.nullcontext()
+        return self._dispatch_lock
+
     def _bind(self, emit: Emit) -> None:
         """Attach the runtime's outbound-message callback to this device.
 
@@ -588,13 +812,14 @@ class Device:
         """
         if request.device is not None and request.device != self._device:
             return
-        if not self._setup_done:
-            self._setup_done = True
-            await self.setup()
-            self._setup_complete.set()
-        else:
-            for prop in self._properties.values():
-                self._send(DefVector(vector=prop.vector))
+        async with self._guard():
+            if not self._setup_done:
+                self._setup_done = True
+                await self.setup()
+                self._setup_complete.set()
+            else:
+                for prop in self._properties.values():
+                    self._send(DefVector(vector=prop.vector))
 
     async def _dispatch_new(self, vector: Vector) -> None:
         """Route a client write to its ``@on_new`` handler or the default.
@@ -612,10 +837,11 @@ class Device:
         """
         if vector.device != self._device:
             return
-        handler = self._new_handlers.get(vector.name)
-        result = handler(vector) if handler is not None else self.on_new_default(vector)
-        if inspect.isawaitable(result):
-            await result
+        async with self._guard():
+            handler = self._new_handlers.get(vector.name)
+            result = handler(vector) if handler is not None else self.on_new_default(vector)
+            if inspect.isawaitable(result):
+                await result
 
     # -- entrypoint -------------------------------------------------------- #
     @classmethod

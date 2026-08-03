@@ -12,6 +12,7 @@ import asyncio
 import io
 import os
 import sys
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -836,5 +837,257 @@ def test_when_connected_jobs_pause_while_disconnected() -> None:
 
         harness.eof()
         await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Tick/handler serialisation                                                   #
+# --------------------------------------------------------------------------- #
+class _Racy(Device):
+    """A device whose tick awaits mid-flight, then publishes what it read."""
+
+    name = "Racy"
+
+    def __init__(self, name: str | None = None) -> None:
+        """Start with the button out and nothing in flight."""
+        super().__init__(name)
+        self.release = asyncio.Event()
+        self.in_tick = asyncio.Event()
+
+    async def setup(self) -> None:
+        """Define the button the tick and the handler fight over."""
+        self.define_switch("button", [Switch(name="go")], rule=ISRule.AT_MOST_ONE)
+
+    @every(seconds=60)
+    async def poll(self) -> None:
+        """Read "not pressed", await, then publish that stale reading."""
+        reading = ISState.OFF  # what the hardware said before the await
+        self.in_tick.set()
+        await self.release.wait()
+        self["button"].set(go=reading, state=IPState.IDLE)
+
+    @on_new("button")
+    async def _press(self, vector: SwitchVector) -> None:
+        """Apply the press."""
+        self["button"].set(go=ISState.ON, state=IPState.BUSY)
+
+
+def test_a_tick_in_flight_cannot_overwrite_a_client_write() -> None:
+    """The device guard keeps a mid-await tick from publishing pre-write state."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Racy()
+        harness = _Harness()
+        runtime = DriverRuntime(dev, harness.read, harness.write)
+        dev._bind(captured.append)  # after the runtime, which binds its own outbox
+        await dev.setup()
+
+        tick = asyncio.create_task(runtime._tick(dev.poll))
+        await dev.in_tick.wait()
+
+        # The client presses while the tick is parked on its await. Without the
+        # guard this handler would run now and the tick would then undo it.
+        press = asyncio.create_task(
+            dev._dispatch_new(
+                SwitchVector(
+                    device="Racy", name="button", elements=[Switch(name="go", value=ISState.ON)]
+                )
+            )
+        )
+        await asyncio.sleep(0.02)
+        assert not press.done()  # the write is queued behind the tick
+
+        dev.release.set()
+        await asyncio.gather(tick, press)
+
+        final = [m for m in captured if isinstance(m, SetVector)][-1]
+        assert final.vector.get("go") is ISState.ON
+        assert final.vector.state is IPState.BUSY
+
+    asyncio.run(scenario())
+
+
+def test_serialize_dispatch_can_be_turned_off() -> None:
+    """A device that opts out lets a client write land during a tick."""
+
+    class _Unguarded(_Racy):
+        """The same device with serialisation disabled."""
+
+        name = "Unguarded"
+        serialize_dispatch = False
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        dev = _Unguarded()
+        dev._bind(lambda msg: None)
+        await dev.setup()
+
+        tick = asyncio.create_task(dev.poll())
+        await dev.in_tick.wait()
+        await dev._dispatch_new(
+            SwitchVector(
+                device="Unguarded", name="button", elements=[Switch(name="go", value=ISState.ON)]
+            )
+        )
+        assert dev["button"].value("go") is ISState.ON  # the write got through
+
+        dev.release.set()
+        await tick
+        assert dev["button"].value("go") is ISState.OFF  # ...and the tick undid it
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Scheduling                                                                   #
+# --------------------------------------------------------------------------- #
+def test_every_holds_its_period_across_slow_ticks() -> None:
+    """The interval is a deadline, not a gap: a slow tick does not push it out."""
+
+    class _Slow(Device):
+        """A device whose tick takes most of its own interval."""
+
+        name = "Slow"
+
+        def __init__(self, name: str | None = None) -> None:
+            """Record the loop time of each tick."""
+            super().__init__(name)
+            self.at: list[float] = []
+
+        async def setup(self) -> None:
+            """Nothing to define."""
+
+        @every(seconds=0.05)
+        async def poll(self) -> None:
+            """Take 40 ms of a 50 ms interval."""
+            self.at.append(asyncio.get_running_loop().time())
+            await asyncio.sleep(0.04)
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Slow()
+        harness.feed("<getProperties version='1.7'/>")
+        task = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.28)
+        harness.eof()
+        await asyncio.wait_for(task, timeout=2)
+
+        gaps = [b - a for a, b in zip(dev.at, dev.at[1:], strict=False)]
+        assert gaps, "expected more than one tick"
+        # Sleep-after-tick would put every gap at ~0.09s; a deadline keeps ~0.05s.
+        assert max(gaps) < 0.075
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# off_thread                                                                   #
+# --------------------------------------------------------------------------- #
+def test_off_thread_keeps_the_event_loop_turning() -> None:
+    """A blocking call routed through off_thread does not stall the reactor."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        turns = 0
+
+        async def spin() -> None:
+            """Count event-loop turns while the blocking call is in flight."""
+            nonlocal turns
+            while True:
+                await asyncio.sleep(0.005)
+                turns += 1
+
+        spinner = asyncio.create_task(spin())
+        result = await Device.off_thread(_blocking_add, 2, offset=3)
+        spinner.cancel()
+
+        assert result == 5
+        assert turns > 3
+
+    asyncio.run(scenario())
+
+
+def _blocking_add(value: int, *, offset: int) -> int:
+    """Sleep, then add, standing in for a blocking hardware call."""
+    time.sleep(0.1)
+    return value + offset
+
+
+# --------------------------------------------------------------------------- #
+# Connection rollback                                                          #
+# --------------------------------------------------------------------------- #
+def test_a_failing_on_connect_rolls_the_switch_back() -> None:
+    """Hardware that is not there leaves CONNECTION disconnected and in Alert."""
+
+    class _Absent(Device):
+        """A device whose link cannot be opened."""
+
+        name = "Absent"
+
+        async def setup(self) -> None:
+            """Define only the connection switch."""
+            self.define_connection()
+
+        async def on_connect(self) -> None:
+            """Fail the way a missing serial port does."""
+            raise OSError("No such file or directory: '/dev/ttyUSB0'")
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Absent()
+        dev._bind(captured.append)
+        await dev.setup()
+        await dev._dispatch_new(
+            SwitchVector(
+                device="Absent",
+                name="CONNECTION",
+                elements=[Switch(name="CONNECT", value=ISState.ON)],
+            )
+        )
+
+        assert dev.connected is False
+        final = [m for m in captured if isinstance(m, SetVector)][-1]
+        assert final.vector.state is IPState.ALERT
+        assert final.vector.get("DISCONNECT") is ISState.ON
+        assert any(
+            "ttyUSB0" in m.message for m in captured if isinstance(m, Message)
+        )
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Typed property access                                                        #
+# --------------------------------------------------------------------------- #
+def test_typed_getters_return_the_property() -> None:
+    """self.switch(name) is self[name], with the vector kind pinned down."""
+
+    class _Kinds(Device):
+        """A device with one switch and one number."""
+
+        name = "Kinds"
+
+        async def setup(self) -> None:
+            """Define one of two kinds."""
+            self.define_switch("sw", [Switch(name="a")])
+            self.define_number("num", [Number(name="n")])
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        dev = _Kinds()
+        dev._bind(lambda msg: None)
+        await dev.setup()
+
+        assert dev.switch("sw") is dev["sw"]
+        assert [el.name for el in dev.switch("sw").vector.elements] == ["a"]
+        with pytest.raises(TypeError, match="not a NumberVector"):
+            dev.number("sw")
+        with pytest.raises(KeyError):
+            dev.switch("missing")
 
     asyncio.run(scenario())

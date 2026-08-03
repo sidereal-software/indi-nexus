@@ -129,27 +129,45 @@ class DriverRuntime:
         runs against a property that has not been defined yet. Jobs declared
         with ``when_connected=True`` skip ticks while the device is not
         connected.
+
+        Ticks are scheduled against a running deadline rather than by sleeping
+        the interval after each one, so a job's period stays at its declared
+        interval instead of drifting out by however long each tick takes: at
+        ``@every(seconds=1)`` around a 300 ms hardware read, sleep-after-tick
+        would run every 1.3 s.
         """
         await self._device._setup_complete.wait()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time()
         if spec.start_immediately and (not spec.when_connected or self._device.connected):
             await self._tick(method)
         while True:
-            await asyncio.sleep(spec.interval)
+            deadline += spec.interval
+            now = loop.time()
+            if deadline < now:
+                # Overran the interval: resync instead of firing the backlog
+                # back-to-back, which would hammer the hardware to catch up.
+                deadline = now
+            await asyncio.sleep(deadline - now)
             if spec.when_connected and not self._device.connected:
                 continue
             await self._tick(method)
 
     async def _tick(self, method: Callable[[], Any]) -> None:
-        """Run one tick, isolating any failure so the driver stays up.
+        """Run one tick under the device guard, isolating any failure.
 
-        A raised :class:`Exception` is logged to the client and swallowed;
+        The guard (see `~indi_nexus.driver.device.Device.serialize_dispatch`)
+        keeps the tick from interleaving with a client write, so a tick that
+        awaits mid-flight cannot publish pre-write state over a just-applied
+        one. A raised :class:`Exception` is logged to the client and swallowed;
         :class:`asyncio.CancelledError` is a :class:`BaseException`, so shutdown
         cancellation still propagates.
         """
         try:
-            result = method()
-            if inspect.isawaitable(result):
-                await result
+            async with self._device._guard():
+                result = method()
+                if inspect.isawaitable(result):
+                    await result
         except Exception as exc:  # noqa: BLE001 - deliberate per-tick isolation
             self._device.log_error(f"periodic task {task_name(method)!r} failed: {exc}")
 

@@ -1,0 +1,352 @@
+"""Tests for ``BoundProperty``: switch rules, emit policy, and bulk writes.
+
+These exercise the handle in isolation - a vector plus a list to emit into - so
+each assertion is about what the driver would have told the client, with no
+runtime or transport in the way.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+
+import pytest
+
+from indi_nexus.driver.property import BoundProperty
+from indi_nexus.protocol import (
+    IndiMessage,
+    IPState,
+    ISRule,
+    ISState,
+    Light,
+    LightVector,
+    Number,
+    NumberVector,
+    SetVector,
+    Switch,
+    SwitchVector,
+    Text,
+    TextVector,
+    to_xml,
+)
+
+
+def _switches(rule: ISRule) -> tuple[BoundProperty[SwitchVector], list[IndiMessage]]:
+    """Return a three-member switch property under ``rule``, plus its outbox."""
+    vector = SwitchVector(
+        device="Dev",
+        name="commands",
+        rule=rule,
+        elements=[
+            Switch(name="a", value=ISState.ON),
+            Switch(name="b"),
+            Switch(name="c"),
+        ],
+    )
+    emitted: list[IndiMessage] = []
+    return BoundProperty(vector, emitted.append), emitted
+
+
+def _numbers(policy: str = "always") -> tuple[BoundProperty[NumberVector], list[IndiMessage]]:
+    """Return a two-element number property under ``policy``, plus its outbox."""
+    vector = NumberVector(
+        device="Dev",
+        name="coords",
+        elements=[Number(name="ra", value=1.0), Number(name="dec", value=2.0)],
+    )
+    emitted: list[IndiMessage] = []
+    return BoundProperty(vector, emitted.append, policy=policy), emitted  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# Switch rules                                                                 #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("rule", [ISRule.ONE_OF_MANY, ISRule.AT_MOST_ONE])
+def test_exclusive_rules_clear_siblings(rule: ISRule) -> None:
+    """Both exclusive rules allow at most one On, so turning one On clears the rest."""
+    prop, _ = _switches(rule)
+
+    prop.set(b=ISState.ON)
+
+    assert prop.vector.values() == {"a": ISState.OFF, "b": ISState.ON, "c": ISState.OFF}
+
+
+def test_any_of_many_leaves_siblings_alone() -> None:
+    """AnyOfMany has no exclusivity invariant, so siblings are untouched."""
+    prop, _ = _switches(ISRule.ANY_OF_MANY)
+
+    prop.set(b=ISState.ON)
+
+    assert prop.vector.values() == {"a": ISState.ON, "b": ISState.ON, "c": ISState.OFF}
+
+
+@pytest.mark.parametrize("rule", [ISRule.ONE_OF_MANY, ISRule.AT_MOST_ONE, ISRule.ANY_OF_MANY])
+def test_turning_one_off_touches_only_that_member(rule: ISRule) -> None:
+    """An explicit Off applies to its own member under every rule."""
+    prop, _ = _switches(rule)
+
+    prop.set(a=False)
+
+    assert prop.vector.values() == {"a": ISState.OFF, "b": ISState.OFF, "c": ISState.OFF}
+
+
+def test_switch_values_accept_bools_and_wire_strings() -> None:
+    """A switch takes an ISState, a bool, or the wire token."""
+    prop, _ = _switches(ISRule.ANY_OF_MANY)
+
+    prop.set(a=False, b=True, c="On")
+
+    assert prop.vector.values() == {"a": ISState.OFF, "b": ISState.ON, "c": ISState.ON}
+
+
+# --------------------------------------------------------------------------- #
+# Emit policy                                                                  #
+# --------------------------------------------------------------------------- #
+def test_always_policy_emits_every_time() -> None:
+    """The default policy puts a set on the wire even when nothing moved."""
+    prop, emitted = _numbers()
+
+    prop.set(ra=1.0)
+    prop.set(ra=1.0)
+
+    assert len(emitted) == 2
+
+
+def test_on_change_policy_is_silent_when_nothing_differs() -> None:
+    """An on_change property re-sent identical values says nothing."""
+    prop, emitted = _numbers("on_change")
+
+    prop.set(ra=1.0, dec=2.0)  # already the current values
+
+    assert emitted == []
+
+
+def test_on_change_policy_emits_when_a_value_moves() -> None:
+    """A changed element is news, so it goes out."""
+    prop, emitted = _numbers("on_change")
+
+    prop.set(ra=1.0, dec=2.0)
+    prop.set(ra=5.0, dec=2.0)
+
+    assert len(emitted) == 1
+    assert isinstance(emitted[0], SetVector)
+    assert emitted[0].vector.get("ra") == 5.0
+
+
+def test_on_change_policy_emits_when_only_the_state_moves() -> None:
+    """A state transition with unchanged values is still news."""
+    prop, emitted = _numbers("on_change")
+
+    prop.set(ra=1.0, state=IPState.BUSY)
+
+    assert len(emitted) == 1
+    assert emitted[0].vector.state is IPState.BUSY  # type: ignore[union-attr]
+
+
+def test_on_change_policy_emits_when_only_the_message_moves() -> None:
+    """An attached message with unchanged values is still news."""
+    prop, emitted = _numbers("on_change")
+
+    prop.set(message="slewing")
+
+    assert len(emitted) == 1
+
+
+def test_on_change_policy_leaves_the_timestamp_alone_when_silent() -> None:
+    """A suppressed set does not restamp the vector; nothing was published."""
+    prop, _ = _numbers("on_change")
+    stamped = dt.datetime(2026, 1, 1, 12, 0, 0)
+    prop.set(ra=9.0, timestamp=stamped)
+
+    prop.set(ra=9.0)
+
+    assert prop.vector.timestamp == stamped
+
+
+def test_on_change_policy_ignores_jitter_below_the_declared_format() -> None:
+    """A sensor twitching under its own format has told the client nothing."""
+    vector = NumberVector(
+        device="Dev",
+        name="weather",
+        elements=[Number(name="temp", format="%.1f", value=11.0)],
+    )
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append, policy="on_change")
+
+    prop.set(temp=11.00004)  # renders "11.0", exactly as before
+
+    assert emitted == []
+    assert prop.value("temp") == 11.00004  # the reading is still recorded
+
+
+def test_on_change_policy_emits_once_jitter_crosses_the_format() -> None:
+    """Movement the client can actually see is published."""
+    vector = NumberVector(
+        device="Dev",
+        name="weather",
+        elements=[Number(name="temp", format="%.1f", value=11.0)],
+    )
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append, policy="on_change")
+
+    prop.set(temp=11.06)  # renders "11.1"
+
+    assert len(emitted) == 1
+
+
+def test_force_overrides_the_on_change_policy() -> None:
+    """force=True re-announces a property that has nothing new to say."""
+    prop, emitted = _numbers("on_change")
+
+    prop.set(ra=1.0, force=True)
+
+    assert len(emitted) == 1
+
+
+def test_on_change_policy_still_writes_the_values() -> None:
+    """Suppressing the emit must not suppress the assignment."""
+    prop, emitted = _numbers("on_change")
+
+    prop.set(ra=7.0)
+    emitted.clear()
+    prop.set(ra=7.0)
+
+    assert prop.value("ra") == 7.0
+    assert emitted == []
+
+
+# --------------------------------------------------------------------------- #
+# set_all                                                                      #
+# --------------------------------------------------------------------------- #
+def test_set_all_writes_every_element_in_one_emit() -> None:
+    """set_all is the reset half of the "one of N lights is lit" idiom."""
+    vector = LightVector(
+        device="Dev",
+        name="state",
+        elements=[Light(name=n, value=IPState.BUSY) for n in ("x", "y", "z")],
+    )
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append)
+
+    prop.set_all(IPState.IDLE, state=IPState.IDLE)
+
+    assert prop.vector.values() == dict.fromkeys(("x", "y", "z"), IPState.IDLE)
+    assert len(emitted) == 1
+    assert prop.state is IPState.IDLE
+
+
+# --------------------------------------------------------------------------- #
+# select                                                                       #
+# --------------------------------------------------------------------------- #
+def _lights() -> tuple[BoundProperty[LightVector], list[IndiMessage]]:
+    """Return a three-light property plus its outbox."""
+    vector = LightVector(
+        device="Dev",
+        name="state_message",
+        elements=Light.from_labels(["Idle", "Opening", "Closing"]),
+    )
+    emitted: list[IndiMessage] = []
+    return BoundProperty(vector, emitted.append), emitted
+
+
+def test_select_lights_one_and_clears_the_rest() -> None:
+    """The whole "one of N lights is lit" idiom in one call."""
+    prop, emitted = _lights()
+
+    prop.select("opening", IPState.BUSY)
+
+    assert prop.vector.values() == {
+        "idle": IPState.IDLE,
+        "opening": IPState.BUSY,
+        "closing": IPState.IDLE,
+    }
+    assert len(emitted) == 1
+
+
+def test_select_takes_the_vector_state_from_the_lit_light() -> None:
+    """A light's state is the vector's state, so it does not need repeating."""
+    prop, _ = _lights()
+
+    prop.select("closing", IPState.ALERT)
+
+    assert prop.state is IPState.ALERT
+
+
+def test_select_state_can_be_overridden() -> None:
+    """An explicit state wins over the inferred one."""
+    prop, _ = _lights()
+
+    prop.select("opening", IPState.BUSY, state=IPState.OK)
+
+    assert prop.state is IPState.OK
+    assert prop.value("opening") is IPState.BUSY
+
+
+def test_select_clears_switch_siblings_to_off() -> None:
+    """On a switch vector the unselected value is Off, whatever the rule."""
+    prop, _ = _switches(ISRule.ANY_OF_MANY)
+
+    prop.select("c", ISState.ON)
+
+    assert prop.vector.values() == {"a": ISState.OFF, "b": ISState.OFF, "c": ISState.ON}
+
+
+def test_select_leaves_switch_state_alone_by_default() -> None:
+    """ISState is not an IPState, so a switch select infers no vector state."""
+    prop, _ = _switches(ISRule.ANY_OF_MANY)
+    prop.set(state=IPState.OK)
+
+    prop.select("b", ISState.ON)
+
+    assert prop.state is IPState.OK
+
+
+def test_select_accepts_an_explicit_others_value() -> None:
+    """others= overrides the per-kind default."""
+    prop, _ = _lights()
+
+    prop.select("idle", IPState.OK, others=IPState.BUSY)
+
+    assert prop.value("opening") is IPState.BUSY
+
+
+def test_select_rejects_an_unknown_element() -> None:
+    """Selecting something the vector does not have is a bug, so it raises."""
+    prop, _ = _lights()
+
+    with pytest.raises(KeyError):
+        prop.select("nope", IPState.OK)
+
+
+def test_select_needs_others_for_a_kind_with_no_off_value() -> None:
+    """A number vector has no natural unselected value, so select asks for one."""
+    prop, _ = _numbers()
+
+    with pytest.raises(TypeError, match="needs others="):
+        prop.select("ra", 1.0)
+
+    prop.select("ra", 1.0, others=0.0)
+    assert prop.vector.values() == {"ra": 1.0, "dec": 0.0}
+
+
+def test_contains_reports_membership() -> None:
+    """`in` answers "does the hardware's value have a light here?"."""
+    prop, _ = _lights()
+
+    assert "opening" in prop
+    assert "snowing" not in prop
+
+
+# --------------------------------------------------------------------------- #
+# Text coercion                                                                #
+# --------------------------------------------------------------------------- #
+def test_text_elements_coerce_non_strings() -> None:
+    """A reading published to a text element is rendered, not left to explode."""
+    vector = TextVector(device="Dev", name="readings", elements=[Text(name="count")])
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append)
+
+    prop.set(count=3)
+
+    assert prop.value("count") == "3"
+    # ...and it survives the trip to the wire, which a raw int would not.
+    assert b">3<" in to_xml(emitted[0])
