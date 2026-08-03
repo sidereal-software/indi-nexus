@@ -1,217 +1,226 @@
 /**
- * The custom UI from `docs/guides/tutorial-open-meteo.md`.
+ * The custom UI from `docs/guides/tutorial-open-meteo.md`: a dome wallboard.
  *
- * A purpose-built observing dashboard for the Open-Meteo driver, built entirely
- * from `@indi-nexus/react` - the hooks for the data, the shadcn primitives it
+ * This is not a desktop dashboard. It is the screen bolted above the door of a
+ * control room, and that changes almost every decision:
+ *
+ * - **It is read from four metres, not forty centimetres.** Type is sized in
+ *   viewport units so the board fills whatever it is plugged into, and the one
+ *   thing that matters - can we open? - is the largest thing on it by a wide
+ *   margin.
+ * - **Nobody touches it.** No hover, no tooltips, no controls, no scrolling.
+ *   Everything is on one screen or it does not exist.
+ * - **Stale data is dangerous.** A wallboard quietly showing last hour's numbers
+ *   is worse than a blank one, so when the driver loses its source the readings
+ *   blank out and the board says so, rather than leaving numbers up.
+ * - **Colour is never the message.** The theme's Alert and Busy are ΔE 14.6
+ *   apart for a reader with full colour vision and 5.7 under protanopia -
+ *   indistinguishable across a room. Every state is spelled out in words at a
+ *   size you can read from the door.
+ *
+ * Built from `@indi-nexus/react`: hooks for the data, the shadcn primitives it
  * re-exports for the chrome, and the drawn figures in `sky-visuals.tsx`.
- *
- * The point it makes: the stock `DevicePanel` renders *anything*, which is right
- * for commissioning and wrong for 3 a.m. When you know the device, you can build
- * the screen the job actually wants - and it is still only hooks.
- *
- * Three things worth copying:
- *
- * - Every hook re-renders only its own reading. Changing the cloud cover
- *   repaints one meter, not the page.
- * - Every hook returns `undefined` until the driver has published, so the whole
- *   screen renders correctly before any data arrives.
- * - The safe/unsafe verdict is the driver's `WEATHER_STATUS` state, not a rule
- *   re-implemented here. One source of truth; every client agrees.
  */
 
 import {
-  Badge,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   type IPState,
   Separator,
-  StateBadge,
   useLight,
   useNumber,
   useProperty,
   useText,
 } from "@indi-nexus/react";
-import { bearingName, DaylightBar, Meter, MoonDisc, SiteMap, WindCompass } from "./sky-visuals";
+import { bearingName, DaylightBar, MoonDisc, SiteMap, WindCompass } from "./sky-visuals";
 
 const DEVICE = "Open-Meteo";
 
-/** Read one number and its status light in one go. */
+/** Border/text colour per state, from the theme's own tokens. */
+const STATE_BAR: Record<IPState, string> = {
+  Idle: "bg-state-idle",
+  Ok: "bg-state-ok",
+  Busy: "bg-state-busy",
+  Alert: "bg-state-alert",
+};
+
+/** Read one number and its status light together. */
 function useReading(element: string): { value?: number; state: IPState } {
   const value = useNumber(DEVICE, "WEATHER_PARAMETERS", element);
   const state = useLight(DEVICE, "WEATHER_STATUS", element);
   return { value, state: state ?? "Idle" };
 }
 
-/** The headline: what it is doing out there, and whether we can open. */
-function Verdict() {
+/** The labels of every reading currently in Alert - the "why" behind a hold. */
+function useAlerting(): string[] {
+  const status = useProperty(DEVICE, "WEATHER_STATUS");
+  if (status?.kind !== "light") return [];
+  return status.elements
+    .filter((light) => light.value === "Alert")
+    .map((light) => light.label ?? light.name);
+}
+
+/** One big reading: label, number, and its state as a word. */
+function Tile({
+  label,
+  value,
+  unit,
+  state,
+  live,
+}: {
+  label: string;
+  value?: number;
+  unit: string;
+  state: IPState;
+  live: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col justify-between gap-[1vh]">
+      <p className="truncate font-medium text-[clamp(0.7rem,1.05vw,1.15rem)] text-muted-foreground uppercase tracking-widest">
+        {label}
+      </p>
+      <p className="font-semibold text-[clamp(1.6rem,3.4vw,3.75rem)] leading-none">
+        {live && value !== undefined ? value : "--"}
+        <span className="ml-1 text-[0.4em] text-muted-foreground">{unit}</span>
+      </p>
+      <div className="space-y-[0.6vh]">
+        <div className={`h-[0.7vh] w-full rounded-full ${STATE_BAR[live ? state : "Idle"]}`} />
+        {/* The state as a word: at four metres, and for a protanope at any
+            distance, amber and red are the same colour. */}
+        <p className="font-medium text-[clamp(0.65rem,0.95vw,1rem)] text-muted-foreground uppercase tracking-wider">
+          {live ? state : "no data"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** The dome wallboard for the Open-Meteo device. */
+export function SkyReport() {
   const conditions = useText(DEVICE, "SKY", "CONDITIONS");
   const daylight = useText(DEVICE, "SKY", "DAYLIGHT");
-  const temperature = useReading("TEMPERATURE");
-  const feelsLike = useNumber(DEVICE, "WEATHER_PARAMETERS", "FEELS_LIKE");
-  const overall = useProperty(DEVICE, "WEATHER_STATUS");
-  const moon = useText(DEVICE, "ALMANAC", "MOON_PHASE");
-  const phase = moon?.match(/\(([\d.]+)\)/)?.[1];
-
-  const state: IPState = overall?.state ?? "Idle";
-  const verdict =
-    state === "Ok" ? "Safe to open" : state === "Idle" ? "No data" : "Not safe to open";
-
-  return (
-    <Card>
-      <CardContent className="flex flex-wrap items-center justify-between gap-6">
-        <div className="space-y-2">
-          {/* Status is never colour alone: the badge carries the word too. */}
-          <div className="flex items-center gap-2">
-            <StateBadge state={state} />
-            <span className="font-medium text-sm">{verdict}</span>
-          </div>
-          <p className="font-semibold text-2xl leading-tight">{conditions || "Waiting for data"}</p>
-          <p className="text-muted-foreground text-sm">
-            {daylight || "--"}
-            {moon ? ` · ${moon.replace(/\s*\([\d.]+\)/, "")}` : ""}
-          </p>
-        </div>
-
-        {/* The one hero figure on the page: proportional digits, not tabular. */}
-        <div className="text-right">
-          <p className="font-semibold text-6xl leading-none">
-            {temperature.value ?? "--"}
-            <span className="align-top text-2xl text-muted-foreground">°</span>
-          </p>
-          {feelsLike !== undefined && (
-            <p className="mt-1 text-muted-foreground text-sm">feels like {feelsLike}°</p>
-          )}
-        </div>
-
-        <MoonDisc phase={phase === undefined ? undefined : Number(phase)} />
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Wind: an angular reading, so a compass rather than another bar. */
-function Wind() {
-  const speed = useReading("WIND_SPEED");
-  const gust = useReading("WIND_GUST");
-  const direction = useNumber(DEVICE, "WEATHER_PARAMETERS", "WIND_DIRECTION");
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Wind</CardTitle>
-        {direction !== undefined && (
-          <Badge variant="outline" className="tabular-nums">
-            from {bearingName(direction)} {Math.round(direction)}°
-          </Badge>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col items-center gap-3">
-        <WindCompass
-          direction={direction}
-          speed={speed.value}
-          gust={gust.value}
-          unit="mph"
-          state={speed.state}
-        />
-        <div className="flex w-full items-center justify-center gap-4 text-sm">
-          <span className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Sustained</span>
-            <StateBadge state={speed.state} />
-          </span>
-          <Separator orientation="vertical" className="h-4" />
-          <span className="flex items-center gap-1.5 tabular-nums">
-            <span className="text-muted-foreground">Gust</span>
-            <span className="font-medium">{gust.value ?? "--"}</span>
-            <StateBadge state={gust.state} />
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** The ratios, each against the limit the driver judges it by. */
-function Conditions() {
-  const cloud = useReading("CLOUD_COVER");
-  const humidity = useReading("HUMIDITY");
-  const pressure = useReading("PRESSURE");
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Conditions</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Meter
-          label="Cloud cover"
-          value={cloud.value}
-          max={100}
-          limit={30}
-          unit="%"
-          state={cloud.state}
-        />
-        <Meter
-          label="Humidity"
-          value={humidity.value}
-          max={100}
-          limit={90}
-          unit="%"
-          state={humidity.state}
-        />
-        <Separator />
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-muted-foreground text-sm">Pressure</span>
-          <span className="flex items-center gap-2">
-            <span className="font-medium text-sm tabular-nums">
-              {pressure.value ?? "--"}
-              <span className="ml-0.5 text-muted-foreground text-xs">hPa</span>
-            </span>
-            <StateBadge state={pressure.state} />
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Where the readings come from, and when the sun is up there. */
-function Site() {
-  const latitude = useNumber(DEVICE, "GEOGRAPHIC_COORD", "LAT");
-  const longitude = useNumber(DEVICE, "GEOGRAPHIC_COORD", "LONG");
   const sunrise = useText(DEVICE, "ALMANAC", "SUNRISE");
   const sunset = useText(DEVICE, "ALMANAC", "SUNSET");
+  const moon = useText(DEVICE, "ALMANAC", "MOON_PHASE");
+  const latitude = useNumber(DEVICE, "GEOGRAPHIC_COORD", "LAT");
+  const longitude = useNumber(DEVICE, "GEOGRAPHIC_COORD", "LONG");
+
+  const temperature = useReading("TEMPERATURE");
+  const feelsLike = useNumber(DEVICE, "WEATHER_PARAMETERS", "FEELS_LIKE");
+  const cloud = useReading("CLOUD_COVER");
+  const humidity = useReading("HUMIDITY");
+  const wind = useReading("WIND_SPEED");
+  const gust = useReading("WIND_GUST");
+  const pressure = useReading("PRESSURE");
+  const direction = useNumber(DEVICE, "WEATHER_PARAMETERS", "WIND_DIRECTION");
+
+  const parameters = useProperty(DEVICE, "WEATHER_PARAMETERS");
+  const overall: IPState = useProperty(DEVICE, "WEATHER_STATUS")?.state ?? "Idle";
+  // The driver parks its readings at Idle when the source stops answering, so
+  // "not Idle" is the honest test for "these numbers mean something now".
+  const live = parameters !== undefined && parameters.state !== "Idle";
+  const alerting = useAlerting();
+
+  const verdict = !live ? "NO DATA" : overall === "Ok" ? "OPEN" : "HOLD";
+  const because = !live
+    ? "Weather source is not answering"
+    : alerting.length > 0
+      ? alerting.join(" · ")
+      : "All readings within limits";
+
+  const phase = moon?.match(/\(([\d.]+)\)/)?.[1];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Site</CardTitle>
-        <Badge variant="outline" className="tabular-nums">
+    <div className="flex h-dvh w-full flex-col gap-[2vh] overflow-hidden bg-background p-[3vh]">
+      {/* Top rail. Right-padded so the demo's view switcher never sits on it;
+          a real board has no switcher. */}
+      <header className="flex shrink-0 items-baseline justify-between gap-6 pr-[20rem] text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground uppercase tracking-widest">
+        <span className="font-medium">Sky conditions</span>
+        <span className="tabular-nums">
           {latitude?.toFixed(2) ?? "--"}, {longitude?.toFixed(2) ?? "--"}
-        </Badge>
-      </CardHeader>
-      <CardContent className="grid items-center gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <SiteMap latitude={latitude} longitude={longitude} />
-        <div className="space-y-2">
-          <p className="text-muted-foreground text-sm">Daylight</p>
-          <DaylightBar sunrise={sunrise} sunset={sunset} />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+        </span>
+      </header>
 
-/** A purpose-built observing dashboard for the Open-Meteo device. */
-export function SkyReport() {
-  return (
-    <div className="mx-auto w-full max-w-4xl space-y-4 p-4">
-      <Verdict />
-      <div className="grid gap-4 md:grid-cols-2">
-        <Wind />
-        <Conditions />
-      </div>
-      <Site />
+      {/* The one thing the board exists to say. */}
+      <section className="flex min-h-0 flex-1 items-stretch gap-[3vw]">
+        <div className="flex min-w-0 flex-[3] flex-col justify-center gap-[1.5vh]">
+          <div className="flex items-center gap-[1.5vw]">
+            <div
+              className={`h-[12vh] w-[1.2vw] shrink-0 rounded-full ${STATE_BAR[live ? overall : "Idle"]}`}
+            />
+            <p className="font-semibold text-[clamp(3rem,10vw,11rem)] leading-[0.9] tracking-tight">
+              {verdict}
+            </p>
+          </div>
+          <p className="text-[clamp(1rem,2.1vw,2.25rem)] text-muted-foreground leading-tight">
+            {because}
+          </p>
+          <p className="text-[clamp(0.9rem,1.6vw,1.75rem)]">
+            {conditions || "Waiting for data"}
+            <span className="text-muted-foreground"> · {daylight || "--"}</span>
+          </p>
+        </div>
+
+        <Separator orientation="vertical" className="hidden lg:block" />
+
+        <div className="flex min-w-0 flex-[2] flex-col justify-center gap-[2vh]">
+          <div className="flex items-center justify-between gap-[2vw]">
+            <div>
+              <p className="font-semibold text-[clamp(2.5rem,6vw,6.5rem)] leading-none">
+                {live && temperature.value !== undefined ? temperature.value : "--"}
+                <span className="align-top text-[0.4em] text-muted-foreground">°</span>
+              </p>
+              {live && feelsLike !== undefined && (
+                <p className="mt-[1vh] text-[clamp(0.8rem,1.3vw,1.4rem)] text-muted-foreground">
+                  feels like {feelsLike}°
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col items-center gap-[0.8vh]">
+              <MoonDisc phase={phase === undefined ? undefined : Number(phase)} size={96} />
+              <p className="text-center text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground">
+                {moon?.replace(/\s*\([\d.]+\)/, "") ?? "--"}
+              </p>
+            </div>
+          </div>
+          <div className="space-y-[1vh]">
+            <p className="text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground uppercase tracking-widest">
+              Daylight
+            </p>
+            <DaylightBar sunrise={sunrise} sunset={sunset} />
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center opacity-70">
+            <SiteMap latitude={latitude} longitude={longitude} />
+          </div>
+        </div>
+      </section>
+
+      <Separator className="shrink-0" />
+
+      {/* The numbers behind the verdict, plus where the wind is coming from. */}
+      <section className="grid shrink-0 grid-cols-[repeat(5,minmax(0,1fr))_auto] items-end gap-[2vw] pb-[1vh]">
+        <Tile label="Cloud" value={cloud.value} unit="%" state={cloud.state} live={live} />
+        <Tile label="Humidity" value={humidity.value} unit="%" state={humidity.state} live={live} />
+        <Tile label="Wind" value={wind.value} unit="mph" state={wind.state} live={live} />
+        <Tile label="Gust" value={gust.value} unit="mph" state={gust.state} live={live} />
+        <Tile
+          label="Pressure"
+          value={pressure.value}
+          unit="hPa"
+          state={pressure.state}
+          live={live}
+        />
+        <div className="flex flex-col items-center gap-[0.8vh]">
+          <WindCompass
+            direction={live ? direction : undefined}
+            speed={live ? wind.value : undefined}
+            gust={live ? gust.value : undefined}
+            state={wind.state}
+            size="h-[22vh] w-[22vh]"
+          />
+          <p className="font-medium text-[clamp(0.65rem,0.95vw,1rem)] text-muted-foreground uppercase tracking-wider">
+            {live && direction !== undefined ? `from ${bearingName(direction)}` : "wind"}
+          </p>
+        </div>
+      </section>
     </div>
   );
 }

@@ -10,8 +10,9 @@
  *
  * - Wind direction is **angular** data, which is the one case a radial form is
  *   the right answer rather than a decoration: a compass.
- * - Cloud cover and humidity are **a ratio against a limit**, so they are meters
- *   with the limit marked - not dials, and not two-slice pies.
+ * - A ratio against a limit would normally be a meter. On a wallboard it is not:
+ *   at four metres a 2px track with a 1px limit tick is invisible, so the board
+ *   carries a large number and a thick state bar instead.
  * - Status colour never carries meaning alone. Red and amber are ΔE 4.4 apart
  *   under deuteranopia, so every state here is also stated in words.
  */
@@ -52,6 +53,8 @@ export interface WindCompassProps {
   unit?: string;
   /** State of the wind reading, for the arrow's colour. */
   state?: IPState;
+  /** Tailwind sizing classes; a wallboard wants a much larger dial. */
+  size?: string;
 }
 
 /**
@@ -66,6 +69,7 @@ export function WindCompass({
   gust,
   unit = "",
   state = "Idle",
+  size: sizeClass = "h-42 w-42",
 }: WindCompassProps) {
   const size = 168;
   const c = size / 2;
@@ -74,7 +78,7 @@ export function WindCompass({
   const radians = ((direction ?? 0) - 90) * (Math.PI / 180);
 
   // The arrow: a slim triangle sitting on the rim, pointing at the centre.
-  const tipR = 22;
+  const tipR = 40;
   const tail = { x: c + r * Math.cos(radians), y: c + r * Math.sin(radians) };
   const tip = { x: c + tipR * Math.cos(radians), y: c + tipR * Math.sin(radians) };
   const perp = radians + Math.PI / 2;
@@ -91,7 +95,7 @@ export function WindCompass({
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      className="h-42 w-42"
+      className={sizeClass}
       role="img"
       aria-label={
         known
@@ -104,8 +108,7 @@ export function WindCompass({
       </title>
 
       {/* Rim and cardinal ticks: hairline, one shade off the surface. */}
-      <circle cx={c} cy={c} r={r} className="fill-none stroke-border" strokeWidth={1} />
-      <circle cx={c} cy={c} r={r - 12} className="fill-none stroke-border/50" strokeWidth={1} />
+      <circle cx={c} cy={c} r={r} className="fill-none stroke-border" strokeWidth={2} />
       {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
         const t = (deg - 90) * (Math.PI / 180);
         const major = deg % 90 === 0;
@@ -117,8 +120,8 @@ export function WindCompass({
             y1={c + inner * Math.sin(t)}
             x2={c + r * Math.cos(t)}
             y2={c + r * Math.sin(t)}
-            className={major ? "stroke-border" : "stroke-border/60"}
-            strokeWidth={major ? 1.5 : 1}
+            className={major ? "stroke-muted-foreground" : "stroke-border"}
+            strokeWidth={major ? 3 : 2}
           />
         );
       })}
@@ -131,7 +134,7 @@ export function WindCompass({
             y={c + (r + 12) * Math.sin(t)}
             textAnchor="middle"
             dominantBaseline="central"
-            className="fill-muted-foreground text-[11px]"
+            className="fill-muted-foreground font-medium text-[13px]"
           >
             {label}
           </text>
@@ -163,7 +166,7 @@ export function WindCompass({
         x={c}
         y={c - 4}
         textAnchor="middle"
-        className="fill-foreground font-semibold text-[26px]"
+        className="fill-foreground font-semibold text-[30px]"
       >
         {speed ?? "--"}
       </text>
@@ -171,55 +174,6 @@ export function WindCompass({
         {unit}
       </text>
     </svg>
-  );
-}
-
-/** Props for {@link Meter}. */
-export interface MeterProps {
-  label: string;
-  value?: number;
-  /** Top of the scale. */
-  max: number;
-  /** Where the driver stops calling it safe; drawn as a tick on the track. */
-  limit?: number;
-  unit?: string;
-  state?: IPState;
-}
-
-/**
- * One ratio against a limit.
- *
- * The fill carries severity and the track is the same hue at low opacity, so
- * the state reads across the whole bar; the limit is a tick rather than a
- * second colour.
- */
-export function Meter({ label, value, max, limit, unit = "", state = "Idle" }: MeterProps) {
-  const pct = value === undefined ? 0 : Math.max(0, Math.min(1, value / max));
-  const limitPct = limit === undefined ? undefined : Math.max(0, Math.min(1, limit / max));
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-muted-foreground text-sm">{label}</span>
-        <span className="font-medium text-sm tabular-nums">
-          {value ?? "--"}
-          <span className="ml-0.5 text-muted-foreground text-xs">{unit}</span>
-        </span>
-      </div>
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={`h-full rounded-full ${STATE_FILL[state].replace("fill-", "bg-")}`}
-          style={{ width: `${pct * 100}%` }}
-        />
-        {limitPct !== undefined && (
-          <div
-            className="absolute top-0 h-full w-px bg-foreground/40"
-            style={{ left: `${limitPct * 100}%` }}
-            aria-hidden
-          />
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -424,20 +378,20 @@ export function DaylightBar({ sunrise, sunset, now }: DaylightBarProps) {
 
   return (
     <div className="space-y-1.5">
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-foreground/15">
+      <div className="relative h-[1.2vh] min-h-2 w-full overflow-hidden rounded-full bg-foreground/15">
         <div
           className="absolute h-full rounded-full bg-chart-3"
           style={{ left: `${at(rise)}%`, width: `${at(set) - at(rise)}%` }}
         />
         {nowPct >= 0 && nowPct <= 100 && (
           <div
-            className="absolute top-0 h-full w-0.5 bg-foreground"
+            className="absolute top-0 h-full w-1 rounded-full bg-foreground"
             style={{ left: `${nowPct}%` }}
             aria-hidden
           />
         )}
       </div>
-      <div className="flex justify-between text-muted-foreground text-xs tabular-nums">
+      <div className="flex justify-between text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground tabular-nums">
         <span>↑ {sunrise?.slice(11)} UTC</span>
         <span>{sunset?.slice(11)} UTC ↓</span>
       </div>

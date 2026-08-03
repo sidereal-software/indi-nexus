@@ -44,12 +44,12 @@ function publishWeather(socket: Parameters<typeof receive>[0]) {
       name: "WEATHER_STATUS",
       state: "Alert",
       elements: [
-        { kind: "light", name: "TEMPERATURE", value: "Ok" },
-        { kind: "light", name: "HUMIDITY", value: "Alert" },
-        { kind: "light", name: "CLOUD_COVER", value: "Alert" },
-        { kind: "light", name: "WIND_SPEED", value: "Ok" },
-        { kind: "light", name: "WIND_GUST", value: "Ok" },
-        { kind: "light", name: "PRESSURE", value: "Ok" },
+        { kind: "light", name: "TEMPERATURE", label: "Temperature", value: "Ok" },
+        { kind: "light", name: "HUMIDITY", label: "Humidity", value: "Alert" },
+        { kind: "light", name: "CLOUD_COVER", label: "Cloud cover", value: "Alert" },
+        { kind: "light", name: "WIND_SPEED", label: "Wind speed", value: "Ok" },
+        { kind: "light", name: "WIND_GUST", label: "Wind gust", value: "Ok" },
+        { kind: "light", name: "PRESSURE", label: "Pressure", value: "Ok" },
       ],
     },
   });
@@ -121,7 +121,7 @@ describe("the tutorial's custom UI", () => {
     const { socket } = renderConnected(<SkyReport />);
     publishWeather(socket);
 
-    expect(screen.getByText("Not safe to open")).toBeInTheDocument();
+    expect(screen.getByText("HOLD")).toBeInTheDocument();
   });
 
   it("flips to safe when the driver clears the alert", () => {
@@ -142,7 +142,7 @@ describe("the tutorial's custom UI", () => {
       },
     });
 
-    expect(screen.getByText("Safe to open")).toBeInTheDocument();
+    expect(screen.getByText("OPEN")).toBeInTheDocument();
   });
 
   it("updates one reading in place when the driver publishes a change", () => {
@@ -171,8 +171,9 @@ describe("the dashboard's figures", () => {
     const { socket } = renderConnected(<SkyReport />);
     publishWeather(socket);
 
-    // 304° is north-west; the badge says so in words as well as numbers.
-    expect(screen.getByText(/from NW 304/)).toBeInTheDocument();
+    // 304° is north-west, and the board says so in words - a bearing in
+    // degrees is not something you read off a wall.
+    expect(screen.getByText("from NW")).toBeInTheDocument();
   });
 
   it("labels the wind compass for a screen reader", () => {
@@ -186,7 +187,7 @@ describe("the dashboard's figures", () => {
     const { socket } = renderConnected(<SkyReport />);
     publishWeather(socket);
 
-    expect(screen.getByText("34.05, -118.24")).toBeInTheDocument();
+    expect(screen.getByText(/34\.05, -118\.24/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Site at 34.05, -118.24/ })).toBeInTheDocument();
   });
 
@@ -212,5 +213,71 @@ describe("the dashboard's figures", () => {
     expect(screen.getByText("Waiting for data")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Wind direction unknown" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Site unknown" })).toBeInTheDocument();
+  });
+});
+
+describe("the wallboard's safety rules", () => {
+  it("says OPEN and why when every reading is within limits", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+    receive(socket, {
+      tag: "set",
+      vector: {
+        kind: "light",
+        device: "Open-Meteo",
+        name: "WEATHER_STATUS",
+        state: "Ok",
+        elements: [
+          { kind: "light", name: "HUMIDITY", label: "Humidity", value: "Ok" },
+          { kind: "light", name: "CLOUD_COVER", label: "Cloud cover", value: "Ok" },
+        ],
+      },
+    });
+
+    expect(screen.getByText("OPEN")).toBeInTheDocument();
+    expect(screen.getByText("All readings within limits")).toBeInTheDocument();
+  });
+
+  it("names the readings holding it shut, not just that it is shut", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    expect(screen.getByText("HOLD")).toBeInTheDocument();
+    // The board has to answer "why" from across the room.
+    expect(screen.getByText("Humidity · Cloud cover")).toBeInTheDocument();
+  });
+
+  it("blanks the numbers rather than showing stale ones when the source dies", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+    expect(screen.getByText("66.9")).toBeInTheDocument();
+
+    // What the driver does when Open-Meteo stops answering: park at Idle.
+    receive(socket, {
+      tag: "set",
+      vector: {
+        kind: "number",
+        device: "Open-Meteo",
+        name: "WEATHER_PARAMETERS",
+        state: "Idle",
+        perm: "ro",
+        elements: [],
+      },
+    });
+
+    expect(screen.getByText("NO DATA")).toBeInTheDocument();
+    expect(screen.getByText("Weather source is not answering")).toBeInTheDocument();
+    expect(screen.queryByText("66.9")).not.toBeInTheDocument();
+    expect(screen.getAllByText("--").length).toBeGreaterThan(4);
+  });
+
+  it("states every reading's condition in words, not colour alone", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    // Alert and Busy are ΔE 14.6 apart even with full colour vision, so the
+    // word is the encoding and the colour is the reinforcement.
+    expect(screen.getAllByText("Alert").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Ok").length).toBeGreaterThanOrEqual(3);
   });
 });

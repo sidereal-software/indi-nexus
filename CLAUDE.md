@@ -349,7 +349,8 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   `demo/dome-sim.ts` and `demo/weather-sim.ts` are TypeScript ports of
   `examples/dome_device.py` and `examples/openmeteo_device.py` behind a fake `WebSocketLike`,
   so the docs' live demos run with no server; `demo/sky-report.tsx` + `demo/sky-visuals.tsx` are
-  the tutorial's custom UI - the layout, and the drawn figures (wind compass, meters, moon
+  the tutorial's custom UI - a **wallboard** (read at 4 m, no interaction, one screen, and
+  readings that blank rather than go stale), plus its drawn figures (wind compass, moon
   disc, projected site graticule, daylight bar) - shown on the weather page beside the
   **real panel** `App`, not a bare `DevicePanel`, so the demo looks like what ships. The
   figures wear theme tokens only (`fill-state-*`, `fill-chart-3`, `stroke-border`) so they

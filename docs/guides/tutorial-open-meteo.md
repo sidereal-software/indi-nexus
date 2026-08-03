@@ -204,13 +204,26 @@ the Site latitude and longitude and it follows you.
 ## 9. A screen of your own
 
 The stock `DevicePanel` renders *anything* - it builds itself from whatever the
-device says it has, which is exactly right for commissioning and exactly wrong
-at 3 a.m. When you know the device, you can build the screen the job wants.
+device says it has. That is exactly right for commissioning, and exactly wrong
+for the screen above the control-room door.
 
-The finished dashboard is `web/apps/panel/demo/sky-report.tsx` (the layout) and
-`sky-visuals.tsx` (the drawn figures). It is built entirely from
-`@indi-nexus/react`: the hooks for data, the shadcn primitives that package
-re-exports for the chrome, and plain SVG for the rest.
+So the custom UI here is a **wallboard**: the display an observer glances at
+from across the room to answer one question. It is
+`web/apps/panel/demo/sky-report.tsx` (the layout) and `sky-visuals.tsx` (the
+drawn figures), built entirely from `@indi-nexus/react`.
+
+### A wallboard is a different design problem
+
+| A desktop panel | A wallboard |
+|---|---|
+| Read at 40 cm | Read at 4 m - type sized in viewport units, the verdict ~10 vw |
+| You can hover, click, scroll | Nobody touches it. One screen, no scroll, no tooltips |
+| A stale number is a nuisance | A stale number is dangerous - it must blank out |
+| Ratios suit thin meters | A 2 px track with a 1 px limit tick is invisible; use a big number and a thick state bar |
+
+That last row is the one that surprises people. The earlier version of this
+screen used meters with the driver's limit ticked on the track, which is the
+right form on a laptop and unreadable on a wall.
 
 ### Reading a value and its verdict together
 
@@ -224,46 +237,66 @@ function useReading(element: string) {
 }
 ```
 
-Then a tile is just markup:
+### Say *why*, not just *what*
+
+"HOLD" is not enough from across a room - the next question is always "because
+of what?". The driver already knows: it publishes one light per reading, so the
+board just reads off the ones in Alert.
 
 ```tsx
-const cloud = useReading("CLOUD_COVER");
-<Meter label="Cloud cover" value={cloud.value} max={100} limit={30} unit="%" state={cloud.state} />
+function useAlerting(): string[] {
+  const status = useProperty("Open-Meteo", "WEATHER_STATUS");
+  if (status?.kind !== "light") return [];
+  return status.elements
+    .filter((light) => light.value === "Alert")
+    .map((light) => light.label ?? light.name);
+}
 ```
 
-### Choosing the form before the colour
+The board then reads **HOLD** / *Humidity · Cloud cover*.
 
-The figures are not decoration, and each is the form its data asks for:
+### Blank, don't lie
+
+When Open-Meteo stops answering, the driver parks its readings at `Idle` rather
+than leaving stale numbers looking current. The board honours that: every value
+becomes `--`, the state bars go grey, and the verdict becomes **NO DATA -
+weather source is not answering**. A wallboard confidently showing last hour's
+wind speed is worse than a blank one.
+
+```tsx
+const live = parameters !== undefined && parameters.state !== "Idle";
+```
+
+### The figures, and why each is that shape
 
 | Reading | Form | Why |
 |---|---|---|
-| Wind direction | **compass** | The one genuinely *angular* reading, which is the one case a dial beats a bar. The arrow sits on the bearing the wind comes from, like a weather vane. |
-| Cloud cover, humidity | **meter** with the limit ticked | A ratio against a limit. Not a dial, and not a two-slice pie. |
-| Pressure | **a number** | It has no meaningful 0-to-max, so a bar would just always look nearly full. |
-| Temperature | **hero figure** | The one number the screen leads with. Exactly one per view. |
+| Wind direction | **compass** | The one genuinely *angular* reading, which is where a dial beats a bar. The arrow sits on the bearing the wind comes from, like a vane. |
+| Temperature | **hero figure** | The one number the board leads with. Exactly one per view. |
+| Cloud, humidity, wind, gust, pressure | **big number + state bar** | Distance beats precision here. |
 | Moon phase | **the moon**, at its real illuminated fraction | The lit limb is a semicircle; the terminator is a half-ellipse of radius `r·cos 2πp`, which is what makes a crescent bow one way and a gibbous the other. |
-| Site | **a projected graticule** | Straight parallels, meridians curving to the poles, so it reads as a globe rather than a grid - and the marker uses the same projection, so its position is right rather than approximately right. |
+| Site | **a projected graticule** | Straight parallels, meridians curving to the poles, so it reads as a globe rather than a grid - and the marker uses that same projection, so its position is right rather than approximately right. |
 
-### Three rules the dashboard follows
+### Three rules it follows
 
-- **Status is never colour alone.** The theme's Alert red and Busy amber are
-  only ΔE 4.4 apart under deuteranopia, so every state is also written out -
-  `StateBadge` carries the word, not just the colour.
-- **Colour comes from theme tokens, never hex.** The figures use
-  `fill-state-*`, `fill-chart-3`, `stroke-border`, so they follow light and dark
-  and any retheme for free. One trap: the moon's unlit disc is
-  `fill-foreground/20`, not `fill-foreground` - in dark mode `foreground` is
-  *light*, which would erase the phase entirely.
-- **The verdict is the driver's, not the UI's.** "Safe to open" reads
-  `WEATHER_STATUS.state`, the state the driver computed. The safety rule lives
-  in one place, so this screen, the stock panel and any script all agree.
+- **Status is never colour alone.** In this theme Alert and Busy are ΔE 14.6
+  apart for a reader with full colour vision, and 5.7 under protanopia - across
+  a room they are the same colour. So every state is also a word: `ALERT`,
+  `OK`, in type you can read from the door.
+- **Colour comes from theme tokens, never hex** - `bg-state-*`, `fill-chart-3`,
+  `stroke-border` - so the board follows light and dark. One trap: the moon's
+  unlit disc is `fill-foreground/20`, not `fill-foreground`, because in dark
+  mode `foreground` is *light* and would erase the phase entirely.
+- **The verdict is the driver's, not the UI's.** OPEN/HOLD reads
+  `WEATHER_STATUS.state`. The safety rule lives in one place, so this board, the
+  stock panel and any script all agree.
 
 ### And it stays live
 
-Every hook re-renders only its own reading, so a change to the cloud cover
-repaints one meter rather than the page; and every hook returns `undefined`
-until the driver has published, so the whole screen renders correctly before any
-data has arrived.
+Every hook re-renders only its own reading, so a change in cloud cover repaints
+one tile rather than the board; and every hook returns `undefined` until the
+driver has published, so the whole thing renders correctly before any data
+arrives.
 
 ## 10. Test both halves
 
