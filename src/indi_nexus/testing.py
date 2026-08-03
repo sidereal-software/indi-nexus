@@ -86,9 +86,7 @@ def _client_write(defined: Vector, values: dict[str, Any]) -> Vector:
     if isinstance(defined, LightVector):
         lights = [Light(name=key, value=IPState(val)) for key, val in values.items()]
         return LightVector(device=device, name=name, elements=lights)
-    blobs = [
-        BLOB(name=key, data=bytes(val), size=len(bytes(val))) for key, val in values.items()
-    ]
+    blobs = [BLOB(name=key, data=bytes(val), size=len(bytes(val))) for key, val in values.items()]
     return BLOBVector(device=device, name=name, elements=blobs)
 
 

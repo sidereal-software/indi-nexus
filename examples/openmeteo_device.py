@@ -219,12 +219,20 @@ class OpenMeteo(Device):
             "GEOGRAPHIC_COORD",  # the standard INDI name for "where the site is"
             [
                 Number(
-                    name="LAT", label="Latitude", format="%.4f",
-                    min=-90, max=90, value=self._latitude,
+                    name="LAT",
+                    label="Latitude",
+                    format="%.4f",
+                    min=-90,
+                    max=90,
+                    value=self._latitude,
                 ),
                 Number(
-                    name="LONG", label="Longitude", format="%.4f",
-                    min=-180, max=180, value=self._longitude,
+                    name="LONG",
+                    label="Longitude",
+                    format="%.4f",
+                    min=-180,
+                    max=180,
+                    value=self._longitude,
                 ),
             ],
             label="Site",
@@ -302,9 +310,7 @@ class OpenMeteo(Device):
         else about the driver is the same.
         """
         try:
-            payload = await self.off_thread(
-                self._client.fetch, self._latitude, self._longitude
-            )
+            payload = await self.off_thread(self._client.fetch, self._latitude, self._longitude)
         except OSError as exc:
             self._go_offline(exc)
             return
@@ -391,11 +397,7 @@ class OpenMeteo(Device):
         # Precipitation overrides everything: if it is raining, it is not safe,
         # whatever the individual numbers say.
         raining = int(current.get("weather_code", 0)) in WET_CODES
-        worst = (
-            IPState.ALERT
-            if raining or IPState.ALERT in lights.values()
-            else IPState.OK
-        )
+        worst = IPState.ALERT if raining or IPState.ALERT in lights.values() else IPState.OK
         self["WEATHER_STATUS"].set(lights, state=worst)
 
     def _publish_sky(self, current: dict[str, Any]) -> None:
@@ -450,9 +452,7 @@ class OpenMeteo(Device):
             site.set(state=IPState.OK)
             return
         try:
-            payload = await self.off_thread(
-                self._client.fetch, self._latitude, self._longitude
-            )
+            payload = await self.off_thread(self._client.fetch, self._latitude, self._longitude)
         except OSError as exc:
             site.set(state=IPState.ALERT)
             self._go_offline(exc)

@@ -1054,9 +1054,7 @@ def test_a_failing_on_connect_rolls_the_switch_back() -> None:
         final = [m for m in captured if isinstance(m, SetVector)][-1]
         assert final.vector.state is IPState.ALERT
         assert final.vector.get("DISCONNECT") is ISState.ON
-        assert any(
-            "ttyUSB0" in m.message for m in captured if isinstance(m, Message)
-        )
+        assert any("ttyUSB0" in m.message for m in captured if isinstance(m, Message))
 
     asyncio.run(scenario())
 
