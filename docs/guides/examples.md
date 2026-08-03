@@ -40,7 +40,8 @@ A driver for [Open-Meteo](https://open-meteo.com), a free public weather API
 with no account and no key - so it works the moment you run it. It reports sky
 conditions, safety lights, and today's sun and moon for a site you can move from
 the panel. The [tutorial](tutorial-open-meteo.md) builds it step by step and
-then puts a custom screen on it.
+then puts a custom screen on it - and you can
+[see both running](../weather-demo/weather.html) without installing anything.
 
 ### `dome_device.py` - a realistic instrument
 

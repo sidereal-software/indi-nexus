@@ -36,6 +36,12 @@ it, and watch the message log narrate what the driver is saying.
 
 [Launch the live demo](demo-app/index.html){ .md-button .md-button--primary }
 
+And a second one driving **real weather data**: the
+[Open-Meteo demo](weather-demo/weather.html) runs that driver in your browser and
+shows the same device two ways - the stock panel, and a custom screen built from
+the hooks. It is the driver the
+[tutorial](guides/tutorial-open-meteo.md) builds.
+
 ## How the pieces fit
 
 INDINexus does not replace `indiserver`, the hub program observatories already run - it

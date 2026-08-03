@@ -8,6 +8,9 @@ key - and then a custom screen for it.
 At the end you will have real sky conditions for your own site, in a panel you
 designed.
 
+**[See it running first](../weather-demo/weather.html)** - the finished driver and
+the custom screen, both in your browser, with no install. Press Connect.
+
 The finished code is `examples/openmeteo_device.py`, and its tests are
 `tests/test_openmeteo_example.py`.
 
@@ -235,9 +238,9 @@ export function SkyReport() {
   return (
     <section className="mx-auto max-w-md space-y-4 p-6">
       <header className="space-y-1">
-        <h1 className="font-semibold text-3xl">{conditions ?? "Waiting for data"}</h1>
+        <h1 className="font-semibold text-3xl">{conditions || "Waiting for data"}</h1>
         <p className="text-muted-foreground text-sm">
-          {daylight ?? "--"} &middot; sunset {sunset ?? "--"} &middot; {moon ?? "--"}
+          {daylight || "--"} &middot; sunset {sunset || "--"} &middot; {moon || "--"}
         </p>
       </header>
 
@@ -249,9 +252,7 @@ export function SkyReport() {
         <Reading element="TEMPERATURE" label="Temperature" />
       </div>
 
-      <p className="text-sm">
-        {overall?.state === "Ok" ? "Safe to open." : "Not safe to open."}
-      </p>
+      <p className="text-sm">{overall?.state === "Ok" ? "Safe to open." : "Not safe to open."}</p>
     </section>
   );
 }
@@ -268,8 +269,11 @@ Points worth noticing:
 - **Nothing polls.** Each `useNumber` / `useText` re-renders only when *that*
   value changes. Change the cloud cover and the cloud cover line updates; the
   rest of the screen does not re-render.
-- **`?? "--"` everywhere.** The hooks return `undefined` until the driver has
-  published, so the screen renders correctly before any data arrives.
+- **Placeholders everywhere.** The hooks return `undefined` until the driver has
+  published, so the screen renders correctly before any data arrives. Note the
+  two different operators: numbers use `?? "--"` (because `0` is a real reading
+  and must not be replaced), text uses `|| "--"` (because the driver defines
+  those elements as empty strings, which `??` would happily print).
 - **The verdict comes from the driver, not the UI.** `WEATHER_STATUS.state` is
   the driver's judgement. The safety rule lives in one place, and every client -
   this screen, the stock panel, a script - agrees about it.
@@ -293,6 +297,13 @@ async def test_status_lights_flag_the_readings_that_are_out_of_range(site):
 And the UI is tested against the vectors that driver really emits, so the two
 halves are checked where they meet - see
 `web/packages/react/src/doc-snippets.test.tsx`.
+
+## The same thing, running
+
+Everything above is on the [weather demo page](../weather-demo/weather.html): the
+driver ported to TypeScript so it runs in the browser, the stock panel, and the
+custom screen, switchable. It calls the real Open-Meteo API from your browser,
+and falls back to a recorded response if it cannot reach it.
 
 ## Where to take it
 

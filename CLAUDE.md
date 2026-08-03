@@ -339,12 +339,29 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   `!web/**/lib/` so it stays tracked; keep that negation, or `src/lib/utils.ts` silently
   drops from commits and every `@/lib/utils` import breaks in CI.
 - `apps/panel/` - the reference frontend (Vite + `@tailwindcss/vite`), composed entirely from
-  `@indi-nexus/react`: a device sidebar with connection status + light/dark toggle, a
+  `@indi-nexus/react`, plus the two documentation demos under `demo/`: a device sidebar with connection status + light/dark toggle, a
   `DevicePanel` per device, and a `MessageLog` sheet. `vite build` emits into
   `src/indi_nexus/web/static/panel/`, where `web/app.py` serves it at `/` (falling back to
   the debug page, which stays at `/debug`) - the **serve-from-dist** integration. The wheel
   bundles that built panel (`hatch_build.py` build hook + `artifacts` in `pyproject.toml`,
   which rebuilds it with pnpm when missing), so `pip install` ships the UI.
+
+  `demo/dome-sim.ts` and `demo/weather-sim.ts` are TypeScript ports of
+  `examples/dome_device.py` and `examples/openmeteo_device.py` behind a fake `WebSocketLike`,
+  so the docs' live demos run with no server; `demo/sky-report.tsx` is the tutorial's custom
+  UI (the file the guide's final code block shows, so keep the two in step), rendered on the
+  weather page beside the stock `DevicePanel`. Both build into `docs/` via `pnpm run docs`
+  and are gitignored. **The simulators mirror real drivers - if you change a driver's
+  properties or its safety rule, change its simulator too, or the demo stops being a demo of
+  anything.** A simulator must be constructed *lazily inside* `webSocketFactory`: it starts
+  delivering frames the moment it exists, and a client that has not attached its handlers
+  yet will miss every `def`.
+- `@indi-nexus/react/testing` (`packages/react/src/testing/`) is the frontend counterpart to
+  `indi_nexus.testing`: `renderConnected(ui)` renders under a provider wired to a
+  `FakeSocket`, `receive(socket, frame)` feeds it what a driver would send. It re-exports
+  `cleanup`/`screen`/`within` deliberately - importing those from a consumer's own copy of
+  `@testing-library/react` gives a second registry of mounted containers and the DOM
+  accumulates between tests.
 
 `examples/demo_bridge.py` wires the demo driver to the web app over in-memory pipes (no
 `indiserver`) so the whole stack - panel included - can be run and tested end-to-end with

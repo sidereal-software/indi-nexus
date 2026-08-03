@@ -87,3 +87,4 @@ nav:
       - "@indi-nexus/client": reference/typescript/client/index.md
       - "@indi-nexus/react": reference/typescript/react/index.md
   - Live demo: demo-app/index.html
+  - Weather demo: weather-demo/weather.html
