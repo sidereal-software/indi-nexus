@@ -15,10 +15,11 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "test": "pnpm -r test",
-    "docs": "pnpm docs:client && pnpm docs:react && pnpm docs:demo",
+    "docs": "pnpm docs:client && pnpm docs:react && pnpm docs:demo && pnpm docs:weather",
     "docs:client": "typedoc --tsconfig packages/client/tsconfig.json --out ../docs/reference/typescript/client packages/client/src/index.ts",
     "docs:react": "typedoc --tsconfig packages/react/tsconfig.json --out ../docs/reference/typescript/react packages/react/src/index.ts",
-    "docs:demo": "pnpm --filter @indi-nexus/panel build:demo"
+    "docs:demo": "pnpm --filter @indi-nexus/panel build:demo",
+    "docs:weather": "pnpm --filter @indi-nexus/panel build:weather"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",

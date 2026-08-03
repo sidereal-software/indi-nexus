@@ -7,10 +7,10 @@
  * two halves of the tutorial actually meet.
  */
 
+import { receive, renderConnected } from "@indi-nexus/react/testing";
 import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { SkyReport } from "./doc-snippets";
-import { receive, renderConnected } from "./testing/render";
+import { SkyReport } from "./sky-report";
 
 afterEach(cleanup);
 

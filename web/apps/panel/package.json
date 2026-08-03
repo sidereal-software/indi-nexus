@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:demo": "vite build --config vite.demo.config.ts"
+    "build:demo": "vite build --config vite.demo.config.ts",
+    "build:weather": "vite build --config vite.weather.config.ts"
   },
   "dependencies": {
     "@indi-nexus/client": "workspace:*",
