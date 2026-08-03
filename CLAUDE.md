@@ -314,7 +314,10 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   bridge's `connection` control frame).
 - `packages/react/` - **`@indi-nexus/react`**. `IndiProvider` + `useIndiClient`, hooks
   (`useConnection`/`useDevices`/`useDevice`/`useProperty`/`useElement`/`useMessages`, all via
-  `useSyncExternalStore` over the immutable store), and INDI-aware components
+  `useSyncExternalStore` over the immutable store), the per-kind value hooks
+  (`useNumber`/`useText`/`useSwitch`/`useLight`, which return the value already narrowed -
+  `useElement` hands back the element union, so reading `.value` off it does not
+  type-check), and INDI-aware components
   (`PropertyVectorCard`, `DevicePanel`, per-kind element controls, `StateBadge`,
   `ConnectionStatus`, `MessageLog`). shadcn/ui primitives live in `src/ui/` (added via the
   shadcn CLI, `components.json`) and are re-exported. The theme is the user-supplied shadcn
@@ -323,7 +326,10 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   copies the source `theme.css` (`@indi-nexus/react/theme.css`, for consumers running their
   own Tailwind). Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup`, etc. per the
   shadcn skill rules; imports use the standard `@/` alias (`components.json`/`tsconfig`);
-  don't hand-edit `src/ui/`. **Gotcha:** the root Python `.gitignore` has a `lib/` rule (for
+  don't hand-edit `src/ui/`. `src/doc-snippets.tsx` is nothing but the code samples from
+  `docs/guides/frontend.md`, kept compiling by `pnpm typecheck` - change a snippet on that
+  page and change it there too, or the guide silently rots (it already had, which is how
+  the value hooks got found). **Gotcha:** the root Python `.gitignore` has a `lib/` rule (for
   wheel artifacts) that also matches `src/lib/` - the `cn` helper. `.gitignore` re-includes
   `!web/**/lib/` so it stays tracked; keep that negation, or `src/lib/utils.ts` silently
   drops from commits and every `@/lib/utils` import breaks in CI.

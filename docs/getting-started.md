@@ -1,66 +1,100 @@
 # Getting started
 
-Requires [uv](https://docs.astral.sh/uv/) (Python 3.12+) and, for the
-frontend, [pnpm](https://pnpm.io) (Node 20+).
+By the end of this page you will have a control panel open in your browser, driven by a
+driver you wrote yourself. No observatory and no hardware required.
 
-## Install and run the whole stack
+You need [uv](https://docs.astral.sh/uv/) (which manages Python 3.12+ for you) and, for
+the web panel, [pnpm](https://pnpm.io) with Node 20+.
 
-The fastest way to see everything - backend, bridge, and web panel - with no
-`indiserver` needed:
+## 1. Install
 
 ```bash
 git clone https://github.com/sidereal-software/indi-nexus && cd indi-nexus
 
-# 1. Backend: create the venv and install
-uv venv --python 3.12
-uv pip install -e ".[dev]"
+uv venv --python 3.12          # make a Python environment in .venv/
+uv pip install -e ".[dev]"     # install INDINexus into it
+```
 
-# 2. Frontend: build the panel into the package
+The web panel ships as compiled JavaScript, which needs building once:
+
+```bash
 cd web && pnpm install && pnpm -r build && cd ..
+```
 
-# 3. Run the demo bridge: the web app wired to live in-process drivers
+## 2. Run something
+
+```bash
 uv run python -m examples.demo_bridge \
     --device examples.telescope_device:TelescopeSimulator \
-    --device examples.ccd_device:CCDSimulator \
     --device examples.dome_device:DomeSimulator
 ```
 
-Open <http://localhost:8000/> - all three simulators appear in the panel's
-sidebar. Connect one, slew the telescope, take an exposure, park the dome, and
-watch the Messages log. The raw-frame debug inspector lives at
-<http://localhost:8000/debug>.
+This starts two simulated instruments and a web server in a single process. Open
+<http://localhost:8000/>.
 
-## Your first driver, in one minute
+Both simulators appear in the sidebar. Pick the dome, press **Connect**, then try:
+
+- **Shutter → Open.** The status badge goes `Busy` while it travels, then `Ok`.
+- **Absolute Position → 120 → Set.** Watch the azimuth count round to 120.
+- **Parking → Park.** It closes the shutter and returns to the park azimuth.
+
+The **Messages** panel is the driver's log - everything the driver told its clients. If
+you want to see the raw INDI traffic instead, <http://localhost:8000/debug> shows every
+frame as it goes past.
+
+!!! tip "What just happened"
+
+    `demo_bridge` is a development convenience: it wires drivers straight into the web
+    app in one process, standing in for `indiserver`. In production the pieces are
+    separate - see [Running for real](#4-running-for-real) below.
+
+## 3. Your own driver
 
 ```bash
 uv run indi-nexus new my_driver.py
+```
+
+That writes a complete, commented, runnable driver: a Connect button, a number that gets
+polled, and a switch that does something when clicked. Open it and read it - it is short.
+
+Now run *your* driver in the panel:
+
+```bash
 uv run python -m examples.demo_bridge --device my_driver:MyDriver
 ```
 
-The scaffold is a complete, commented driver: a `CONNECTION` lifecycle, a
-polled telemetry number, and a handled switch. Edit it live and reload.
+`--device` takes `module:ClassName`. Change the file, restart, refresh the browser.
 
-## The three ways to run a driver
+When you want to understand what you are editing, the
+[driver guide](guides/writing-drivers.md) walks through a complete driver line by line.
+
+## 4. Running for real
+
+At an observatory the pieces are separate, and the hub is the standard `indiserver`
+program that INDI systems are built around:
 
 ```bash
-# 1. The web panel (easiest): drivers + bridge + UI in one process.
-python -m examples.demo_bridge --device my_driver:MyDriver
-
-# 2. Under a real C indiserver (the production arrangement), serving TCP :7624:
+# indiserver launches your driver and serves INDI on TCP :7624
 indiserver ./my_driver.py
-indi-nexus serve        # ...then the panel at :8000
-indi-nexus monitor      # ...or a terminal feed
 
-# 3. Bare stdio (what indiserver itself launches) - only useful to pipe XML at:
-echo '<getProperties version="1.7"/>' | python -m my_driver
+# then, in another terminal, either:
+uv run indi-nexus serve       # the web panel at :8000
+uv run indi-nexus monitor     # a live feed in the terminal
 ```
 
-Mode 3 waits **silently** for a `getProperties` before saying anything - it is
-not hung, it just has no client yet.
+Because your driver is an ordinary INDI driver, other INDI software - KStars/Ekos, PHD2,
+existing C++ drivers - connects to the same `indiserver` and works with it unchanged.
 
-## Next steps
+!!! note "Running a driver on its own"
 
-- [Writing a driver](guides/writing-drivers.md) - the SDK tour.
-- [Building a frontend](guides/frontend.md) - hooks and components.
-- [The examples](guides/examples.md) - dome and telescope simulators, ported
-  from libindi's C++.
+    `python -m my_driver` also works, but it will sit there saying nothing. A driver only
+    speaks when a client asks it to, and on its own there is no client. It is not hung.
+    Paste `<getProperties version="1.7"/>` and press enter to see it reply.
+
+## Where to go next
+
+- **[Writing a driver](guides/writing-drivers.md)** - the main guide. Start here.
+- **[The examples](guides/examples.md)** - which example to read for what.
+- **[Building a frontend](guides/frontend.md)** - the ready-made panel, and your own UI.
+- **[Coming from pyINDI?](guides/porting-from-pyindi.md)** - what maps to what.
+- **[Protocol concepts](guides/protocol.md)** - the INDI vocabulary, briefly.

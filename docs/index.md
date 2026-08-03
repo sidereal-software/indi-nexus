@@ -1,40 +1,46 @@
 # INDINexus
 
-A modern, typed Python framework for
-[INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf) astronomical instrument
-control. Write drivers in clean async Python, watch them from a typed client,
-and put a polished React UI in front of your observatory - all on one shared,
-validated protocol model.
+**Control astronomical instruments from Python, and put a web UI in front of them.**
+
+Telescopes, domes, cameras, focusers and weather stations at an observatory all speak a
+common language called [INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf). A small
+program called a *driver* sits between each instrument and everything else, translating.
+INDINexus is the toolkit for writing those drivers in modern Python - and for building the
+screens operators actually use.
 
 <div class="grid cards" markdown>
 
-- **Drivers in Python**
+- **Write a driver**
 
-    Subclass `Device`, declare properties, poll with `@every`, handle writes
-    with `@on_new`. The standard INDI lifecycle - connection, dispatch,
-    supervision - is built in.
+    Describe what your instrument exposes, say how to read it and how to command it. The
+    standard INDI machinery - connection, dispatch, timers, error handling - is handled
+    for you, and you can test the whole driver with no hardware attached.
 
     [Write your first driver](guides/writing-drivers.md)
 
-- **React components & hooks**
+- **Build a UI**
 
-    `@indi-nexus/client` speaks the wire; `@indi-nexus/react` turns any INDI
-    device into a live, themed UI with hooks like `useProperty` and components
-    like `DevicePanel`.
+    Point `IndiProvider` at an observatory, name a device, and you have a working control
+    panel that builds itself from whatever that device exposes. Or use the same data
+    through hooks and lay it out yourself.
 
     [Build a frontend](guides/frontend.md)
 
 </div>
 
-## See it live
+## See it working
 
-The real INDINexus panel, running against a **simulated dome driver entirely
-in your browser** - no server behind it. Connect the dome, open the shutter,
-send it to an azimuth, park it, and watch the INDI message log narrate.
+The real INDINexus panel, driving a **simulated dome entirely inside your browser** - no
+server, nothing installed. Press Connect, open the shutter, send it to an azimuth, park
+it, and watch the message log narrate what the driver is saying.
 
 [Launch the live demo](demo-app/index.html){ .md-button .md-button--primary }
 
-## The stack
+## How the pieces fit
+
+INDINexus does not replace `indiserver`, the hub program observatories already run - it
+plugs into it. Your driver is an ordinary INDI driver, so existing INDI software
+(KStars/Ekos, PHD2, other drivers) works with it unchanged.
 
 ```mermaid
 flowchart LR
@@ -53,17 +59,24 @@ flowchart LR
     class hub,hw,ui ext
 ```
 
-- **Keep C `indiserver` as the hub** - existing INDI drivers and clients
-  interoperate; INDINexus modernizes the Python and browser layers.
-- **Dual protocol** - canonical INDI 1.7 XML on the wire, typed JSON to
-  browsers, one Pydantic model as the shared contract.
-- **Fully typed** - `mypy --strict` Python, TypeScript end to end.
+Reading left to right:
 
-## Quick taste
+- Your **driver** talks to the instrument and speaks INDI to `indiserver`.
+- The **client** connects to that hub and mirrors everything into a typed cache you can
+  read and watch from Python.
+- The **bridge** puts that cache behind a WebSocket so a browser can show it.
+
+You do not need all three. Writing only a driver is completely normal - that is what most
+people come here for.
+
+## A taste
+
+A driver is one class. This one reports where a mount is pointing, once a second, and
+slews when asked:
 
 ```python
 from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import IPState, Number
+from indi_nexus.protocol import IPState, Number, NumberVector
 
 class Mount(Device):
     name = "Mount"
@@ -79,10 +92,16 @@ class Mount(Device):
     async def poll(self) -> None:
         ra, dec = await self.read_mount()
         self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec, state=IPState.OK)
+
+    @on_new("EQUATORIAL_EOD_COORD")
+    async def _goto(self, vector: NumberVector) -> None:
+        await self.slew_to(vector.get("RA", 0.0), vector.get("DEC", 0.0))
 ```
 
+And a control panel for it is three lines of React:
+
 ```tsx
-import { IndiProvider, useElement, DevicePanel } from "@indi-nexus/react";
+import { IndiProvider, DevicePanel } from "@indi-nexus/react";
 import "@indi-nexus/react/styles.css";
 
 export const App = () => (
@@ -93,4 +112,4 @@ export const App = () => (
 ```
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
-[Browse the Python API](reference/python/driver.md){ .md-button }
+[Browse the API](reference/python/driver.md){ .md-button }
