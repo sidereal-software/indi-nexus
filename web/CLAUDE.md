@@ -1,0 +1,101 @@
+# The frontend workspace
+
+Detail for `web/`. The repository-wide rules are in the root `CLAUDE.md`.
+
+A `pnpm` workspace holding a reusable library plus the reference panel that ships inside the
+wheel. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
+**Vitest** runs tests, **Biome** lints and formats (`web/biome.json`; the vendored shadcn
+`ui/` files are excluded). Run everything from `web/`: `pnpm -r build`, `pnpm -r typecheck`,
+`pnpm -r test`, `pnpm lint`.
+
+## `packages/client/` - `@indi-nexus/client`
+
+A faithful TS port of the Python client, framework-agnostic (it only needs a `WebSocket`).
+
+- `types.ts` / `enums.ts` are the hand-authored wire contract mirroring `protocol/models.py`
+  and `enums.py`. Keep them in step.
+- `store.ts` is `PropertyStore` with the same `def` / `set`-merge / `del` semantics as
+  `client/store.py`, except **merges are immutable** (a `set` replaces the vector and element
+  objects) so React can detect changes by reference.
+- `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts` is
+  `IndiClient` mirroring the Python surface. It tracks two connection states: `transport`
+  (browser to bridge) and `upstream` (bridge to `indiserver`, from the bridge's `connection`
+  control frame).
+
+## `packages/react/` - `@indi-nexus/react`
+
+`IndiProvider` + `useIndiClient`, the hooks (`useConnection`, `useDevices`, `useDevice`,
+`useProperty`, `useElement`, `useMessages`, all via `useSyncExternalStore` over the immutable
+store), the per-kind value hooks (`useNumber`/`useText`/`useSwitch`/`useLight`, which return
+the value already narrowed - `useElement` hands back the element union, so reading `.value`
+off it does not type-check), and the INDI-aware components (`PropertyVectorCard`,
+`DevicePanel`, per-kind element controls, `StateBadge`, `ConnectionStatus`, `MessageLog`).
+
+shadcn/ui primitives live in `src/ui/` (added via the shadcn CLI, `components.json`) and are
+re-exported. Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup` and friends per the
+shadcn rules; imports use the standard `@/` alias; **do not hand-edit `src/ui/`.**
+
+The theme is the shadcn tokens in `src/theme.css` plus `--state-*` for INDI
+Idle/Ok/Busy/Alert. The build emits a prebuilt `dist/styles.css`
+(`@indi-nexus/react/styles.css`, batteries-included) and copies the source `theme.css`
+(`@indi-nexus/react/theme.css`, for consumers running their own Tailwind).
+
+`src/doc-snippets.tsx` is nothing but the code samples from `docs/guides/frontend.md`, kept
+compiling by `pnpm typecheck`. **Change a snippet on that page and change it there too**, or
+the guide silently rots (it already had once, which is how the value hooks got found).
+
+`@indi-nexus/react/testing` (`src/testing/`) is the counterpart to `indi_nexus.testing`:
+`renderConnected(ui)` renders under a provider wired to a `FakeSocket`, and
+`receive(socket, frame)` feeds it what a driver would send. It re-exports
+`cleanup`/`screen`/`within` deliberately - importing those from a consumer's own copy of
+`@testing-library/react` gives a second registry of mounted containers, and the DOM
+accumulates between tests.
+
+**Gotcha:** the root Python `.gitignore` has a `lib/` rule (for wheel artifacts) that also
+matches `src/lib/`, the `cn` helper. `.gitignore` re-includes `!web/**/lib/` so it stays
+tracked. Keep that negation, or `src/lib/utils.ts` drops from commits and every
+`@/lib/utils` import breaks in CI.
+
+## `apps/panel/` - the reference panel
+
+Vite + `@tailwindcss/vite`, composed entirely from `@indi-nexus/react`: a device sidebar with
+connection status and a light/dark toggle, a `DevicePanel` per device, and a docked message
+strip. `vite build` emits into `src/indi_nexus/web/static/panel/`, where `web/app.py` serves
+it at `/`. The wheel bundles that built panel (`hatch_build.py` build hook plus `artifacts`
+in `pyproject.toml`, which rebuilds it with pnpm when missing), so `pip install` ships the UI.
+
+**Tailwind source detection is rooted at the Vite root, not at the CSS file.** The demo
+configs set `root: "demo"`, so without the explicit `@source "./**/*.{ts,tsx}"` in
+`src/index.css` nothing in `src/` is scanned and every class used only by the app shell goes
+missing from the demo stylesheets, while the app build still looks fine. Keep that line.
+
+Arbitrary values that wrap `env()` in `calc()` need Tailwind's underscore spacing:
+`h-[calc(3.5rem_+_env(safe-area-inset-top))]`. Without whitespace around the `+` the CSS is
+invalid and the whole declaration is silently dropped.
+
+## `apps/panel/demo/` - the documentation demos
+
+`dome-sim.ts` and `weather-sim.ts` are TypeScript ports of `examples/dome_device.py` and
+`examples/openmeteo_device.py` behind a fake `WebSocketLike`, so the docs' live demos run
+with no server. Both build into `docs/` via `pnpm run docs` and are gitignored.
+
+- **The simulators mirror real drivers.** Change a driver's properties or its safety rule and
+  change its simulator too, or the demo stops being a demo of anything.
+- **Construct a simulator lazily *inside* `webSocketFactory`.** It starts delivering frames
+  the moment it exists, and a client that has not attached its handlers yet misses every
+  `def`.
+- The weather page shows the custom UI beside the **real panel `App`**, not a bare
+  `DevicePanel`, so the demo looks like what ships. Both views stay mounted with the inactive
+  one hidden: unmounting takes its `IndiProvider` with it, and the provider closes the client
+  on unmount, which would reset the simulated driver on every switch.
+
+`sky-report.tsx` and `sky-visuals.tsx` are the tutorial's custom UI: a **wallboard** (read at
+4 m, no interaction, one screen, readings that blank rather than go stale) plus its drawn
+figures. Below `lg` it reflows to a scrolling column, because a phone is not a wallboard and
+clipping readings is worse than scrolling.
+
+- Figures wear theme tokens only (`fill-state-*`, `fill-chart-3`, `stroke-border`) so they
+  follow light and dark. The moon's unlit disc is `fill-foreground/20` deliberately: in dark
+  mode `foreground` is light and would erase the phase.
+- **Status colour never carries meaning alone** - the theme's Alert and Busy are ΔE 4.4 apart
+  under deuteranopia - so every state is written out as well as coloured.
