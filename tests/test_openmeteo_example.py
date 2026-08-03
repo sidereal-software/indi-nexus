@@ -124,7 +124,19 @@ async def test_every_reading_lands(site) -> None:
         "WIND_SPEED": 2.4,
         "WIND_GUST": 2.5,
         "PRESSURE": 1008.2,
+        "WIND_DIRECTION": 304.0,
+        "FEELS_LIKE": 71.6,
     }
+
+
+async def test_context_readings_get_no_status_light(site) -> None:
+    """A compass bearing has no safe range, so it is published but not judged."""
+    harness, _ = site
+    await harness.tick("poll")
+
+    assert harness.latest("WEATHER_PARAMETERS").get("WIND_DIRECTION") == 304.0
+    assert "WIND_DIRECTION" not in harness.latest("WEATHER_STATUS").values()
+    assert "FEELS_LIKE" not in harness.latest("WEATHER_STATUS").values()
 
 
 async def test_labels_pick_up_the_units_the_api_reports(site) -> None:

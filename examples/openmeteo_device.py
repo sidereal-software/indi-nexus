@@ -50,7 +50,7 @@ API_URL = "https://api.open-meteo.com/v1/forecast"
 #: How long to wait for the API before giving up on a single poll.
 TIMEOUT_S = 10.0
 
-#: The readings we ask for and publish, as
+#: The readings we ask for, publish **and judge**, as
 #: (API field, element name, label, safe low, safe high). The safe range drives
 #: that reading's status light: outside it, the light goes Alert.
 READINGS = [
@@ -61,6 +61,19 @@ READINGS = [
     ("wind_gusts_10m", "WIND_GUST", "Wind gust", 0.0, 35.0),
     ("pressure_msl", "PRESSURE", "Pressure", 900.0, 1100.0),
 ]
+
+#: Readings published but not judged, as (API field, element name, label).
+#: A compass bearing has no "safe range", and apparent temperature is context
+#: for the real one rather than a limit of its own - so neither gets a light.
+CONTEXT: list[tuple[str, str, str]] = [
+    ("wind_direction_10m", "WIND_DIRECTION", "Wind from"),
+    ("apparent_temperature", "FEELS_LIKE", "Feels like"),
+]
+
+#: Every reading published, judged or not, as (API field, element, label).
+PUBLISHED: list[tuple[str, str, str]] = [
+    (field, element, label) for field, element, label, *_range in READINGS
+] + CONTEXT
 
 #: WMO weather codes, condensed to the distinctions an observer cares about.
 #: https://open-meteo.com/en/docs has the full table.
@@ -167,7 +180,7 @@ class OpenMeteoClient:
                 "latitude": f"{latitude:.4f}",
                 "longitude": f"{longitude:.4f}",
                 "current": ",".join(
-                    [field for field, *_rest in READINGS] + ["is_day", "weather_code"]
+                    [field for field, *_rest in PUBLISHED] + ["is_day", "weather_code"]
                 ),
                 "daily": "sunrise,sunset,moon_phase",
                 "forecast_days": 1,
@@ -221,7 +234,7 @@ class OpenMeteo(Device):
             "WEATHER_PARAMETERS",  # the standard INDI name for weather readings
             [
                 Number(name=element, label=label, format="%.1f")
-                for _field, element, label, *_range in READINGS
+                for _field, element, label in PUBLISHED
             ],
             label="Conditions",
             group="Main Control",
@@ -328,7 +341,7 @@ class OpenMeteo(Device):
 
         readings = {
             element: float(current[field])
-            for field, element, *_rest in READINGS
+            for field, element, _label in PUBLISHED
             if current.get(field) is not None
         }
         self["WEATHER_PARAMETERS"].set(readings, state=IPState.OK)
@@ -349,7 +362,7 @@ class OpenMeteo(Device):
             The response's ``current_units`` block.
         """
         parameters = self.number("WEATHER_PARAMETERS")
-        for field, element, label, *_range in READINGS:
+        for field, element, label in PUBLISHED:
             unit = units.get(field)
             if not unit:
                 continue

@@ -30,7 +30,7 @@ const DEVICE = "Open-Meteo";
 const POLL_MS = 60_000;
 
 /** (API field, element, label, safe low, safe high) - mirrors READINGS in the
- *  Python driver. */
+ *  Python driver: published *and* judged. */
 const READINGS: [string, string, string, number, number][] = [
   ["temperature_2m", "TEMPERATURE", "Temperature", -20, 110],
   ["relative_humidity_2m", "HUMIDITY", "Humidity", 0, 90],
@@ -38,6 +38,19 @@ const READINGS: [string, string, string, number, number][] = [
   ["wind_speed_10m", "WIND_SPEED", "Wind speed", 0, 25],
   ["wind_gusts_10m", "WIND_GUST", "Wind gust", 0, 35],
   ["pressure_msl", "PRESSURE", "Pressure", 900, 1100],
+];
+
+/** Published but not judged - mirrors CONTEXT in the Python driver. A compass
+ *  bearing has no safe range, so it gets no status light. */
+const CONTEXT: [string, string, string][] = [
+  ["wind_direction_10m", "WIND_DIRECTION", "Wind from"],
+  ["apparent_temperature", "FEELS_LIKE", "Feels like"],
+];
+
+/** Everything published, judged or not. */
+const PUBLISHED: [string, string, string][] = [
+  ...READINGS.map(([field, element, label]) => [field, element, label] as [string, string, string]),
+  ...CONTEXT,
 ];
 
 /** WMO weather codes, condensed the way the Python driver condenses them. */
@@ -74,6 +87,8 @@ const RECORDED = {
     wind_speed_10m: "mp/h",
     wind_gusts_10m: "mp/h",
     pressure_msl: "hPa",
+    wind_direction_10m: "°",
+    apparent_temperature: "°F",
   },
   current: {
     temperature_2m: 66.9,
@@ -84,6 +99,8 @@ const RECORDED = {
     pressure_msl: 1008.2,
     is_day: 0,
     weather_code: 1,
+    wind_direction_10m: 304,
+    apparent_temperature: 71.6,
   },
   daily: {
     sunrise: ["2026-08-03T13:06"],
@@ -251,7 +268,7 @@ export class WeatherSimSocket implements WebSocketLike {
     const units = payload.current_units ?? {};
 
     const values: Record<string, number> = {};
-    for (const [field, element] of READINGS) {
+    for (const [field, element] of PUBLISHED) {
       const reading = current[field];
       if (reading !== undefined) values[element] = reading;
     }
@@ -264,7 +281,7 @@ export class WeatherSimSocket implements WebSocketLike {
         name: "WEATHER_PARAMETERS",
         state: "Ok",
         perm: "ro",
-        elements: READINGS.filter(([, element]) => element in values).map(
+        elements: PUBLISHED.filter(([, element]) => element in values).map(
           ([field, element, label]) => ({
             kind: "number" as const,
             name: element,
@@ -463,7 +480,7 @@ export class WeatherSimSocket implements WebSocketLike {
         group: "Main Control",
         state: "Idle",
         perm: "ro",
-        elements: READINGS.map(([, element, label]) => ({
+        elements: PUBLISHED.map(([, element, label]) => ({
           kind: "number" as const,
           name: element,
           label,
@@ -552,7 +569,7 @@ export async function fetchOpenMeteo(
   const query = new URLSearchParams({
     latitude: latitude.toFixed(4),
     longitude: longitude.toFixed(4),
-    current: `${READINGS.map(([field]) => field).join(",")},is_day,weather_code`,
+    current: `${PUBLISHED.map(([field]) => field).join(",")},is_day,weather_code`,
     daily: "sunrise,sunset,moon_phase",
     forecast_days: "1",
     timezone: "GMT",
