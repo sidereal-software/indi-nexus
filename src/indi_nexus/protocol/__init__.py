@@ -29,6 +29,7 @@ from indi_nexus.protocol.models import (
     Text,
     TextVector,
     Vector,
+    slugify,
 )
 from indi_nexus.protocol.xml import XMLStreamParser, parse_indi, to_xml
 
@@ -46,6 +47,7 @@ __all__ = [
     "Light",
     "BLOB",
     "Element",
+    "slugify",
     # vectors
     "NumberVector",
     "TextVector",

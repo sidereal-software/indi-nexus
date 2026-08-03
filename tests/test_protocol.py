@@ -30,6 +30,7 @@ from indi_nexus.protocol import (
     TextVector,
     XMLStreamParser,
     parse_indi,
+    slugify,
     to_xml,
 )
 from indi_nexus.protocol.xml import (
@@ -413,3 +414,57 @@ def test_switch_vector_selected_returns_first_on_or_none():
         device="D", name="power", elements=[Switch(name="a", value=ISState.OFF)]
     )
     assert deselect.selected() is None
+
+
+# --------------------------------------------------------------------------- #
+# Naming helpers                                                               #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("Domeslit State", "domeslit_state"),
+        ("Upperdome IO Byte", "upperdome_io_byte"),
+        ("Wind Speed", "wind_speed"),
+        ("Already_slugged", "already_slugged"),
+        ("  padded   out  ", "padded_out"),
+        ("Single", "single"),
+    ],
+)
+def test_slugify_maps_labels_to_element_names(label, expected):
+    """Lowercase the label and collapse whitespace runs into underscores."""
+    assert slugify(label) == expected
+
+
+def test_from_labels_builds_one_element_per_label():
+    """from_labels names each element from its label and keeps the label."""
+    lights = Light.from_labels(["Link Up", "Sensors"])
+
+    assert [(light.name, light.label) for light in lights] == [
+        ("link_up", "Link Up"),
+        ("sensors", "Sensors"),
+    ]
+    assert all(light.value is IPState.IDLE for light in lights)
+
+
+def test_from_labels_accepts_a_custom_naming_function():
+    """A driver whose hardware keys differ can supply its own mapping."""
+    texts = Text.from_labels(["Wind Speed"], name=lambda label: label.upper().replace(" ", "-"))
+
+    assert texts[0].name == "WIND-SPEED"
+
+
+def test_from_labels_is_typed_per_element_kind():
+    """Each element class builds its own kind, so the vector accepts them."""
+    numbers = Number.from_labels(["Focus Position"])
+    vector = NumberVector(device="D", name="p", elements=numbers)
+
+    assert vector.element("focus_position").value == 0.0
+
+
+def test_from_labels_round_trips_through_the_wire():
+    """Elements built from labels serialise and parse back unchanged."""
+    vector = LightVector(device="D", name="status", elements=Light.from_labels(["Link Up"]))
+    parsed = parse_indi(to_xml(DefVector(vector=vector)))[0]
+
+    assert parsed.vector.elements[0].name == "link_up"
+    assert parsed.vector.elements[0].label == "Link Up"

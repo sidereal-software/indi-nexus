@@ -21,13 +21,34 @@ Design notes
 from __future__ import annotations
 
 import datetime as dt
-from typing import Annotated, Any, Literal, cast
+from collections.abc import Callable, Iterable
+from typing import Annotated, Any, Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 
 INDI_VERSION = "1.7"
+
+
+def slugify(label: str) -> str:
+    """Return the conventional INDI element name for a display label.
+
+    INDI names are machine identifiers and labels are display text, so the two
+    differ by exactly this transformation in most drivers: ``"Domeslit State"``
+    becomes ``"domeslit_state"``. The default key for :meth:`_Element.from_labels`.
+
+    Parameters
+    ----------
+    label : str
+        The human-readable label.
+
+    Returns
+    -------
+    name : str
+        The label lowercased with runs of whitespace collapsed to underscores.
+    """
+    return "_".join(label.lower().split())
 
 
 class _Model(BaseModel):
@@ -51,6 +72,32 @@ class _Element(_Model):
 
     name: str
     label: str | None = None
+
+    @classmethod
+    def from_labels(
+        cls, labels: Iterable[str], *, name: Callable[[str], str] = slugify
+    ) -> list[Self]:
+        """Build one element per display label, naming each with ``name``.
+
+        The bulk constructor for the two shapes that recur in every driver: a
+        group of status lights, and a table of read-only values. Each element
+        takes its kind's default value, which ``set`` then fills in::
+
+            self.define_light("state", Light.from_labels(STATE_LABELS))
+
+        Parameters
+        ----------
+        labels : iterable of str
+            The display labels, in definition order.
+        name : Callable, optional
+            Maps a label to its element name; :func:`slugify` by default.
+
+        Returns
+        -------
+        elements : list of Self
+            One element of this class per label.
+        """
+        return [cls(name=name(label), label=label) for label in labels]
 
 
 class Number(_Element):
