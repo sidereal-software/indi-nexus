@@ -222,6 +222,11 @@ client behind `off_thread`, the connection lifecycle, hardware that stops answer
 `emit="on_change"` readbacks. Keep at least one example in that shape - the simulator
 examples never exercise a slow, absent or lying instrument, which is what real drivers
 spend their bug budget on.
+`examples/openmeteo_device.py` is the same shape against a **real public API**
+(Open-Meteo: no account, no key), and is what `docs/guides/tutorial-open-meteo.md` builds.
+Its tests run against `tests/data/open_meteo_response.json`, a recorded real reply - so
+the field names are checked against what the service actually sends, never a guess. If you
+change what the driver requests, re-record rather than hand-editing that fixture.
 
 ### Testing drivers (`src/indi_nexus/testing.py`)
 

@@ -71,6 +71,7 @@ nav:
   - Getting started: getting-started.md
   - Guides:
       - Writing a driver: guides/writing-drivers.md
+      - 'Tutorial: real data, custom UI': guides/tutorial-open-meteo.md
       - Porting from pyINDI: guides/porting-from-pyindi.md
       - The examples: guides/examples.md
       - Building a frontend: guides/frontend.md

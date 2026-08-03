@@ -12,6 +12,7 @@ can quietly rot.
 | See a realistic instrument with motion and state | `dome_device.py` |
 | See pointing and tracking | `telescope_device.py` |
 | See images and long-running operations | `ccd_device.py` |
+| **Talk to a real, public data source** | **`openmeteo_device.py`** |
 | Talk *to* an observatory instead of being one | `monitor_client.py` |
 
 ### `demo_device.py` - the smallest complete driver
@@ -32,6 +33,14 @@ driver is, and is the one worth copying:
   looking current, and it says so *once* instead of once a second;
 - its readings are `on_change`, so a steady night is quiet on the wire;
 - and `tests/test_weather_example.py` tests all of that with no hardware at all.
+
+### `openmeteo_device.py` - real data, no hardware
+
+A driver for [Open-Meteo](https://open-meteo.com), a free public weather API
+with no account and no key - so it works the moment you run it. It reports sky
+conditions, safety lights, and today's sun and moon for a site you can move from
+the panel. The [tutorial](tutorial-open-meteo.md) builds it step by step and
+then puts a custom screen on it.
 
 ### `dome_device.py` - a realistic instrument
 
