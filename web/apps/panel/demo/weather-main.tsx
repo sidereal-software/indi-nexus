@@ -8,9 +8,10 @@
  */
 
 import { IndiClient } from "@indi-nexus/client";
-import { ConnectionStatus, DevicePanel, IndiProvider, MessageLog } from "@indi-nexus/react";
+import { IndiProvider, ToggleGroup, ToggleGroupItem, TooltipProvider } from "@indi-nexus/react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
+import App from "../src/App";
 import "../src/index.css";
 import { SkyReport } from "./sky-report";
 import { fetchOpenMeteo, WeatherSimSocket } from "./weather-sim";
@@ -18,7 +19,13 @@ import { fetchOpenMeteo, WeatherSimSocket } from "./weather-sim";
 /** Where the readings came from, once a fetch has been attempted. */
 type Source = "unknown" | "live" | "recorded";
 
-/** The page: a view switcher, the two views, and the driver's log. */
+/**
+ * The page: the real panel and the custom screen, switchable.
+ *
+ * The stock view is the actual `App` that ships in the wheel - the same
+ * sidebar, theme toggle and message sheet an operator sees - not a `DevicePanel`
+ * in a bare page, so what the demo shows is what you get.
+ */
 function WeatherDemo() {
   const [view, setView] = useState<"panel" | "custom">("panel");
   const [source, setSource] = useState<Source>("unknown");
@@ -38,52 +45,43 @@ function WeatherDemo() {
   );
 
   return (
-    <IndiProvider client={client}>
-      <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-4 p-4">
-        <header className="space-y-2">
-          <h1 className="font-semibold text-xl">Open-Meteo, live in your browser</h1>
-          <p className="text-muted-foreground text-sm">
-            The driver from <code>examples/openmeteo_device.py</code>, ported to TypeScript and
-            running here with no server at all. Press <strong>Connect</strong> to fetch, then switch
-            between the two views - same device, same data, two ways of showing it.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setView("panel")}
-              className={`rounded-md border px-3 py-1.5 text-sm ${
-                view === "panel" ? "bg-primary text-primary-foreground" : "bg-background"
-              }`}
-            >
-              Stock panel
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("custom")}
-              className={`rounded-md border px-3 py-1.5 text-sm ${
-                view === "custom" ? "bg-primary text-primary-foreground" : "bg-background"
-              }`}
-            >
-              Custom UI
-            </button>
-            <ConnectionStatus />
-            {source !== "unknown" && (
-              <span className="text-muted-foreground text-xs">
-                {source === "live"
-                  ? "live from api.open-meteo.com"
-                  : "recorded response - the live API could not be reached from here"}
-              </span>
-            )}
-          </div>
-        </header>
-
-        <main className="rounded-lg border bg-card p-2">
-          {view === "custom" ? <SkyReport /> : <DevicePanel device="Open-Meteo" />}
-        </main>
-
-        <MessageLog />
+    <>
+      {/* One floating control over whichever view is showing, so the panel
+          below is pixel-for-pixel the shipped app. */}
+      <div className="fixed top-3 right-3 z-50 flex items-center gap-2 rounded-lg border bg-background/95 px-2 py-1.5 shadow-sm backdrop-blur">
+        {source !== "unknown" && (
+          <span className="hidden text-muted-foreground text-xs sm:inline">
+            {source === "live" ? "live data" : "recorded data"}
+          </span>
+        )}
+        <ToggleGroup
+          type="single"
+          size="sm"
+          variant="outline"
+          value={view}
+          onValueChange={(next) => next && setView(next as "panel" | "custom")}
+        >
+          <ToggleGroupItem value="panel">Stock panel</ToggleGroupItem>
+          <ToggleGroupItem value="custom">Custom UI</ToggleGroupItem>
+        </ToggleGroup>
       </div>
-    </IndiProvider>
+
+      {/* Both views stay mounted and the inactive one is hidden. Unmounting
+          would take its IndiProvider with it, and the provider closes the
+          client on unmount - which would drop the simulated driver and reset
+          it every time the reader flipped the switch. `start()` is guarded, so
+          two providers sharing one client open exactly one socket. */}
+      <div hidden={view !== "panel"}>
+        <App client={client} />
+      </div>
+      <div hidden={view !== "custom"}>
+        <IndiProvider client={client}>
+          <TooltipProvider delayDuration={150}>
+            <SkyReport />
+          </TooltipProvider>
+        </IndiProvider>
+      </div>
+    </>
   );
 }
 

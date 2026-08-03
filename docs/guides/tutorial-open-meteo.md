@@ -203,80 +203,67 @@ the Site latitude and longitude and it follows you.
 
 ## 9. A screen of your own
 
-The stock `DevicePanel` shows everything, which is right for commissioning and
-wrong for 3 a.m. Here is a purpose-built screen, using the hooks: the numbers an
-operator checks before opening, and a single verdict.
+The stock `DevicePanel` renders *anything* - it builds itself from whatever the
+device says it has, which is exactly right for commissioning and exactly wrong
+at 3 a.m. When you know the device, you can build the screen the job wants.
+
+The finished dashboard is `web/apps/panel/demo/sky-report.tsx` (the layout) and
+`sky-visuals.tsx` (the drawn figures). It is built entirely from
+`@indi-nexus/react`: the hooks for data, the shadcn primitives that package
+re-exports for the chrome, and plain SVG for the rest.
+
+### Reading a value and its verdict together
+
+Almost every tile wants the same two things, so that is one small hook:
 
 ```tsx
-import {
-  IndiProvider, StateBadge, useLight, useNumber, useProperty, useText,
-} from "@indi-nexus/react";
-import "@indi-nexus/react/styles.css";
-
-/** One reading: its value, and the safety light beside it. */
-function Reading({ element, label }: { element: string; label: string }) {
+function useReading(element: string) {
   const value = useNumber("Open-Meteo", "WEATHER_PARAMETERS", element);
-  const status = useLight("Open-Meteo", "WEATHER_STATUS", element);
-  return (
-    <div className="flex items-baseline justify-between gap-4 border-b py-2">
-      <span className="text-muted-foreground text-sm">{label}</span>
-      <span className="flex items-center gap-2">
-        <span className="font-mono text-2xl tabular-nums">{value ?? "--"}</span>
-        <StateBadge state={status ?? "Idle"} />
-      </span>
-    </div>
-  );
+  const state = useLight("Open-Meteo", "WEATHER_STATUS", element);
+  return { value, state: state ?? "Idle" };
 }
-
-export function SkyReport() {
-  const conditions = useText("Open-Meteo", "SKY", "CONDITIONS");
-  const daylight = useText("Open-Meteo", "SKY", "DAYLIGHT");
-  const sunset = useText("Open-Meteo", "ALMANAC", "SUNSET");
-  const moon = useText("Open-Meteo", "ALMANAC", "MOON_PHASE");
-  const overall = useProperty("Open-Meteo", "WEATHER_STATUS");
-
-  return (
-    <section className="mx-auto max-w-md space-y-4 p-6">
-      <header className="space-y-1">
-        <h1 className="font-semibold text-3xl">{conditions || "Waiting for data"}</h1>
-        <p className="text-muted-foreground text-sm">
-          {daylight || "--"} &middot; sunset {sunset || "--"} &middot; {moon || "--"}
-        </p>
-      </header>
-
-      <div>
-        <Reading element="CLOUD_COVER" label="Cloud cover" />
-        <Reading element="WIND_SPEED" label="Wind" />
-        <Reading element="WIND_GUST" label="Gusts" />
-        <Reading element="HUMIDITY" label="Humidity" />
-        <Reading element="TEMPERATURE" label="Temperature" />
-      </div>
-
-      <p className="text-sm">{overall?.state === "Ok" ? "Safe to open." : "Not safe to open."}</p>
-    </section>
-  );
-}
-
-export const App = () => (
-  <IndiProvider url="ws://localhost:8000/ws">
-    <SkyReport />
-  </IndiProvider>
-);
 ```
 
-Points worth noticing:
+Then a tile is just markup:
 
-- **Nothing polls.** Each `useNumber` / `useText` re-renders only when *that*
-  value changes. Change the cloud cover and the cloud cover line updates; the
-  rest of the screen does not re-render.
-- **Placeholders everywhere.** The hooks return `undefined` until the driver has
-  published, so the screen renders correctly before any data arrives. Note the
-  two different operators: numbers use `?? "--"` (because `0` is a real reading
-  and must not be replaced), text uses `|| "--"` (because the driver defines
-  those elements as empty strings, which `??` would happily print).
-- **The verdict comes from the driver, not the UI.** `WEATHER_STATUS.state` is
-  the driver's judgement. The safety rule lives in one place, and every client -
-  this screen, the stock panel, a script - agrees about it.
+```tsx
+const cloud = useReading("CLOUD_COVER");
+<Meter label="Cloud cover" value={cloud.value} max={100} limit={30} unit="%" state={cloud.state} />
+```
+
+### Choosing the form before the colour
+
+The figures are not decoration, and each is the form its data asks for:
+
+| Reading | Form | Why |
+|---|---|---|
+| Wind direction | **compass** | The one genuinely *angular* reading, which is the one case a dial beats a bar. The arrow sits on the bearing the wind comes from, like a weather vane. |
+| Cloud cover, humidity | **meter** with the limit ticked | A ratio against a limit. Not a dial, and not a two-slice pie. |
+| Pressure | **a number** | It has no meaningful 0-to-max, so a bar would just always look nearly full. |
+| Temperature | **hero figure** | The one number the screen leads with. Exactly one per view. |
+| Moon phase | **the moon**, at its real illuminated fraction | The lit limb is a semicircle; the terminator is a half-ellipse of radius `r·cos 2πp`, which is what makes a crescent bow one way and a gibbous the other. |
+| Site | **a projected graticule** | Straight parallels, meridians curving to the poles, so it reads as a globe rather than a grid - and the marker uses the same projection, so its position is right rather than approximately right. |
+
+### Three rules the dashboard follows
+
+- **Status is never colour alone.** The theme's Alert red and Busy amber are
+  only ΔE 4.4 apart under deuteranopia, so every state is also written out -
+  `StateBadge` carries the word, not just the colour.
+- **Colour comes from theme tokens, never hex.** The figures use
+  `fill-state-*`, `fill-chart-3`, `stroke-border`, so they follow light and dark
+  and any retheme for free. One trap: the moon's unlit disc is
+  `fill-foreground/20`, not `fill-foreground` - in dark mode `foreground` is
+  *light*, which would erase the phase entirely.
+- **The verdict is the driver's, not the UI's.** "Safe to open" reads
+  `WEATHER_STATUS.state`, the state the driver computed. The safety rule lives
+  in one place, so this screen, the stock panel and any script all agree.
+
+### And it stays live
+
+Every hook re-renders only its own reading, so a change to the cloud cover
+repaints one meter rather than the page; and every hook returns `undefined`
+until the driver has published, so the whole screen renders correctly before any
+data has arrived.
 
 ## 10. Test both halves
 

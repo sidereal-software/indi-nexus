@@ -30,6 +30,9 @@ function publishWeather(socket: Parameters<typeof receive>[0]) {
         { kind: "number", name: "CLOUD_COVER", label: "Cloud cover (%)", value: 31 },
         { kind: "number", name: "WIND_SPEED", label: "Wind speed (mp/h)", value: 2.4 },
         { kind: "number", name: "WIND_GUST", label: "Wind gust (mp/h)", value: 2.5 },
+        { kind: "number", name: "PRESSURE", label: "Pressure (hPa)", value: 1008.2 },
+        { kind: "number", name: "WIND_DIRECTION", label: "Wind from (°)", value: 304 },
+        { kind: "number", name: "FEELS_LIKE", label: "Feels like (°F)", value: 71.6 },
       ],
     },
   });
@@ -46,6 +49,21 @@ function publishWeather(socket: Parameters<typeof receive>[0]) {
         { kind: "light", name: "CLOUD_COVER", value: "Alert" },
         { kind: "light", name: "WIND_SPEED", value: "Ok" },
         { kind: "light", name: "WIND_GUST", value: "Ok" },
+        { kind: "light", name: "PRESSURE", value: "Ok" },
+      ],
+    },
+  });
+  receive(socket, {
+    tag: "def",
+    vector: {
+      kind: "number",
+      device: "Open-Meteo",
+      name: "GEOGRAPHIC_COORD",
+      state: "Ok",
+      perm: "rw",
+      elements: [
+        { kind: "number", name: "LAT", label: "Latitude", value: 34.0522 },
+        { kind: "number", name: "LONG", label: "Longitude", value: -118.2437 },
       ],
     },
   });
@@ -103,7 +121,7 @@ describe("the tutorial's custom UI", () => {
     const { socket } = renderConnected(<SkyReport />);
     publishWeather(socket);
 
-    expect(screen.getByText("Not safe to open.")).toBeInTheDocument();
+    expect(screen.getByText("Not safe to open")).toBeInTheDocument();
   });
 
   it("flips to safe when the driver clears the alert", () => {
@@ -124,7 +142,7 @@ describe("the tutorial's custom UI", () => {
       },
     });
 
-    expect(screen.getByText("Safe to open.")).toBeInTheDocument();
+    expect(screen.getByText("Safe to open")).toBeInTheDocument();
   });
 
   it("updates one reading in place when the driver publishes a change", () => {
@@ -145,5 +163,54 @@ describe("the tutorial's custom UI", () => {
 
     expect(screen.getByText("4")).toBeInTheDocument();
     expect(screen.getByText("66.9")).toBeInTheDocument(); // untouched
+  });
+});
+
+describe("the dashboard's figures", () => {
+  it("names the wind's bearing as a compass point, not just degrees", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    // 304° is north-west; the badge says so in words as well as numbers.
+    expect(screen.getByText(/from NW 304/)).toBeInTheDocument();
+  });
+
+  it("labels the wind compass for a screen reader", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    expect(screen.getByRole("img", { name: /Wind from 304 degrees, NW/ })).toBeInTheDocument();
+  });
+
+  it("shows the site coordinates and maps them", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    expect(screen.getByText("34.05, -118.24")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Site at 34.05, -118.24/ })).toBeInTheDocument();
+  });
+
+  it("draws the moon at its illuminated fraction", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    // phase 0.66 -> a touch past last-quarter-to-full, ~78% lit.
+    expect(screen.getByRole("img", { name: /Moon 7[0-9]% illuminated/ })).toBeInTheDocument();
+  });
+
+  it("shows the feels-like temperature beside the hero reading", () => {
+    const { socket } = renderConnected(<SkyReport />);
+    publishWeather(socket);
+
+    expect(screen.getByText("66.9")).toBeInTheDocument();
+    expect(screen.getByText("feels like 71.6°")).toBeInTheDocument();
+  });
+
+  it("renders every figure before any data arrives", () => {
+    renderConnected(<SkyReport />);
+
+    expect(screen.getByText("Waiting for data")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Wind direction unknown" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Site unknown" })).toBeInTheDocument();
   });
 });

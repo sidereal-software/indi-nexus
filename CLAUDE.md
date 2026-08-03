@@ -348,9 +348,17 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
 
   `demo/dome-sim.ts` and `demo/weather-sim.ts` are TypeScript ports of
   `examples/dome_device.py` and `examples/openmeteo_device.py` behind a fake `WebSocketLike`,
-  so the docs' live demos run with no server; `demo/sky-report.tsx` is the tutorial's custom
-  UI (the file the guide's final code block shows, so keep the two in step), rendered on the
-  weather page beside the stock `DevicePanel`. Both build into `docs/` via `pnpm run docs`
+  so the docs' live demos run with no server; `demo/sky-report.tsx` + `demo/sky-visuals.tsx` are
+  the tutorial's custom UI - the layout, and the drawn figures (wind compass, meters, moon
+  disc, projected site graticule, daylight bar) - shown on the weather page beside the
+  **real panel** `App`, not a bare `DevicePanel`, so the demo looks like what ships. The
+  figures wear theme tokens only (`fill-state-*`, `fill-chart-3`, `stroke-border`) so they
+  follow light/dark: note the moon's unlit disc is `fill-foreground/20` deliberately, since
+  in dark mode `foreground` is light and would erase the phase. Status colour never carries
+  meaning alone (the theme's Alert and Busy are ΔE 4.4 apart under deuteranopia), so every
+  state is written out as well as coloured. Both views stay mounted with the inactive one
+  hidden - unmounting would take its `IndiProvider` with it, and the provider closes the
+  client on unmount, resetting the simulated driver on every switch. Both build into `docs/` via `pnpm run docs`
   and are gitignored. **The simulators mirror real drivers - if you change a driver's
   properties or its safety rule, change its simulator too, or the demo stops being a demo of
   anything.** A simulator must be constructed *lazily inside* `webSocketFactory`: it starts
