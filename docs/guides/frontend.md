@@ -44,29 +44,18 @@ build generate the utilities.
 
 ## Showing several devices
 
+`useDevices()` returns every device the hub knows about, so a whole observatory is one
+`map` - and nothing in it names an instrument. Plug a new one in and it appears:
+
 ```tsx
-import { IndiProvider, useDevices, DevicePanel, ConnectionStatus, MessageLog } from "@indi-nexus/react";
-import "@indi-nexus/react/styles.css";
-
 function Observatory() {
-  const devices = useDevices();          // every device the hub knows about
-  return (
-    <>
-      <ConnectionStatus />               {/* am I connected? is the hub connected? */}
-      {devices.map((name) => <DevicePanel key={name} device={name} />)}
-      <MessageLog />                     {/* the rolling INDI log */}
-    </>
-  );
+  const devices = useDevices();
+  return devices.map((name) => <DevicePanel key={name} device={name} />);
 }
-
-export const App = () => (
-  <IndiProvider url="ws://localhost:8000/ws">
-    <Observatory />
-  </IndiProvider>
-);
 ```
 
-Nothing here names an instrument. Plug in a new one at the observatory and it appears.
+`ConnectionStatus` and `MessageLog` are the other two pieces the reference panel adds
+around that, and they take no props.
 
 ## Building your own layout
 

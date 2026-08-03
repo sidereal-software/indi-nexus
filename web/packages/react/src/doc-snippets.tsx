@@ -7,11 +7,9 @@
  * `apps/panel/demo/sky-report.tsx`.)
  */
 import {
-  ConnectionStatus,
   DevicePanel,
   IndiClient,
   IndiProvider,
-  MessageLog,
   useDevices,
   useIndiClient,
   useNumber,
@@ -25,24 +23,10 @@ export function App1() {
   );
 }
 
-function Observatory() {
+export function Observatory() {
   const devices = useDevices();
-  return (
-    <>
-      <ConnectionStatus />
-      {devices.map((name) => (
-        <DevicePanel key={name} device={name} />
-      ))}
-      <MessageLog />
-    </>
-  );
+  return devices.map((name) => <DevicePanel key={name} device={name} />);
 }
-
-export const App2 = () => (
-  <IndiProvider url="ws://localhost:8000/ws">
-    <Observatory />
-  </IndiProvider>
-);
 
 export function DomeAzimuth() {
   const azimuth = useNumber("Dome Simulator", "ABS_DOME_POSITION", "DOME_ABSOLUTE_POSITION");

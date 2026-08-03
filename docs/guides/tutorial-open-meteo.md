@@ -9,7 +9,8 @@ At the end you will have real sky conditions for your own site, in a panel you
 designed.
 
 **[See it running first](../weather-demo/weather.html)** - the finished driver and
-the custom screen, both in your browser, with no install. Press Connect.
+the custom screen, both in your browser, with no install. Press Connect. It calls
+the real API, falling back to a recorded reply if it cannot reach it.
 
 The finished code is `examples/openmeteo_device.py`, and its tests are
 `tests/test_openmeteo_example.py`.
@@ -217,13 +218,9 @@ drawn figures), built entirely from `@indi-nexus/react`.
 | A desktop panel | A wallboard |
 |---|---|
 | Read at 40 cm | Read at 4 m - type sized in viewport units, the verdict ~10 vw |
-| You can hover, click, scroll | Nobody touches it. One screen, no scroll, no tooltips |
+| You can hover, click, scroll | Nobody touches it. One screen, no tooltips |
 | A stale number is a nuisance | A stale number is dangerous - it must blank out |
 | Ratios suit thin meters | A 2 px track with a 1 px limit tick is invisible; use a big number and a thick state bar |
-
-That last row is the one that surprises people. The earlier version of this
-screen used meters with the driver's limit ticked on the track, which is the
-right form on a laptop and unreadable on a wall.
 
 ### Reading a value and its verdict together
 
@@ -267,36 +264,27 @@ wind speed is worse than a blank one.
 const live = parameters !== undefined && parameters.state !== "Idle";
 ```
 
-### The figures, and why each is that shape
+### Picking a form for each reading
 
 | Reading | Form | Why |
 |---|---|---|
-| Wind direction | **compass** | The one genuinely *angular* reading, which is where a dial beats a bar. The arrow sits on the bearing the wind comes from, like a vane. |
 | Temperature | **hero figure** | The one number the board leads with. Exactly one per view. |
-| Cloud, humidity, wind, gust, pressure | **big number + state bar** | Distance beats precision here. |
-| Moon phase | **the moon**, at its real illuminated fraction | The lit limb is a semicircle; the terminator is a half-ellipse of radius `r·cos 2πp`, which is what makes a crescent bow one way and a gibbous the other. |
-| Site | **a projected graticule** | Straight parallels, meridians curving to the poles, so it reads as a globe rather than a grid - and the marker uses that same projection, so its position is right rather than approximately right. |
+| Cloud, humidity, wind, gust, pressure | **big number + state bar** | At four metres, distance beats precision. |
+| Wind direction | **compass** | The one genuinely *angular* reading - the case where a dial beats a bar. |
+| Moon phase, site | **drawn figures** | See `sky-visuals.tsx`; each is a pure function of its props. |
 
-### Three rules it follows
+### Two rules it follows
 
 - **Status is never colour alone.** In this theme Alert and Busy are ΔE 14.6
   apart for a reader with full colour vision, and 5.7 under protanopia - across
-  a room they are the same colour. So every state is also a word: `ALERT`,
-  `OK`, in type you can read from the door.
-- **Colour comes from theme tokens, never hex** - `bg-state-*`, `fill-chart-3`,
-  `stroke-border` - so the board follows light and dark. One trap: the moon's
-  unlit disc is `fill-foreground/20`, not `fill-foreground`, because in dark
-  mode `foreground` is *light* and would erase the phase entirely.
+  a room they are the same colour. So every state is also a word: `ALERT`, `OK`,
+  in type you can read from the door.
 - **The verdict is the driver's, not the UI's.** OPEN/HOLD reads
   `WEATHER_STATUS.state`. The safety rule lives in one place, so this board, the
   stock panel and any script all agree.
 
-### And it stays live
-
-Every hook re-renders only its own reading, so a change in cloud cover repaints
-one tile rather than the board; and every hook returns `undefined` until the
-driver has published, so the whole thing renders correctly before any data
-arrives.
+Colour comes from theme tokens rather than hex (`bg-state-*`, `fill-chart-3`,
+`stroke-border`), so the board follows light and dark for free.
 
 ## 10. Test both halves
 
@@ -314,16 +302,9 @@ async def test_status_lights_flag_the_readings_that_are_out_of_range(site):
     assert status.state is IPState.ALERT               # the vector takes the worst
 ```
 
-And the UI is tested against the vectors that driver really emits, so the two
-halves are checked where they meet - see
-`web/packages/react/src/doc-snippets.test.tsx`.
-
-## The same thing, running
-
-Everything above is on the [weather demo page](../weather-demo/weather.html): the
-driver ported to TypeScript so it runs in the browser, the stock panel, and the
-custom screen, switchable. It calls the real Open-Meteo API from your browser,
-and falls back to a recorded response if it cannot reach it.
+The board is tested the same way, against the vectors that driver really emits,
+so the two halves are checked where they meet - see
+`web/apps/panel/demo/sky-report.test.tsx`.
 
 ## Where to take it
 

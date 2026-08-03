@@ -121,5 +121,5 @@ async def update(self) -> None:
 
 The part with no pyINDI equivalent. A driver that used to need the mountain to
 exercise at all can now be run in a test in milliseconds - see
-[Testing your driver](writing-drivers.md#testing-your-driver), and
+[Testing without hardware](writing-drivers.md#testing-without-hardware), and
 `tests/test_weather_example.py` for a full worked set.

@@ -161,17 +161,11 @@ available through hooks - see the
 
 ## The examples
 
-Every example in `examples/` runs. Read them in this order:
-
-| Example | What it shows |
-|---|---|
-| `demo_device.py` | The smallest complete driver: one of each property kind, a switch that starts and stops an animation. |
-| `weather_device.py` | **The one to copy for real hardware.** A blocking instrument library, a link that can drop, and a full test suite. |
-| `dome_device.py` | A realistic instrument: connect, rotate, open a shutter, park, abort. |
-| `telescope_device.py` | Pointing and tracking: goto, sync, slew rates, guide pulses. |
-| `ccd_device.py` | Images: exposures that deliver a FITS frame, plus a cooler. |
-| `monitor_client.py` | The other side - connect to an observatory and print everything that happens. |
-| `demo_bridge.py` | Driver + bridge + web panel in one process, for development. |
+Every example in `examples/` runs and is covered by tests. Start with `demo_device.py` for
+the shape of a driver, then `weather_device.py` - the one to copy for real hardware. There
+are also a dome, a telescope, a CCD, a client, and a driver for a live public weather API;
+the [examples guide](https://indi-nexus.sidereal.software/guides/examples/) says what each
+one is for.
 
 Run any of them in the panel:
 

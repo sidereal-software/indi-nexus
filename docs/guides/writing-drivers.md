@@ -182,28 +182,19 @@ the instrument stops answering.
 
 ## Handy shortcuts
 
-**Lots of similar elements.** A bank of status lights or a table of readings would
-otherwise be a pile of near-identical lines:
+**A bank of lights, one of which is lit.** The commonest shape in status reporting, and
+two lines rather than a pile of near-identical ones:
 
 ```python
-self.define_light("WEATHER_STATUS", Light.from_labels(["Wind Speed", "Cloud Cover"]))
-# names become wind_speed, cloud_cover; labels stay as written
-```
+self.define_light("state_message", Light.from_labels(["Idle", "Opening", "Open"]))
+# names become idle, opening, open; labels stay as written
 
-**"Exactly one of these is the current one."** The commonest shape in status reporting -
-a bank of lights where one shows what the instrument is doing:
-
-```python
-self["state_message"].select("domeslit_opening", IPState.BUSY)
+self["state_message"].select("opening", IPState.BUSY)
 # that light goes Busy, the rest go Idle, and so does the property
 ```
 
-Guard it with `in` when the value comes from hardware that might say something unexpected:
-
-```python
-if reported not in self["state_message"]:
-    self.log_error(f"Unknown state {reported!r}")
-```
+Use `if reported not in self["state_message"]` to guard the `select` when the value comes
+from hardware that might say something unexpected.
 
 **Stop repeating yourself on the wire.** A driver that polls every second otherwise sends
 the same unchanged values every second, forever. Declare the property `on_change` and it
