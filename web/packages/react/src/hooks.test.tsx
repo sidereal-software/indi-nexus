@@ -8,8 +8,12 @@ import {
   useDevice,
   useDevices,
   useElement,
+  useLight,
   useMessages,
+  useNumber,
   useProperty,
+  useSwitch,
+  useText,
 } from "./hooks";
 import { receive, renderConnected } from "./testing/render";
 
@@ -142,5 +146,102 @@ describe("useMessages", () => {
     receive(socket, { tag: "message", message: "two" });
     receive(socket, { tag: "message", message: "three" });
     expect(screen.getByText("two|three")).toBeInTheDocument();
+  });
+});
+
+describe("typed value hooks", () => {
+  /** A device exposing one property of each kind the typed hooks cover. */
+  function defineKinds(socket: Parameters<typeof receive>[0]) {
+    receive(socket, { tag: "def", vector: numVec("Dome", "AZ", 120) });
+    receive(socket, {
+      tag: "def",
+      vector: {
+        kind: "text",
+        device: "Dome",
+        name: "STATUS",
+        state: "Idle",
+        perm: "ro",
+        elements: [{ kind: "text", name: "note", value: "parked" }],
+      },
+    });
+    receive(socket, {
+      tag: "def",
+      vector: {
+        kind: "switch",
+        device: "Dome",
+        name: "SHUTTER",
+        state: "Idle",
+        perm: "rw",
+        rule: "OneOfMany",
+        elements: [
+          { kind: "switch", name: "OPEN", value: "On" },
+          { kind: "switch", name: "CLOSE", value: "Off" },
+        ],
+      },
+    });
+    receive(socket, {
+      tag: "def",
+      vector: {
+        kind: "light",
+        device: "Dome",
+        name: "HEALTH",
+        state: "Idle",
+        elements: [{ kind: "light", name: "link", value: "Ok" }],
+      },
+    });
+  }
+
+  function Probe() {
+    const az = useNumber("Dome", "AZ", "v");
+    const note = useText("Dome", "STATUS", "note");
+    const open = useSwitch("Dome", "SHUTTER", "OPEN");
+    const closed = useSwitch("Dome", "SHUTTER", "CLOSE");
+    const link = useLight("Dome", "HEALTH", "link");
+    return (
+      <span>
+        az:{String(az)} note:{String(note)} open:{String(open)} closed:{String(closed)} link:
+        {String(link)}
+      </span>
+    );
+  }
+
+  it("returns each value already narrowed to its own type", () => {
+    const { socket } = renderConnected(<Probe />);
+    defineKinds(socket);
+
+    expect(
+      screen.getByText("az:120 note:parked open:true closed:false link:Ok"),
+    ).toBeInTheDocument();
+  });
+
+  it("is undefined before the property exists", () => {
+    renderConnected(<Probe />);
+
+    expect(
+      screen.getByText(
+        "az:undefined note:undefined open:undefined closed:undefined link:undefined",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("is undefined when the element is of another kind", () => {
+    function Mismatch() {
+      return <span>mismatch:{String(useNumber("Dome", "STATUS", "note"))}</span>;
+    }
+    const { socket } = renderConnected(<Mismatch />);
+    defineKinds(socket);
+
+    expect(screen.getByText("mismatch:undefined")).toBeInTheDocument();
+  });
+
+  it("re-renders when the watched value changes", () => {
+    const { socket } = renderConnected(<Probe />);
+    defineKinds(socket);
+
+    receive(socket, { tag: "set", vector: numVec("Dome", "AZ", 240) });
+
+    expect(
+      screen.getByText("az:240 note:parked open:true closed:false link:Ok"),
+    ).toBeInTheDocument();
   });
 });

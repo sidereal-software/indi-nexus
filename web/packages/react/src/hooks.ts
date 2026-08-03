@@ -12,6 +12,8 @@ import {
   type DeviceSnapshot,
   elementByName,
   type IndiElement,
+  type IPState,
+  ISState,
   type Message,
   type Vector,
 } from "@indi-nexus/client";
@@ -77,6 +79,71 @@ export function useProperty(device: string, name: string): Vector | undefined {
 export function useElement(device: string, name: string, element: string): IndiElement | undefined {
   const vector = useProperty(device, name);
   return vector === undefined ? undefined : elementByName(vector, element);
+}
+
+/**
+ * Subscribe to one numeric value.
+ *
+ * {@link useElement} hands back the element union, so reading `.value` off it
+ * does not narrow (a BLOB element has `data`, not `value`). These four hooks are
+ * the "I know what kind this is" shortcut, and return the value itself:
+ *
+ * ```tsx
+ * const azimuth = useNumber("Dome Simulator", "ABS_DOME_POSITION", "DOME_ABSOLUTE_POSITION");
+ * return <h1>{azimuth ?? "--"}°</h1>;
+ * ```
+ *
+ * @param device - The device name.
+ * @param name - The property name.
+ * @param element - The element name.
+ * @returns The value, or `undefined` if the property is not defined yet or that
+ *   element is of another kind.
+ */
+export function useNumber(device: string, name: string, element: string): number | undefined {
+  const found = useElement(device, name, element);
+  return found?.kind === "number" ? found.value : undefined;
+}
+
+/**
+ * Subscribe to one text value. See {@link useNumber}.
+ *
+ * @param device - The device name.
+ * @param name - The property name.
+ * @param element - The element name.
+ * @returns The value, or `undefined` when absent or of another kind.
+ */
+export function useText(device: string, name: string, element: string): string | undefined {
+  const found = useElement(device, name, element);
+  return found?.kind === "text" ? found.value : undefined;
+}
+
+/**
+ * Subscribe to one switch, as a boolean. See {@link useNumber}.
+ *
+ * Boolean rather than the `"On"`/`"Off"` token because that is what a checkbox
+ * or a toggle wants; `undefined` still distinguishes "not there" from "off".
+ *
+ * @param device - The device name.
+ * @param name - The property name.
+ * @param element - The element name.
+ * @returns Whether the switch is On, or `undefined` when absent or of another kind.
+ */
+export function useSwitch(device: string, name: string, element: string): boolean | undefined {
+  const found = useElement(device, name, element);
+  return found?.kind === "switch" ? found.value === ISState.On : undefined;
+}
+
+/**
+ * Subscribe to one status light. See {@link useNumber}.
+ *
+ * @param device - The device name.
+ * @param name - The property name.
+ * @param element - The element name.
+ * @returns The light's state, or `undefined` when absent or of another kind.
+ */
+export function useLight(device: string, name: string, element: string): IPState | undefined {
+  const found = useElement(device, name, element);
+  return found?.kind === "light" ? found.value : undefined;
 }
 
 /**
