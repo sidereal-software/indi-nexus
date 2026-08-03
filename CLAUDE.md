@@ -54,10 +54,14 @@ passing. New work lands with its own tests; keep that discipline.
 
 ## Architecture
 
+**Keep these diagrams current** - see [Architecture diagrams](#architecture-diagrams)
+under Conventions.
+
 ```
 src/indi_nexus/
 ├── protocol/     the INDI protocol core (see below)
 ├── driver/       driver SDK: subclass a base device; stdio XML under indiserver
+├── testing.py    DeviceHarness: drive a Device in a test, no indiserver
 ├── client/       reconnecting asyncio TCP client to indiserver + property cache
 ├── transport.py  shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
 ├── web/          FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
@@ -71,10 +75,44 @@ web/              pnpm workspace: the TypeScript frontend (see below)
 
 Data flow (unchanged from the INDI model):
 
+```mermaid
+flowchart LR
+    subgraph py["Python (indi_nexus)"]
+        drv["Driver SDK<br/><code>driver/</code>"]
+        cli["IndiClient<br/><code>client/</code>"]
+        web["FastAPI bridge<br/><code>web/</code>"]
+    end
+    hw(["Instrument"]) --- drv
+    drv -- "stdio<br/>INDI 1.7 XML" --> hub["<b>indiserver</b><br/>C hub, :7624"]
+    hub -- "TCP<br/>INDI 1.7 XML" --> cli
+    cli --> web
+    web -- "WebSocket<br/>typed JSON" --> ui["Browser<br/>React/TS"]
+
+    classDef ext fill:#eee,stroke:#999,color:#333
+    class hub,hw,ui ext
 ```
-Driver (driver/) <-stdin/stdout XML-> indiserver:7624 <-TCP-> client/  ->  web/ (FastAPI)
-                                                                              | WebSocket (JSON)
-                                                                           Browser (React/TS)
+
+Inside a running driver - what the runtime owns, and where the device guard sits:
+
+```mermaid
+flowchart TB
+    stdin(["stdin<br/>from indiserver"]) --> reader["reader loop<br/>XMLStreamParser"]
+    reader -->|getProperties| setup["Device.setup()"]
+    reader -->|newXxxVector| disp["@on_new handler"]
+    timer["@every job<br/>deadline-scheduled"] --> tick["tick"]
+
+    setup --> guard{{"device guard<br/><i>serialize_dispatch</i>"}}
+    disp --> guard
+    tick --> guard
+    guard --> props["BoundProperty.set()<br/><i>emit policy applies</i>"]
+    props --> outbox["outbox<br/>asyncio.Queue"]
+    outbox --> writer["writer loop<br/>to_xml"]
+    writer --> stdout(["stdout<br/>to indiserver"])
+
+    blocking["blocking hardware call<br/><i>off_thread</i>"] -.->|worker thread| tick
+
+    classDef ext fill:#eee,stroke:#999,color:#333
+    class stdin,stdout,blocking ext
 ```
 
 ### The protocol layer (`src/indi_nexus/protocol/`)
@@ -124,20 +162,47 @@ dispatch, no class-global registries.
 
 - `device.py` - `Device`, the base class. Override `async def setup()` to declare
   properties with the `define_number/text/switch/light/blob(...)` helpers (each returns a
-  `BoundProperty` and emits the `def`). Access later via `self["NAME"]`. `self.message()`
-  / `self.log_error()` send INDI `message`s. `Device.run()` serves it over stdio.
+  `BoundProperty` typed by the vector kind, and emits the `def`). Access later via
+  `self["NAME"]` (untyped in its vector, since a name lookup cannot know the kind) or the
+  typed getters `self.number/text/switch/light/blob("NAME")` when you need
+  `.vector.elements` to narrow. `self.message()` / `self.log_error()` send INDI
+  `message`s. `Device.run()` serves it over stdio.
   `define_connection()` adds the standard `CONNECTION` switch with a built-in handler
-  (flip + `on_connect`/`on_disconnect` hooks + announcement); `connected` /
-  `require_connected()` read the state, and a subclass `@on_new("CONNECTION")` shadows
-  the built-in (the handler map keeps the MRO-first entry per property).
-- `property.py` - `BoundProperty`, the driver-side handle wrapping a (pure) protocol
-  vector. `.set(RA=1.2, DEC=3.4, state=IPState.OK)` mutates elements **and** emits one
-  `setXxxVector`; it honors `OneOfMany` switch rules (turning one On clears siblings). The
-  protocol models stay behavior-free - this wrapper is where "and tell the client" lives.
+  (flip + `on_connect`/`on_disconnect` hooks + announcement); a hook that **raises** rolls
+  the switch back to its previous member and leaves the property `Alert` with the reason,
+  so a device never claims a link it does not have. `connected` / `require_connected()`
+  read the state, and a subclass `@on_new("CONNECTION")` shadows the built-in (the handler
+  map keeps the MRO-first entry per property).
+  `await self.off_thread(fn, ...)` runs a **blocking** instrument call in a worker thread -
+  the answer to the single most common way a real driver goes wrong, since calling a
+  synchronous vendor library from an `async def` silently stalls the whole reactor. Only
+  the blocking call goes to the thread: the outbox behind `set` is an `asyncio.Queue`, so
+  property writes must stay on the loop.
+  `serialize_dispatch` (class attribute, default `True`) runs `@every` ticks and `@on_new`
+  handlers under one per-device lock, so a tick that awaits mid-flight cannot publish
+  pre-write state over a client write that landed while it was out - and hardware access
+  is serialised, which one serial port or socket wants anyway.
+- `property.py` - `BoundProperty[VectorT]`, the driver-side handle wrapping a (pure)
+  protocol vector, generic in the vector so `define_switch(...).vector.elements` is a
+  `list[Switch]`. `.set(RA=1.2, DEC=3.4, state=IPState.OK)` mutates elements **and** emits
+  one `setXxxVector`; it honors both exclusive switch rules (`OneOfMany` **and**
+  `AtMostOne` - turning one On clears siblings). `.select(name, value)` is the whole "one of
+  N lights is lit" idiom in one call (name it, siblings reset to the kind's off value, the
+  vector takes the selected value's state) - the single most repeated shape in real status
+  reporting; `.set_all(value)` writes every element in one emit; `name in prop` asks whether
+  hardware reported something this vector has an element for. A `Text` element coerces a
+  non-string value at assignment rather than at serialisation, so publishing a reading to
+  one fails at the call site or not at all - never inside the writer loop. The `emit` policy chosen
+  at `define_*` time is enforced here: under `"on_change"` the values are still written but
+  nothing goes on the wire (and the timestamp is untouched) when the result matches what
+  clients were last told - `force=True` overrides. The protocol models stay behavior-free -
+  this wrapper is where "and tell the client" lives.
 - `scheduling.py` - `@every(seconds=…, minutes=…, hours=…)` declares a periodic job.
   It only *tags* a method; discovery/execution is **per instance** (no shared class
   state), one supervised task each, with per-tick error isolation (a failing tick logs
-  and continues, never kills the driver).
+  and continues, never kills the driver). Ticks are scheduled against a running **deadline**
+  (in `runtime.py`), not by sleeping the interval after each one, so a job's period does
+  not drift out by the tick's own duration.
   `@every(..., when_connected=True)` pauses a job while `device.connected` is false.
 - `dispatch.py` - `@on_new("PROP")` tags the handler for client writes to a property; the
   device builds a per-instance name->handler map and passes the fully typed parsed vector.
@@ -152,6 +217,25 @@ dispatch, no class-global registries.
 
 `examples/demo_device.py` is the reference driver (one of each vector kind, an `@every`
 animation gated on its power switch, and an `@on_new` handler).
+`examples/weather_device.py` is the reference **site** driver: a blocking vendor-style
+client behind `off_thread`, the connection lifecycle, hardware that stops answering, and
+`emit="on_change"` readbacks. Keep at least one example in that shape - the simulator
+examples never exercise a slow, absent or lying instrument, which is what real drivers
+spend their bug budget on.
+
+### Testing drivers (`src/indi_nexus/testing.py`)
+
+`DeviceHarness` is the public seam for testing a `Device`, and the thing third-party
+driver repos depend on - treat its surface as API. It binds the device's emit callback and
+records everything: `setup()` sends the `getProperties` that `indiserver` would;
+`write(name, **values)` builds the **partial** vector a real client sends (only the named
+elements, no `def`-only metadata, no switch `rule`) and routes it through
+`Device._dispatch_new`, so the `@on_new` map, the device-name guard and the serialisation
+lock are all exercised; `tick(job)` runs one iteration of an `@every` method by name.
+Read back with `defs()`, `sets()`, `deletes()`, `messages`, and `latest(name)` (last
+emission, falling back to the device's live vector so it survives `clear()`).
+Wire-level concerns - framing, chunk boundaries, the codec - still get a `DriverRuntime`
+over byte streams (`tests/test_driver.py`); the harness deliberately does not touch XML.
 
 ### The client (`src/indi_nexus/client/`)
 
@@ -288,6 +372,38 @@ through pnpm from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`, 
   parse -> assert), and streaming behavior gets a chunk-boundary test.
 - When touching the protocol, keep XML and JSON serialization consistent - the models are
   the shared contract with the frontend.
+
+### Architecture diagrams
+
+Architecture is documented in **mermaid**, and a diagram that has drifted from the code is
+worse than no diagram - it is read as current and believed. **A change that alters
+architecture lands with the diagram updates in the same commit.** That means any change to:
+
+- the components in `src/indi_nexus/` or `web/` (a new module, one removed, one whose
+  responsibility moves);
+- what flows between them, or on what transport/encoding (XML, JSON, stdio, TCP,
+  WebSocket);
+- the inside of the driver runtime - the reader/writer loops, the outbox, where the
+  dispatch guard sits, how ticks are scheduled, how properties reach the wire;
+- an external boundary (`indiserver`, the browser, the instrument).
+
+The diagrams live in exactly these places, and the stack diagram is duplicated across the
+first three - update all of them together:
+
+| File | Diagram |
+|---|---|
+| `CLAUDE.md` (Architecture) | the stack, and the driver-runtime internals |
+| `README.md` (What it is) | the stack |
+| `docs/index.md` (The stack) | the stack |
+
+Rendering is already wired up: `mkdocs.yml` registers a `pymdownx.superfences` custom
+fence for ```mermaid, and GitHub renders mermaid natively in `README.md`/`CLAUDE.md`.
+Keep diagrams source-legible (plain text reads fine unrendered), and mark anything
+INDINexus does not own - `indiserver`, the browser, the instrument - with the shared
+`classDef ext`, so the boundary of this project stays obvious at a glance.
+
+Purely internal refactors that do not change any of the above need no diagram edit; say so
+in the commit body rather than silently skipping it.
 
 ## Git
 

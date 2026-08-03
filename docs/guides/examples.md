@@ -16,6 +16,11 @@ tests itself.
 - **`ccd_device.py`** - libindi's CCD Simulator: exposures counting down to a
   rendered 16-bit FITS star field (the `CCD1` BLOB), frame types, binning,
   gain/offset, and a TEC cooler with realistic cooling and warm-up physics.
+- **`weather_device.py`** - the one shaped like a *site* driver rather than a
+  simulator, and the one to copy when you have real hardware: a blocking
+  vendor-style client reached through `off_thread`, the connection lifecycle,
+  a station that can stop answering, `emit="on_change"` readbacks, and a full
+  test suite in `tests/test_weather_example.py` written on `DeviceHarness`.
 - **`monitor_client.py`** - the reference client: subscribe to everything and
   print each event.
 - **`demo_bridge.py`** - the whole stack in one process: one or more drivers

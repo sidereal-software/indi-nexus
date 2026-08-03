@@ -36,12 +36,21 @@ send it to an azimuth, park it, and watch the INDI message log narrate.
 
 ## The stack
 
-```
-Driver (Python) <-stdio XML-> indiserver:7624 <-TCP-> IndiClient (Python)
-                                                          |
-                                                     FastAPI bridge
-                                                          | WebSocket (typed JSON)
-                                                     React panel / your UI
+```mermaid
+flowchart LR
+    subgraph py["Python (indi_nexus)"]
+        drv["Driver SDK<br/><code>driver/</code>"]
+        cli["IndiClient<br/><code>client/</code>"]
+        web["FastAPI bridge<br/><code>web/</code>"]
+    end
+    hw(["Instrument"]) --- drv
+    drv -- "stdio<br/>INDI 1.7 XML" --> hub["<b>indiserver</b><br/>C hub, :7624"]
+    hub -- "TCP<br/>INDI 1.7 XML" --> cli
+    cli --> web
+    web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
+
+    classDef ext fill:#eee,stroke:#999,color:#333
+    class hub,hw,ui ext
 ```
 
 - **Keep C `indiserver` as the hub** - existing INDI drivers and clients

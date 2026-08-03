@@ -38,7 +38,13 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - pymdownx.details
-  - pymdownx.superfences
+  # The custom fence renders ```mermaid blocks as diagrams; the architecture
+  # diagrams in index.md and the guides rely on it.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.highlight
@@ -65,12 +71,14 @@ nav:
   - Getting started: getting-started.md
   - Guides:
       - Writing a driver: guides/writing-drivers.md
+      - Porting from pyINDI: guides/porting-from-pyindi.md
       - The examples: guides/examples.md
       - Building a frontend: guides/frontend.md
       - Protocol concepts: guides/protocol.md
   - Python API:
       - Protocol: reference/python/protocol.md
       - Driver SDK: reference/python/driver.md
+      - Testing: reference/python/testing.md
       - Client: reference/python/client.md
       - Web bridge: reference/python/web.md
       - Transport: reference/python/transport.md

@@ -33,6 +33,23 @@ interoperate); canonical INDI 1.7 **XML** on the wire, typed **JSON** to browser
 Pydantic model as the shared contract; one monorepo for the Python package and the `pnpm`
 frontend workspace so that contract stays in sync.
 
+```mermaid
+flowchart LR
+    subgraph py["Python (indi_nexus)"]
+        drv["Driver SDK<br/><code>driver/</code>"]
+        cli["IndiClient<br/><code>client/</code>"]
+        web["FastAPI bridge<br/><code>web/</code>"]
+    end
+    hw(["Instrument"]) --- drv
+    drv -- "stdio<br/>INDI 1.7 XML" --> hub["<b>indiserver</b><br/>C hub, :7624"]
+    hub -- "TCP<br/>INDI 1.7 XML" --> cli
+    cli --> web
+    web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
+
+    classDef ext fill:#eee,stroke:#999,color:#333
+    class hub,hw,ui ext
+```
+
 ## Quickstart
 
 Requires [uv](https://docs.astral.sh/uv/) (Python 3.12+) and, for the frontend,
@@ -73,6 +90,10 @@ Runnable references live in `examples/`:
   that count down and deliver a rendered 16-bit FITS star field as the `CCD1` BLOB,
   frame types, binning, gain/offset, and a TEC cooler with realistic cooling and
   warm-up physics.
+- **`weather_device.py`** - shaped like a *site* driver rather than a simulator, and the
+  one to copy when you have real hardware: a blocking vendor-style client reached through
+  `off_thread`, the connection lifecycle, a station that can stop answering,
+  `emit="on_change"` readbacks, and a full test suite written on `DeviceHarness`.
 - **`monitor_client.py`** - the reference client: subscribe to everything and print each event.
 - **`demo_bridge.py`** - the whole stack in one process: one or more drivers wired straight
   into the web app through in-memory pipes (a miniature `indiserver`), no real `indiserver`
@@ -145,7 +166,27 @@ if __name__ == "__main__":
 The SDK carries the standard INDI lifecycle so a driver is only its own behavior -
 see the [driver guide](https://indi-nexus.sidereal.software/guides/writing-drivers/)
 for the tour, and `examples/dome_device.py` / `examples/telescope_device.py` for
-complete, realistic drivers.
+complete, realistic drivers. Coming from pyINDI? There is a
+[porting guide](https://indi-nexus.sidereal.software/guides/porting-from-pyindi/).
+
+Real instruments are reached through **blocking** libraries, so keep them off the event
+loop with `await self.off_thread(...)`; `@every` ticks and `@on_new` handlers are
+serialised per device, so a tick that awaits mid-flight can never publish over a client
+write that landed while it was out. `examples/weather_device.py` is built that way end to
+end.
+
+Drivers are testable without hardware:
+
+```python
+from indi_nexus.testing import DeviceHarness
+
+harness = DeviceHarness(MyDriver())
+await harness.setup()                      # the getProperties indiserver would send
+await harness.write("CONNECTION", CONNECT=True)
+await harness.tick("poll")                 # one iteration of the @every job
+
+assert harness.latest("WEATHER_PARAMETERS").state is IPState.OK
+```
 
 ## Building a frontend
 
