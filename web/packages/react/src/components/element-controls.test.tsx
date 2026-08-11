@@ -208,6 +208,23 @@ describe("SwitchVectorControl", () => {
     expect(frame.vector.elements).toEqual([{ kind: "switch", name: "c", value: "On" }]);
   });
 
+  it("draws the selected member differently from a hovered unselected one", () => {
+    renderConnected(<SwitchVectorControl vector={switchVec("OneOfMany", ["a"])} />);
+    const on = screen.getByText("a").closest("button");
+    const off = screen.getByText("b").closest("button");
+
+    expect(on).toHaveAttribute("data-state", "on");
+    expect(off).toHaveAttribute("data-state", "off");
+    // The regression: selection and hover both resolved to `accent`, so a hovered
+    // unselected member looked exactly like the selected one.
+    expect(on?.className).toContain("data-[state=on]:bg-foreground");
+    expect(on?.className).toContain("data-[state=on]:hover:bg-foreground");
+    expect(off?.className).toContain("hover:bg-muted");
+    for (const button of [on, off]) {
+      expect(button?.className).not.toContain("hover:bg-accent");
+    }
+  });
+
   it("disables the toggles and sends nothing when read-only", () => {
     const { socket } = renderConnected(
       <SwitchVectorControl vector={switchVec("AnyOfMany", ["a"], "ro")} />,

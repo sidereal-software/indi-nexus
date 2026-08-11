@@ -166,8 +166,20 @@ export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
   const single = vector.rule === "OneOfMany" || vector.rule === "AtMostOne";
   const onNames = vector.elements.filter((element) => element.value === "On").map((e) => e.name);
 
+  // A selected member *is* the instrument state, so it has to read at a glance. The stock
+  // outline toggle draws selection with `accent` and hovers to `accent` as well, which
+  // leaves the two indistinguishable while the pointer is anywhere in the group, on top of
+  // being a near-invisible fill (#eee on white, #333 on #121212). Selection is inverted
+  // instead. The bare `hover:` classes are what tailwind-merge needs to drop the variant's
+  // accent hover (same modifier, same group); the `data-[state=on]:hover:` pair then holds
+  // the selected look under the pointer, on specificity, since it carries the extra
+  // attribute selector.
   const items = vector.elements.map((element) => (
-    <ToggleGroupItem key={element.name} value={element.name} className="px-3">
+    <ToggleGroupItem
+      key={element.name}
+      value={element.name}
+      className="px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background"
+    >
       {element.label ?? element.name}
     </ToggleGroupItem>
   ));
