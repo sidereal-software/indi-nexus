@@ -1,23 +1,20 @@
-/** A small badge whose colour tracks an INDI vector/light state. */
+/** The two ways an INDI state is shown: a labelled badge, and a bare status dot. */
 
 import type { IPState } from "@indi-nexus/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/ui/badge";
 
 /**
- * Tailwind classes per state, using the theme's `--color-state-*` tokens.
+ * Whether the state is one that should pulse.
  *
- * Busy pulses: it is the only state that means "still happening", and a badge that
- * sits still cannot distinguish an instrument mid-move from one that stopped there.
- * `motion-safe` so it holds still for anyone who asked the system for reduced motion.
- * Kept in step with the status dots in `element-controls.tsx`.
+ * Busy is the only state that means "still happening", and a still indicator cannot
+ * tell an instrument mid-move from one that stopped there. The other three are
+ * resting states: animating them would spend the reader's attention on nothing.
+ * `motion-safe` holds it still for anyone whose system asks for reduced motion.
  */
-const STATE_CLASSES: Record<IPState, string> = {
-  Idle: "bg-state-idle text-state-idle-foreground",
-  Ok: "bg-state-ok text-state-ok-foreground",
-  Busy: "bg-state-busy text-state-busy-foreground motion-safe:animate-pulse",
-  Alert: "bg-state-alert text-state-alert-foreground",
-};
+function pulseClass(state: IPState): string {
+  return state === "Busy" ? "motion-safe:animate-pulse" : "";
+}
 
 /** Props for {@link StateBadge}. */
 export interface StateBadgeProps {
@@ -29,13 +26,49 @@ export interface StateBadgeProps {
 /**
  * Render an INDI state as a coloured badge (Idle/Ok/Busy/Alert).
  *
+ * The colour comes from `data-indi-state`, which the theme maps to
+ * `--indi-state`, so this file holds no copy of the state-to-colour table.
+ *
  * @param props - The state and optional class name.
  * @returns The badge element.
  */
 export function StateBadge({ state, className }: StateBadgeProps) {
   return (
-    <Badge className={cn("border-transparent tabular-nums", STATE_CLASSES[state], className)}>
+    <Badge
+      data-indi-state={state}
+      className={cn(
+        "border-transparent bg-[var(--indi-state)] text-[var(--indi-state-foreground)] tabular-nums",
+        pulseClass(state),
+        className,
+      )}
+    >
       {state}
     </Badge>
+  );
+}
+
+/** Props for {@link StateDot}. */
+export interface StateDotProps {
+  /** The INDI state to display. */
+  state: IPState;
+  className?: string;
+}
+
+/**
+ * Render an INDI state as a bare coloured dot, for use beside its own label.
+ *
+ * Decorative: the state is named in text next to it, because colour alone would
+ * be unreadable to anyone who cannot separate the Busy and Alert hues.
+ *
+ * @param props - The state and an optional class name.
+ * @returns The dot element.
+ */
+export function StateDot({ state, className }: StateDotProps) {
+  return (
+    <span
+      data-indi-state={state}
+      className={cn("size-2.5 rounded-full bg-[var(--indi-state)]", pulseClass(state), className)}
+      aria-hidden
+    />
   );
 }

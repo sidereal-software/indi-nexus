@@ -19,22 +19,6 @@
 
 import type { IPState } from "@indi-nexus/react";
 
-/** Tailwind text-colour class per state, from the theme's own tokens. */
-const STATE_TEXT: Record<IPState, string> = {
-  Idle: "text-state-idle",
-  Ok: "text-state-ok",
-  Busy: "text-state-busy",
-  Alert: "text-state-alert",
-};
-
-/** Tailwind fill class per state. */
-const STATE_FILL: Record<IPState, string> = {
-  Idle: "fill-state-idle",
-  Ok: "fill-state-ok",
-  Busy: "fill-state-busy",
-  Alert: "fill-state-alert",
-};
-
 /** The eight-point compass name for a bearing in degrees. */
 export function bearingName(degrees: number): string {
   const points = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
@@ -69,7 +53,7 @@ export function WindCompass({
   gust,
   unit = "",
   state = "Idle",
-  size: sizeClass = "h-42 w-42",
+  size: sizeClass = "size-42",
 }: WindCompassProps) {
   const size = 168;
   const c = size / 2;
@@ -156,7 +140,8 @@ export function WindCompass({
           )}
           <path
             d={`M ${tip.x} ${tip.y} L ${a.x} ${a.y} L ${b.x} ${b.y} Z`}
-            className={STATE_FILL[state]}
+            data-indi-state={state}
+            className="fill-[var(--indi-state)]"
           />
         </>
       )}
@@ -382,7 +367,7 @@ export function DaylightBar({ sunrise, sunset, now }: DaylightBarProps) {
   const nowPct = at(current);
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       <div className="relative h-[1.2vh] min-h-2 w-full overflow-hidden rounded-full bg-foreground/15">
         <div
           className="absolute h-full rounded-full bg-chart-3"
@@ -403,5 +388,3 @@ export function DaylightBar({ sunrise, sunset, now }: DaylightBarProps) {
     </div>
   );
 }
-
-export { STATE_TEXT };

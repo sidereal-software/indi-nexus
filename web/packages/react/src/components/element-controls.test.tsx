@@ -260,8 +260,10 @@ describe("LightVectorControl", () => {
       ],
     };
     renderConnected(<LightVectorControl vector={vector} />);
-    expect(screen.getByText("Ok").querySelector(".bg-state-ok")).toBeInTheDocument();
-    expect(screen.getByText("Alert").querySelector(".bg-state-alert")).toBeInTheDocument();
+    expect(screen.getByText("Ok").querySelector("[data-indi-state='Ok']")).toBeInTheDocument();
+    expect(
+      screen.getByText("Alert").querySelector("[data-indi-state='Alert']"),
+    ).toBeInTheDocument();
   });
 });
 

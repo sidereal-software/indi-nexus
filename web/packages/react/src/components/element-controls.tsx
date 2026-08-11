@@ -17,7 +17,6 @@
 import {
   type BlobVector,
   formatNumber,
-  type IPState,
   isWritable,
   type LightVector,
   type NumberElement,
@@ -28,27 +27,12 @@ import {
   type Vector,
 } from "@indi-nexus/client";
 import type { FormEvent } from "react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { useIndiClient } from "../context";
-
-/**
- * Tailwind background classes per light/vector state.
- *
- * Busy pulses, because it is the one state that means "still happening" - a still dot
- * cannot say whether the instrument is working or has stopped mid-move. `motion-safe`
- * so it holds still for anyone who asked the system for reduced motion. Kept in step
- * with the same treatment in `StateBadge`.
- */
-const STATE_DOT: Record<IPState, string> = {
-  Idle: "bg-state-idle",
-  Ok: "bg-state-ok",
-  Busy: "bg-state-busy motion-safe:animate-pulse",
-  Alert: "bg-state-alert",
-};
+import { StateDot } from "./state-badge";
 
 /** The display text for an element's current value (numbers per their format). */
 function currentValue(element: NumberElement | TextElement): string {
@@ -260,7 +244,7 @@ export function LightVectorControl({ vector }: { vector: LightVector }) {
         <Field key={element.name} orientation="horizontal">
           <FieldLabel className="text-muted-foreground">{element.label ?? element.name}</FieldLabel>
           <span className="ml-auto flex items-center gap-2 text-sm">
-            <span className={cn("size-2.5 rounded-full", STATE_DOT[element.value])} aria-hidden />
+            <StateDot state={element.value} />
             {element.value}
           </span>
         </Field>

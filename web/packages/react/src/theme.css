@@ -233,3 +233,32 @@
     cursor: pointer;
   }
 }
+
+/*
+ * One mapping from an INDI state to its colour, for every element that shows one.
+ *
+ * Tailwind only emits classes it can read literally in the source, so a component
+ * cannot build `bg-state-${state}` at runtime. Without this, every place that shows
+ * a state kept its own copy of the four-way mapping: the badge, the status dots, the
+ * wallboard's bars, and its drawn figures each had one, and they drifted.
+ *
+ * Anything carrying `data-indi-state` gets the pair below, so a badge can fill with
+ * `bg-[var(--indi-state)]`, an SVG can use `fill-[var(--indi-state)]`, and text can
+ * use `text-[var(--indi-state)]` while the mapping itself lives here alone.
+ */
+[data-indi-state="Idle"] {
+  --indi-state: var(--state-idle);
+  --indi-state-foreground: var(--state-idle-foreground);
+}
+[data-indi-state="Ok"] {
+  --indi-state: var(--state-ok);
+  --indi-state-foreground: var(--state-ok-foreground);
+}
+[data-indi-state="Busy"] {
+  --indi-state: var(--state-busy);
+  --indi-state-foreground: var(--state-busy-foreground);
+}
+[data-indi-state="Alert"] {
+  --indi-state: var(--state-alert);
+  --indi-state-foreground: var(--state-alert-foreground);
+}

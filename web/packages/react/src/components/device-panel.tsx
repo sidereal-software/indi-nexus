@@ -2,6 +2,7 @@
 
 import type { DeviceSnapshot, Vector } from "@indi-nexus/client";
 import { cn } from "@/lib/utils";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { useDevice } from "../hooks";
 import { PropertyVectorCard } from "./property-vector-card";
 
@@ -38,9 +39,15 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
 
   if (groups.length === 0) {
     return (
-      <p className={cn("py-8 text-center text-sm text-muted-foreground", className)}>
-        No properties for {device} yet.
-      </p>
+      <Empty className={cn("border-none", className)}>
+        <EmptyHeader>
+          <EmptyTitle className="text-sm">No properties for {device} yet.</EmptyTitle>
+          <EmptyDescription>
+            A device publishes what it has when it starts up. If this stays empty, the driver is
+            connected but has not defined anything.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 

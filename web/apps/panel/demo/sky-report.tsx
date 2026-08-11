@@ -36,14 +36,6 @@ import { bearingName, DaylightBar, MoonDisc, SiteMap, WindCompass } from "./sky-
 
 const DEVICE = "Open-Meteo";
 
-/** Border/text colour per state, from the theme's own tokens. */
-const STATE_BAR: Record<IPState, string> = {
-  Idle: "bg-state-idle",
-  Ok: "bg-state-ok",
-  Busy: "bg-state-busy",
-  Alert: "bg-state-alert",
-};
-
 /** Read one number and its status light together. */
 function useReading(element: string): { value?: number; state: IPState } {
   const value = useNumber(DEVICE, "WEATHER_PARAMETERS", element);
@@ -83,9 +75,10 @@ function Tile({
         {live && value !== undefined ? value : "--"}
         <span className="ml-1 text-[0.4em] text-muted-foreground">{unit}</span>
       </p>
-      <div className="space-y-1 lg:space-y-[0.6vh]">
+      <div className="flex flex-col gap-1 lg:gap-[0.6vh]">
         <div
-          className={`h-1 w-full rounded-full lg:h-[0.7vh] ${STATE_BAR[live ? state : "Idle"]}`}
+          data-indi-state={live ? state : "Idle"}
+          className="h-1 w-full rounded-full bg-[var(--indi-state)] lg:h-[0.7vh]"
         />
         {/* The state as a word: at four metres, and for a protanope at any
             distance, amber and red are the same colour. */}
@@ -152,7 +145,8 @@ export function SkyReport() {
         <div className="flex min-w-0 flex-col justify-center gap-3 lg:flex-[3] lg:gap-[1.5vh]">
           <div className="flex items-center gap-3 lg:gap-[1.5vw]">
             <div
-              className={`h-16 w-1.5 shrink-0 rounded-full lg:h-[12vh] lg:w-[1.2vw] ${STATE_BAR[live ? overall : "Idle"]}`}
+              data-indi-state={live ? overall : "Idle"}
+              className="h-16 w-1.5 shrink-0 rounded-full bg-[var(--indi-state)] lg:h-[12vh] lg:w-[1.2vw]"
             />
             <p className="font-semibold text-[clamp(3rem,14vw,11rem)] leading-[0.9] tracking-tight lg:text-[clamp(3rem,10vw,11rem)]">
               {verdict}
@@ -194,7 +188,7 @@ export function SkyReport() {
               </p>
             </div>
           </div>
-          <div className="space-y-2 lg:space-y-[1vh]">
+          <div className="flex flex-col gap-2 lg:gap-[1vh]">
             <p className="text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground uppercase tracking-widest">
               Daylight
             </p>
@@ -233,7 +227,7 @@ export function SkyReport() {
             speed={live ? wind.value : undefined}
             gust={live ? gust.value : undefined}
             state={wind.state}
-            size="h-32 w-32 lg:h-[22vh] lg:w-[22vh]"
+            size="size-32 lg:size-[22vh]"
           />
           <p className="font-medium text-[clamp(0.65rem,0.95vw,1rem)] text-muted-foreground uppercase tracking-wider">
             {live && direction !== undefined ? `from ${bearingName(direction)}` : "wind"}

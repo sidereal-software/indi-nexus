@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { Empty, EmptyTitle } from "@/ui/empty";
 import { ScrollArea } from "@/ui/scroll-area";
 import { useMessages } from "../hooks";
 
@@ -41,7 +42,13 @@ export function MessageLog({ className, limit = 200 }: MessageLogProps) {
     <ScrollArea className={cn("h-full", className)}>
       <div className="flex flex-col gap-2.5 p-3 font-mono text-xs">
         {messages.length === 0 ? (
-          <p className="text-muted-foreground">No messages yet.</p>
+          // Minimal on purpose: this is a docked strip, so the full Empty block with
+          // media and a description would dwarf the log it stands in for.
+          <Empty className="border-none p-0 text-left">
+            <EmptyTitle className="font-normal text-muted-foreground text-xs">
+              No messages yet.
+            </EmptyTitle>
+          </Empty>
         ) : (
           messages.map((message, index) => (
             // Each entry stacks a time/device header over the (possibly long)
