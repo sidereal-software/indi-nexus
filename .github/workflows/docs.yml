@@ -38,7 +38,7 @@ jobs:
         working-directory: web
         run: pnpm run docs
 
-      - uses: astral-sh/setup-uv@v9
+      - uses: astral-sh/setup-uv@v9.0.0
       - name: Build the site
         run: |
           uv venv --python 3.12

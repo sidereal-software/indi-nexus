@@ -19,7 +19,9 @@ jobs:
         python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v9
+      # Pinned to the exact tag: setup-uv publishes no floating v9 major tag, so
+      # `@v9` does not resolve and the job dies before it starts.
+      - uses: astral-sh/setup-uv@v9.0.0
       - run: uv venv --python ${{ matrix.python }}
       - run: uv pip install -e ".[dev]"
       - name: Lint
@@ -105,7 +107,9 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - uses: astral-sh/setup-uv@v9
+      # Pinned to the exact tag: setup-uv publishes no floating v9 major tag, so
+      # `@v9` does not resolve and the job dies before it starts.
+      - uses: astral-sh/setup-uv@v9.0.0
       - name: Build the frontend
         run: |
           cd web
