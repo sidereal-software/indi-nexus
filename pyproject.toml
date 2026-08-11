@@ -122,6 +122,20 @@ title_format = "## {version} - {project_date}"
 issue_format = "[#{issue}](https://github.com/sidereal-software/indi-nexus/issues/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
 
+# One file, two sections, mirroring the split a reader actually cares about: the thing
+# they pip-installed or the thing they npm-installed. The section paths line up with the
+# release-please package paths (`.` and `web/packages/*`). A fragment for the Python side
+# goes in changelog.d/, one for the frontend in changelog.d/web/.
+# Plain text, no backticks: these become headings, and inline code inside a heading
+# renders with padding that leaves visible gaps around the brackets and commas.
+[[tool.towncrier.section]]
+path = ""
+name = "Python package (indi-nexus)"
+
+[[tool.towncrier.section]]
+path = "web"
+name = "Frontend (@indi-nexus/client, @indi-nexus/react)"
+
 [[tool.towncrier.type]]
 directory = "added"
 name = "Added"

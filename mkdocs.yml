@@ -49,6 +49,11 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.highlight
   - pymdownx.inlinehilite
+  # Lets docs/changelog.md pull in the repo-root CHANGELOG.md, which towncrier owns, so
+  # the release notes are not duplicated. check_paths fails the build if it goes missing.
+  - pymdownx.snippets:
+      base_path: [.]
+      check_paths: true
   - toc:
       permalink: true
 
@@ -86,5 +91,6 @@ nav:
   - TypeScript API:
       - "@indi-nexus/client": reference/typescript/client/index.md
       - "@indi-nexus/react": reference/typescript/react/index.md
+  - Changelog: changelog.md
   - Live demo: demo-app/index.html
   - Weather demo: weather-demo/weather.html
