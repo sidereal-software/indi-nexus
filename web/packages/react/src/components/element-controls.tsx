@@ -27,7 +27,6 @@ import {
   type TextVector,
   type Vector,
 } from "@indi-nexus/client";
-import { CheckIcon } from "lucide-react";
 import type { FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/ui/button";
@@ -181,21 +180,16 @@ export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
   // `accent` and hovered to `accent` too, which made a hovered unselected member identical
   // to the selected one.
   //
-  // Colour does not carry it alone. A tick marks the selected member, and its space is
-  // reserved on the others so the row does not resize as the selection moves. The bare
-  // `hover:` classes are what tailwind-merge needs to drop the variant's accent hover
-  // (same modifier, same group); the `data-[state=on]:hover:` pair then holds the selected
-  // look under the pointer, on specificity, since it carries the extra attribute selector.
+  // The bare `hover:` classes are what tailwind-merge needs to drop the variant's accent
+  // hover (same modifier, same group); the `data-[state=on]:hover:` pair then holds the
+  // selected look under the pointer, on specificity, since it carries the extra attribute
+  // selector.
   const items = vector.elements.map((element) => (
     <ToggleGroupItem
       key={element.name}
       value={element.name}
-      className="gap-1.5 px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground"
+      className="px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground"
     >
-      <CheckIcon
-        aria-hidden
-        className={cn("size-3.5 shrink-0", element.value !== "On" && "invisible")}
-      />
       {element.label ?? element.name}
     </ToggleGroupItem>
   ));
@@ -212,8 +206,18 @@ export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
         className="flex-wrap justify-start"
         onValueChange={(next) => {
           if (!writable) return;
-          if (next) client.setSwitch(vector.device, vector.name, { [next]: "On" });
-          else if (current) client.setSwitch(vector.device, vector.name, { [current]: "Off" });
+          if (next) {
+            client.setSwitch(vector.device, vector.name, { [next]: "On" });
+            return;
+          }
+          // An empty selection means the member that was already on has been clicked
+          // again. Under OneOfMany exactly one member is on by definition, so that is
+          // not a state the instrument can be in - ignore it and make the operator press
+          // the member they actually want, rather than silently turning the device off.
+          // AtMostOne genuinely permits none, so there it stays a way to clear.
+          if (vector.rule === "AtMostOne" && current) {
+            client.setSwitch(vector.device, vector.name, { [current]: "Off" });
+          }
         }}
       >
         {items}
