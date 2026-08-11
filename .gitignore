@@ -238,4 +238,5 @@ src/indi_nexus/web/static/panel/
 site/
 docs/demo-app/
 docs/weather-demo/
+docs/flat-demo/
 docs/reference/typescript/

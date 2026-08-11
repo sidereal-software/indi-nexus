@@ -93,4 +93,5 @@ nav:
       - "@indi-nexus/react": reference/typescript/react/index.md
   - Changelog: changelog.md
   - Live demo: demo-app/index.html
+  - Flat panel demo: flat-demo/flat.html
   - Weather demo: weather-demo/weather.html

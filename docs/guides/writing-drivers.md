@@ -80,10 +80,13 @@ class FlatPanel(Device):
     @on_new("LIGHT_BRIGHTNESS")
     async def _set_brightness(self, vector: NumberVector) -> None:
         wanted = vector.get("BRIGHTNESS", 0.0)                     # (11)
-        self["LIGHT_BRIGHTNESS"].set(BRIGHTNESS=wanted, state=IPState.OK)
+        self["LIGHT_BRIGHTNESS"].set(
+            BRIGHTNESS=max(0, min(255, wanted)),                   # (12)
+            state=IPState.OK,
+        )
 
 if __name__ == "__main__":
-    FlatPanel.run()                                                # (12)
+    FlatPanel.run()                                                # (13)
 ```
 
 1. The name clients see. Omit it and the class name is used.
@@ -103,14 +106,21 @@ if __name__ == "__main__":
 10. `set()` writes the values **and** tells every client, in one call. Turning one member
     on automatically turns the others off, because the rule says so.
 11. `get(name, default)` reads a requested value without assuming it was sent.
-12. `run()` serves the driver over standard input/output, which is how `indiserver`
+12. A client may ask for anything. The `min`/`max` declared above is a promise about the
+    hardware, so hold the request to it rather than passing it straight through.
+13. `run()` serves the driver over standard input/output, which is how `indiserver`
     launches it.
 
-Save that as `flat_panel.py` and see it:
+That driver is [`examples/flat_panel.py`](https://github.com/sidereal-software/indi-nexus/blob/main/examples/flat_panel.py)
+in the repository, and the test suite covers it, so it cannot quietly stop working. Run it
+in the reference panel:
 
 ```bash
-python -m examples.demo_bridge --device flat_panel:FlatPanel
+python -m examples.demo_bridge --device examples.flat_panel:FlatPanel
 ```
+
+Or [try it in your browser](../flat-demo/flat.html): the same driver simulated in
+JavaScript, driving the panel that ships in the wheel, with nothing to install.
 
 ## Reading the instrument on a timer
 

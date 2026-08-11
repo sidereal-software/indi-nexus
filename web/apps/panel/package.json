@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build:demo": "vite build --config vite.demo.config.ts",
-    "build:weather": "vite build --config vite.weather.config.ts"
+    "build:weather": "vite build --config vite.weather.config.ts",
+    "build:flat": "vite build --config vite.flat.config.ts"
   },
   "dependencies": {
     "@indi-nexus/client": "workspace:*",

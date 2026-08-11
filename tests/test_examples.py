@@ -9,6 +9,7 @@ import pytest
 from examples.ccd_device import AMBIENT_C, CCDSimulator
 from examples.demo_device import Demo
 from examples.dome_device import PARK_AZ, DomeSimulator
+from examples.flat_panel import MAX_BRIGHTNESS, MIN_BRIGHTNESS, FlatPanel
 from examples.monitor_client import format_event, monitor
 from examples.telescope_device import TelescopeSimulator
 from indi_nexus.client import IndiClient
@@ -16,6 +17,7 @@ from indi_nexus.client.store import PropertyEvent
 from indi_nexus.protocol import (
     DefVector,
     IPState,
+    ISRule,
     ISState,
     Message,
     Number,
@@ -914,5 +916,88 @@ def test_ccd_rejects_commands_while_disconnected():
         assert ccd["CCD_EXPOSURE"].vector.state is IPState.IDLE
         assert ccd["CCD_TEMPERATURE"].vector.state is IPState.IDLE
         assert _has_message(captured, "CCD Simulator is not connected.")
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The flat-field lamp example (the "Writing a driver" guide)                    #
+# --------------------------------------------------------------------------- #
+async def _flat() -> tuple[FlatPanel, list[object]]:
+    """Build a set-up flat panel with its emitted messages captured."""
+    captured: list[object] = []
+    panel = FlatPanel()
+    panel._bind(captured.append)
+    await panel.setup()
+    return panel, captured
+
+
+def _flat_switch(element: str) -> SwitchVector:
+    """Build a panel-style lamp write naming only the selected element."""
+    return SwitchVector(
+        device="Flat Panel", name="LIGHT_CONTROL", elements=[Switch(name=element, value=ISState.ON)]
+    )
+
+
+def _flat_brightness(value: float) -> NumberVector:
+    """Build a client brightness write."""
+    return NumberVector(
+        device="Flat Panel",
+        name="LIGHT_BRIGHTNESS",
+        elements=[Number(name="BRIGHTNESS", value=value)],
+    )
+
+
+def test_flat_panel_starts_off_with_a_declared_brightness_range():
+    """Setup advertises an exclusive lamp switch, off, and a bounded brightness."""
+
+    async def scenario() -> None:
+        panel, _ = await _flat()
+        lamp = panel["LIGHT_CONTROL"].vector
+        assert lamp.rule is ISRule.ONE_OF_MANY
+        assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
+        assert panel["LIGHT_CONTROL"]["ON"].value is ISState.OFF
+
+        brightness = panel["LIGHT_BRIGHTNESS"]["BRIGHTNESS"]
+        assert (brightness.min, brightness.max) == (MIN_BRIGHTNESS, MAX_BRIGHTNESS)
+
+    asyncio.run(scenario())
+
+
+def test_flat_panel_lamp_toggles_exclusively():
+    """Turning the lamp on turns Off off, and back again, announcing each move."""
+
+    async def scenario() -> None:
+        panel, captured = await _flat()
+
+        await panel._dispatch_new(_flat_switch("ON"))
+        assert panel["LIGHT_CONTROL"]["ON"].value is ISState.ON
+        assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.OFF
+        assert panel["LIGHT_CONTROL"].vector.state is IPState.OK
+        assert _has_message(captured, "Lamp turned on.")
+
+        await panel._dispatch_new(_flat_switch("OFF"))
+        assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
+        assert panel["LIGHT_CONTROL"]["ON"].value is ISState.OFF
+        assert _has_message(captured, "Lamp turned off.")
+
+    asyncio.run(scenario())
+
+
+def test_flat_panel_brightness_is_clamped_to_its_range():
+    """A brightness write outside the advertised range is clamped, not applied raw."""
+
+    async def scenario() -> None:
+        panel, _ = await _flat()
+
+        await panel._dispatch_new(_flat_brightness(64))
+        assert panel["LIGHT_BRIGHTNESS"]["BRIGHTNESS"].value == 64
+
+        await panel._dispatch_new(_flat_brightness(1000))
+        assert panel["LIGHT_BRIGHTNESS"]["BRIGHTNESS"].value == MAX_BRIGHTNESS
+
+        await panel._dispatch_new(_flat_brightness(-5))
+        assert panel["LIGHT_BRIGHTNESS"]["BRIGHTNESS"].value == MIN_BRIGHTNESS
+        assert panel["LIGHT_BRIGHTNESS"].vector.state is IPState.OK
 
     asyncio.run(scenario())
