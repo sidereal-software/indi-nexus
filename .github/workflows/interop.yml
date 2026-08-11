@@ -1,0 +1,138 @@
+name: interop
+
+# Nightly, against a real libindi. Every other test in this repository reads our own
+# XML with our own parser, which cannot catch a deviation from the spec; these put
+# real C++ drivers and libindi's own client tools on the other side of the wire.
+#
+# Deliberately off the pull-request path. It is slow, it depends on apt and on
+# upstream packages, and a red nightly should be an event rather than something that
+# blocks merges. If it goes flaky it will be ignored within a fortnight, so it opens
+# an issue on failure instead of only turning a square red.
+
+on:
+  schedule:
+    # 04:20 UTC, well clear of the top of the hour when runners are busiest.
+    - cron: "20 4 * * *"
+  workflow_dispatch:
+  # So a change to the suite itself is checked before it is merged.
+  pull_request:
+    paths:
+      - "tests/interop/**"
+      - ".github/workflows/interop.yml"
+      - "src/indi_nexus/protocol/**"
+      - "src/indi_nexus/client/**"
+
+concurrency:
+  group: interop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  interop:
+    name: libindi ${{ matrix.libindi }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # What a user on a current Debian or Ubuntu actually has.
+          - libindi: distro
+          # What the INDI project ships now: the canary. This is the leg that tells
+          # us upstream moved before a user does.
+          - libindi: ppa
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Install libindi (${{ matrix.libindi }})
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.libindi }}" = "ppa" ]; then
+            sudo add-apt-repository -y ppa:mutlaqja/ppa
+          fi
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq indi-bin
+          echo "indiserver: $(command -v indiserver)"
+          indiserver --help 2>&1 | head -2 || true
+          echo "simulators: $(ls /usr/bin | grep -c '^indi_simulator_')"
+
+      - name: Install INDINexus
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev,interop]"
+
+      - name: Install a browser for the end-to-end test
+        run: uv run playwright install --with-deps chromium
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build the panel so the browser test has something to load
+        working-directory: web
+        run: pnpm install --frozen-lockfile && pnpm -r build
+
+      # Smoke first and on its own: if the stack cannot reach a real hub, every
+      # other failure in this job is noise, and this says so in ten seconds.
+      - name: Smoke
+        run: uv run pytest tests/interop/test_smoke.py -q
+
+      - name: Interop suite
+        run: uv run pytest tests/interop -q --durations=10
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: interop-logs-${{ matrix.libindi }}
+          path: /tmp/pytest-*/**/indiserver-*.log
+          if-no-files-found: ignore
+
+  report:
+    name: Report a nightly failure
+    needs: interop
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      # A nightly nobody looks at is worse than no nightly, so failure becomes an
+      # issue rather than a red square on a page no one opens.
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const title = "Nightly interop against libindi is failing";
+            const url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "interop",
+            });
+            const body = `The nightly interop run failed: ${url}\n\n` +
+              `These tests are the only ones that check our wire format against real ` +
+              `libindi, so a failure here is either a real interop regression or ` +
+              `upstream changing under us.`;
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["interop"],
+              });
+            }

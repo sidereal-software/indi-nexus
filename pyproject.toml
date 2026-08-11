@@ -48,6 +48,11 @@ docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.25",
 ]
+# Only needed for the browser test in the nightly interop suite; everything else
+# there runs against libindi with the plain dev extra.
+interop = [
+    "playwright>=1.49",
+]
 
 [project.scripts]
 indi-nexus = "indi_nexus.cli:app"
@@ -99,6 +104,11 @@ convention = "numpy"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# The interop suite needs a real libindi and is slow, so it is not part of a normal
+# run. Its conftest skips the whole package when indiserver is absent, which keeps
+# `pytest` green for a contributor who has not installed it; CI runs it nightly with
+# `--interop`. See tests/interop/README.md.
+addopts = "--ignore=tests/interop"
 filterwarnings = [
     # Transitional upstream warning from starlette's TestClient (httpx -> httpx2).
     "ignore:Using .httpx. with .starlette.testclient. is deprecated",
