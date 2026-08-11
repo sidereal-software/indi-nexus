@@ -193,6 +193,27 @@ class _Vector(_Model):
         """Return element ``name`` (see :meth:`element`)."""
         return self.element(name)
 
+    def __contains__(self, name: object) -> bool:
+        """Return whether this vector carries an element with that name.
+
+        Defining ``__getitem__`` without this leaves ``"RA" in vector`` to Python's
+        old iteration fallback, which indexes 0, 1, 2 ... against a lookup that
+        wants names. That does not raise, it just answers `False` for an element
+        that is right there - the worst possible failure for a membership test,
+        because the calling code looks correct.
+
+        Parameters
+        ----------
+        name : object
+            The element name to look for.
+
+        Returns
+        -------
+        present : bool
+            Whether an element of that name exists.
+        """
+        return any(el.name == name for el in self.elements)  # type: ignore[attr-defined]
+
     def get(self, name: str, default: Any = None) -> Any:
         """Return the value of element ``name``, or ``default`` when absent.
 

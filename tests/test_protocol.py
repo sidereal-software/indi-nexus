@@ -468,3 +468,22 @@ def test_from_labels_round_trips_through_the_wire():
 
     assert parsed.vector.elements[0].name == "link_up"
     assert parsed.vector.elements[0].label == "Link Up"
+
+
+def test_membership_finds_elements_that_exist():
+    """``name in vector`` answers truthfully for present and absent elements.
+
+    Regression test for a silent wrong answer: with ``__getitem__`` defined and no
+    ``__contains__``, Python fell back to indexing 0, 1, 2 ... against a name
+    lookup, so membership returned False for an element that was present. The
+    interop suite found it by writing the obvious thing.
+    """
+    vector = NumberVector(
+        device="Mount",
+        name="EQUATORIAL_EOD_COORD",
+        elements=[Number(name="RA", value=1.0), Number(name="DEC", value=2.0)],
+    )
+    assert "RA" in vector
+    assert "DEC" in vector
+    assert "AZ" not in vector
+    assert 0 not in vector
