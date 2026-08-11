@@ -36,12 +36,11 @@ it, and watch the message log narrate what the driver is saying.
 
 [Launch the live demo](demo-app/index.html){ .md-button .md-button--primary }
 
-Two more run the same way, with nothing to install. The
-[flat-panel demo](flat-demo/flat.html) is a lamp with an on/off switch and a brightness
-dial, which is the driver the [guide](guides/writing-drivers.md) builds line by line. The
-[Open-Meteo demo](weather-demo/weather.html) pulls **real weather data** and shows one
-device two ways: the stock panel, and a custom screen built from the hooks. It is the
-driver the [tutorial](guides/tutorial-open-meteo.md) builds.
+Two more run the same way. The [flat-panel demo](flat-demo/flat.html) is a lamp with a
+switch and a brightness dial, the driver the [guide](guides/writing-drivers.md) builds
+line by line. The [Open-Meteo demo](weather-demo/weather.html) pulls **real weather data**
+and shows one device two ways, the stock panel and a custom screen, and is what the
+[tutorial](guides/tutorial-open-meteo.md) builds.
 
 ## How the pieces fit
 
@@ -73,15 +72,12 @@ flowchart LR
     class hub,hw,ui ext
 ```
 
-Reading left to right:
-
 - Your **driver** talks to the instrument and speaks INDI to `indiserver`.
 - The **client** connects to that hub and mirrors everything into a typed cache you can
   read and watch from Python.
 - The **bridge** puts that cache behind a WebSocket so a browser can show it.
 
-You do not need all three. Writing only a driver is completely normal - that is what most
-people come here for.
+You do not need all three. Writing only a driver is what most people come here for.
 
 ## A taste
 
@@ -112,7 +108,7 @@ class Mount(Device):
         await self.slew_to(vector.get("RA", 0.0), vector.get("DEC", 0.0))
 ```
 
-And a control panel for it is three lines of React:
+A control panel for it is a provider and a component:
 
 ```tsx
 import { IndiProvider, DevicePanel } from "@indi-nexus/react";

@@ -3,14 +3,12 @@
 By the end of this page you will have a control panel open in your browser, driven by a
 driver you wrote yourself. No observatory and no hardware.
 
-You need Python 3.12 or newer, and nothing else: the web panel is compiled into the
-package, so there is no Node and no JavaScript build.
+Python 3.12 or newer is all you need: the panel is compiled into the package, so there
+is no Node and no JavaScript build.
 
-An observatory runs its drivers under `indiserver`, the hub every INDI system is built
-around, and so should you once you have hardware. INDINexus plugs into it rather than
-replacing it. To keep this page to one install, steps 2 and 3 use a stand-in for it that
-is built into the CLI, and [step 4](#4-running-under-indiserver) swaps in the real thing
-without changing your driver.
+Steps 2 and 3 use a stand-in for `indiserver` built into the CLI, so this page needs one
+install. INDINexus plugs into the real hub rather than replacing it, and
+[step 4](#4-running-under-indiserver) swaps it in without changing your driver.
 
 !!! tip "Just want to look first?"
 
@@ -35,9 +33,8 @@ uv tool install indi-nexus
 indi-nexus new my_driver.py
 ```
 
-That writes a complete, commented, runnable driver: a Connect button, a number that gets
-polled once a second, and a switch that does something when clicked. Open it and read it.
-It is short, and every part of it is explained in the
+That writes a complete, commented driver: a Connect button, a number polled once a
+second, and a switch. Open it and read it. Every part is explained in the
 [driver guide](guides/writing-drivers.md).
 
 ## 3. See it
@@ -60,10 +57,9 @@ side by side.
 
 !!! warning "`--device` is for trying things out"
 
-    It runs your drivers inside the web process, standing in for `indiserver` so that this
-    page needs one install instead of two. It serves a single client, has no access
-    control, and stops when you stop the command. It is a development convenience, not a
-    hub: run anything real under `indiserver`.
+    It runs your drivers inside the web process: one client, no access control, and it
+    stops when you stop the command. A development convenience, not a hub. Run anything
+    real under `indiserver`.
 
 !!! note "Where the worked examples live"
 
@@ -77,8 +73,9 @@ side by side.
 This is how an observatory runs, and where your driver belongs once it talks to hardware.
 `indiserver` launches drivers as child processes and serves their combined stream on TCP,
 which is what lets several clients watch the same instruments at once. It comes with
-[libindi](https://github.com/indilib/indi), packaged for most Linux distributions and
-available through Homebrew on macOS.
+[libindi](https://github.com/indilib/indi): `apt install indi-bin` on Debian and Ubuntu,
+and packaged for most other Linux distributions. There is no macOS package, so build it
+from source or run it in a container.
 
 Nothing about your driver changes. The same file that ran under `--device` runs here:
 
