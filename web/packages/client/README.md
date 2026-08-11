@@ -56,6 +56,13 @@ Full guides and API reference: <https://indi-nexus.sidereal.software/>. The
 [frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) covers this package
 and the React one together.
 
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) in this directory records what changed in each
+release of this package. All three INDINexus packages ship at the same version,
+and the [releases page](https://github.com/sidereal-software/indi-nexus/releases)
+carries the notes for every one of them together.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

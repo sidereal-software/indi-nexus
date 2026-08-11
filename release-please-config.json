@@ -3,29 +3,84 @@
   "release-type": "node",
   "include-component-in-tag": true,
   "separate-pull-requests": false,
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Added"
+    },
+    {
+      "type": "fix",
+      "section": "Fixed"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "build",
+      "section": "Packaging"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "refactor",
+      "section": "Changed"
+    },
+    {
+      "type": "revert",
+      "section": "Reverted"
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous",
+      "hidden": true
+    },
+    {
+      "type": "style",
+      "section": "Styling",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "Continuous Integration",
+      "hidden": true
+    }
+  ],
   "packages": {
     ".": {
       "release-type": "python",
       "package-name": "indi-nexus",
-      "component": "indi-nexus",
-      "skip-changelog": true
+      "component": "indi-nexus"
     },
     "web/packages/client": {
       "release-type": "node",
-      "component": "client",
-      "skip-changelog": true
+      "component": "client"
     },
     "web/packages/react": {
       "release-type": "node",
-      "component": "react",
-      "skip-changelog": true
+      "component": "react"
     }
   },
   "plugins": [
     {
       "type": "linked-versions",
       "groupName": "indi-nexus",
-      "components": ["indi-nexus", "client", "react"]
+      "components": [
+        "indi-nexus",
+        "client",
+        "react"
+      ]
     }
   ]
 }

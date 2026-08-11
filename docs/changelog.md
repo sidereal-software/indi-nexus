@@ -1,11 +1,26 @@
 # Changelog
 
-What changed in each release. The Python package `indi-nexus` and the npm packages
-`@indi-nexus/client` and `@indi-nexus/react` are versioned together, so one release covers
-all three; each entry says which side it affects.
+All three packages ship at the same version, so a version number means the same release
+everywhere. Each one records its own changes, and they are all here so nothing is only
+findable if you already knew where to look.
 
-The source of truth is
-[CHANGELOG.md](https://github.com/sidereal-software/indi-nexus/blob/main/CHANGELOG.md) in
-the repository, pulled in below.
+The [releases page](https://github.com/sidereal-software/indi-nexus/releases) carries the
+same notes with links to the commits.
+
+## Python package
+
+`indi-nexus` on PyPI: the driver SDK, the async client and the web bridge.
 
 --8<-- "CHANGELOG.md:releases"
+
+## @indi-nexus/client
+
+The framework-agnostic TypeScript client and property store.
+
+--8<-- "web/packages/client/CHANGELOG.md:releases"
+
+## @indi-nexus/react
+
+The React hooks and shadcn/ui components.
+
+--8<-- "web/packages/react/CHANGELOG.md:releases"

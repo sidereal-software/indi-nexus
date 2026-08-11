@@ -42,7 +42,6 @@ dev = [
     "mypy>=1.9",
     "lxml-stubs>=0.5",
     "httpx>=0.27",
-    "towncrier>=24.7",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -119,59 +118,3 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 
-# One changelog for the whole monorepo, because the Python package and the two npm
-# packages release in lockstep (release-please `linked-versions`). Entries are written
-# as files under changelog.d/ during the work and collected into CHANGELOG.md at
-# release time; nothing hand-edits CHANGELOG.md. See DEVELOPMENT.md.
-[tool.towncrier]
-package = "indi_nexus"
-package_dir = "src"
-directory = "changelog.d"
-filename = "CHANGELOG.md"
-title_format = "## {version} - {project_date}"
-issue_format = "[#{issue}](https://github.com/sidereal-software/indi-nexus/issues/{issue})"
-start_string = "<!-- towncrier release notes start -->\n"
-
-# One file, two sections, mirroring the split a reader actually cares about: the thing
-# they pip-installed or the thing they npm-installed. The section paths line up with the
-# release-please package paths (`.` and `web/packages/*`). A fragment for the Python side
-# goes in changelog.d/, one for the frontend in changelog.d/web/.
-# Plain text, no backticks: these become headings, and inline code inside a heading
-# renders with padding that leaves visible gaps around the brackets and commas.
-[[tool.towncrier.section]]
-path = ""
-name = "Python package (indi-nexus)"
-
-[[tool.towncrier.section]]
-path = "web"
-name = "Frontend (@indi-nexus/client, @indi-nexus/react)"
-
-[[tool.towncrier.type]]
-directory = "added"
-name = "Added"
-showcontent = true
-
-[[tool.towncrier.type]]
-directory = "changed"
-name = "Changed"
-showcontent = true
-
-[[tool.towncrier.type]]
-directory = "fixed"
-name = "Fixed"
-showcontent = true
-
-[[tool.towncrier.type]]
-directory = "removed"
-name = "Removed"
-showcontent = true
-
-[[tool.towncrier.type]]
-directory = "packaging"
-name = "Packaging"
-showcontent = true
-
-[[tool.towncrier.type]]
-directory = "docs"
-name = "Documentation"
-showcontent = true

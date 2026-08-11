@@ -49,8 +49,8 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.highlight
   - pymdownx.inlinehilite
-  # Lets docs/changelog.md pull in the repo-root CHANGELOG.md, which towncrier owns, so
-  # the release notes are not duplicated. check_paths fails the build if it goes missing.
+  # Lets docs/changelog.md pull in the three CHANGELOG.md files Release Please writes,
+  # so the release notes are not duplicated. check_paths fails the build if one moves.
   - pymdownx.snippets:
       base_path: [.]
       check_paths: true

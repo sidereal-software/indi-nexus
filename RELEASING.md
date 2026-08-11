@@ -11,28 +11,27 @@ Nothing here belongs on the documentation site. It is for whoever cuts the relea
 Every release after the first comes from a pull request:
 
 1. You merge ordinary work into `main` using Conventional Commits.
-2. Release Please keeps one **release PR** open, bumping all three packages and
-   proposing the next version from those commit messages.
-3. You add the changelog for that version to the PR (see below), then merge it.
+2. Release Please keeps one **release PR** open, bumping all three packages, proposing
+   the next version, and writing the changelogs from those commit messages.
+3. You read the PR and merge it.
 4. Merging tags the release and creates the GitHub release, which triggers the publish
    jobs in [`.github/workflows/release.yml`](.github/workflows/release.yml).
 5. Both registries authenticate with short-lived OIDC tokens, so no credentials are
    stored anywhere in this repository.
 
-The changelog is the one manual step, and it exists because the two tools each own half
-of the job: Release Please decides the version, towncrier owns the file. Release Please
-runs with `skip-changelog`, so it will not touch `CHANGELOG.md`.
+There is no manual step. The commit messages are the release notes, which is why
+[DEVELOPMENT.md](DEVELOPMENT.md) asks you to write subjects for the person reading the
+changelog rather than the person reviewing the diff.
 
-On the release PR's branch, with the version it proposed:
+Each package keeps its own changelog, because Release Please files a commit by the paths
+it touched: `CHANGELOG.md` for the Python package, and one in each of
+`web/packages/client` and `web/packages/react`. The
+[changelog page](https://indi-nexus.sidereal.software/changelog/) on the documentation
+site shows all three, and the GitHub release carries them together.
 
-```bash
-uv run towncrier build --version X.Y.Z    # collects changelog.d/ into CHANGELOG.md
-git commit -am "docs: changelog for X.Y.Z"
-git push
-```
-
-Then merge. Doing this before merging keeps the tag, the GitHub release and the
-changelog all describing the same thing.
+If a release note reads badly after merging, edit the merged PR body and wrap a
+replacement in `BEGIN_COMMIT_OVERRIDE` / `END_COMMIT_OVERRIDE`; Release Please picks it up
+on its next run. To force a version, put `Release-As: 1.2.3` in a commit body.
 
 ## One-time setup
 
