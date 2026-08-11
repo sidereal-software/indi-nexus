@@ -1,0 +1,122 @@
+name: release
+
+# Release Please watches Conventional Commits on main and keeps a single "release
+# PR" open that bumps all three packages in lockstep (linked-versions) and writes
+# their changelogs. Merging that PR creates the tags + GitHub releases, which lets
+# the publish jobs run. Both registries authenticate with short-lived OIDC tokens
+# (trusted publishing), so no long-lived credentials live here.
+#
+# One-time setup before releases flow on their own:
+#   - PyPI: add a "pending" trusted publisher for this repo, workflow release.yml,
+#     environment `pypi`. PyPI accepts this before the project exists.
+#   - npm: publish @indi-nexus/client and @indi-nexus/react by hand once (npm cannot
+#     configure a trusted publisher for a package that does not exist yet), then add a
+#     GitHub Actions trusted publisher to each package (environment `npm`).
+#   - GitHub: create the `pypi` and `npm` environments, and enable
+#     Settings -> Actions -> "Allow GitHub Actions to create and approve pull
+#     requests" so Release Please can open its PR.
+#
+# workflow_dispatch runs the publish jobs against whatever versions are on main right
+# now, ignoring Release Please. Use it for the very first PyPI publish and to retry a
+# publish that failed after a release was already cut. Both jobs skip a version that is
+# already on the registry, so re-running is safe.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release branch, create tags + releases
+      pull-requests: write # open/update the release PR
+    outputs:
+      releases_created: ${{ steps.rp.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  pypi:
+    name: Publish to PyPI
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # OIDC: exchange for a short-lived PyPI token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build the reference panel
+        run: |
+          cd web
+          pnpm install --frozen-lockfile
+          pnpm -r build
+      - name: Build sdist + wheel
+        run: uv build
+      - name: Check metadata
+        run: uvx twine check dist/*
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  npm:
+    name: Publish to npm
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write # OIDC: publish without a stored npm token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      # Node 22.14+ and npm 11.5.1+ are required for OIDC trusted publishing.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Ensure npm supports OIDC
+        run: npm install -g npm@latest
+      - name: Install + build
+        run: |
+          cd web
+          pnpm install --frozen-lockfile
+          pnpm -r build
+      # pnpm pack rewrites the workspace:* dependency to a real version range; the npm
+      # CLI then publishes the resulting tarball with OIDC + automatic provenance.
+      - name: Pack the packages
+        run: |
+          cd web
+          mkdir -p "$RUNNER_TEMP/tarballs"
+          pnpm --filter @indi-nexus/client pack --pack-destination "$RUNNER_TEMP/tarballs"
+          pnpm --filter @indi-nexus/react pack --pack-destination "$RUNNER_TEMP/tarballs"
+      - name: Publish client, then react
+        run: |
+          set -euo pipefail
+          for pkg in client react; do
+            tgz="$(ls "$RUNNER_TEMP"/tarballs/indi-nexus-"$pkg"-*.tgz)"
+            name="@indi-nexus/$pkg"
+            ver="$(node -p "require('./web/packages/$pkg/package.json').version")"
+            if npm view "$name@$ver" version >/dev/null 2>&1; then
+              echo "$name@$ver is already published, skipping"
+            else
+              npm publish "$tgz"
+            fi
+          done

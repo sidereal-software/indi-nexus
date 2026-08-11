@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": true,
+  "separate-pull-requests": false,
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "indi-nexus",
+      "component": "indi-nexus",
+      "skip-changelog": true
+    },
+    "web/packages/client": {
+      "release-type": "node",
+      "component": "client",
+      "skip-changelog": true
+    },
+    "web/packages/react": {
+      "release-type": "node",
+      "component": "react",
+      "skip-changelog": true
+    }
+  },
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "indi-nexus",
+      "components": ["indi-nexus", "client", "react"]
+    }
+  ]
+}

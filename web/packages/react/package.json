@@ -3,6 +3,25 @@
   "version": "0.1.0",
   "description": "React hooks and shadcn/ui-based components for building INDINexus frontends.",
   "license": "MIT",
+  "author": "Sidereal Software",
+  "homepage": "https://indi-nexus.sidereal.software/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidereal-software/indi-nexus.git",
+    "directory": "web/packages/react"
+  },
+  "bugs": "https://github.com/sidereal-software/indi-nexus/issues",
+  "keywords": [
+    "indi",
+    "astronomy",
+    "instrument-control",
+    "react",
+    "hooks",
+    "components"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "sideEffects": [
     "**/*.css"

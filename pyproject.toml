@@ -13,6 +13,18 @@ authors = [
     { name = "Dan Avner" },
 ]
 keywords = ["indi", "astronomy", "instrument-control", "asyncio", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Framework :: FastAPI",
+    "Framework :: Pydantic :: 2",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.6",
     "lxml>=5.0",
@@ -41,8 +53,10 @@ docs = [
 indi-nexus = "indi_nexus.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/sidereal-software/indi-nexus"
+Homepage = "https://indi-nexus.sidereal.software/"
 Documentation = "https://indi-nexus.sidereal.software/"
+Repository = "https://github.com/sidereal-software/indi-nexus"
+Issues = "https://github.com/sidereal-software/indi-nexus/issues"
 
 # A trailing-slash ignore rule (`node_modules/`) matches files *under* the directory
 # but not the directory path itself, so hatchling walks into node_modules anyway. Its

@@ -3,6 +3,24 @@
   "version": "0.1.0",
   "description": "Framework-agnostic TypeScript client and typed property store for the INDINexus web bridge.",
   "license": "MIT",
+  "author": "Sidereal Software",
+  "homepage": "https://indi-nexus.sidereal.software/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidereal-software/indi-nexus.git",
+    "directory": "web/packages/client"
+  },
+  "bugs": "https://github.com/sidereal-software/indi-nexus/issues",
+  "keywords": [
+    "indi",
+    "astronomy",
+    "instrument-control",
+    "websocket",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "sideEffects": false,
   "files": [
