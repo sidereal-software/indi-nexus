@@ -15,13 +15,41 @@ pymdownx snippet, so the release notes live in exactly one place.
 
 <!-- towncrier release notes start -->
 
-## 0.1.0 - 2026-08-10
+## 0.1.0 - 2026-08-11
 
 
 ### Python package (indi-nexus)
 
+#### Added
+
+- A nightly interop suite that runs against a real `indiserver` and real libindi drivers.
+  Every other test here reads our own XML with our own parser, which is self-consistent by
+  construction and so cannot catch a deviation from the spec; these put libindi on the other
+  side of the wire. It covers libindi's own clients driving our drivers, our client against
+  all twelve simulators libindi ships, a differential comparison against `indi_getprop`, BLOB
+  delivery, reconnecting to a real socket, and a browser driving a C++ driver through the
+  whole stack.
+
+  Real traffic captured from those drivers is committed as a fixture and replayed by the fast
+  suite, so a pull request gets the benefit without libindi installed.
+- `examples/flat_panel.py`: the flat-field lamp driver the "Writing a driver" guide builds
+  line by line. It was previously only a listing in the guide, so nothing checked it still
+  ran; it is now a real example covered by the test suite, and the guide points at it.
+- `indi-nexus serve --device module:Class` runs drivers inside the web process, so a driver
+  can be tried on screen with only `pip install indi-nexus` and no `indiserver` to install
+  first. Repeat the flag for several devices.
+
+  It is a development convenience, not a hub: it serves one client and stops with the
+  command. `indiserver` remains what anything real runs under, and `serve` without
+  `--device` connects to it exactly as before. This replaces `examples/demo_bridge.py`,
+  whose hub now lives in the package as `indi_nexus.web.InProcessHub`.
+
 #### Fixed
 
+- `"RA" in vector` now answers truthfully. `Vector` defined `__getitem__` without
+  `__contains__`, so Python fell back to indexing 0, 1, 2 against a name lookup and returned
+  `False` for an element that was present, without raising. The interop suite found it by
+  writing the obvious thing.
 - `indi-nexus serve` now starts even when `indiserver` is unreachable, instead of hanging
   in startup with no output. The panel loads and reports a disconnected state, and the
   bridge connects on its own once `indiserver` appears. `IndiClient.start()` gained a `wait`
@@ -38,8 +66,44 @@ pymdownx snippet, so the release notes live in exactly one place.
   dependencies), and it now contains the TypeScript sources of `@indi-nexus/client` and
   `@indi-nexus/react`, which were being dropped from it.
 
+#### Documentation
+
+- Getting started now installs from PyPI instead of cloning the repository and building the
+  frontend. The panel is compiled into the wheel, so `pip install indi-nexus` is the whole
+  setup, and the first driver you see running is one you scaffolded rather than an example
+  that only exists in a checkout.
+- The architecture diagrams now follow whichever theme they are rendered in. They carried a
+  hardcoded light palette, so on a dark page the boxes became a bright island and the labels
+  went unreadable; ownership is shown with the border instead of colour. CI validates every
+  diagram with Mermaid's own CLI, so a broken one fails the build rather than rendering as an
+  empty box.
+
 
 ### Frontend (@indi-nexus/client, @indi-nexus/react)
+
+#### Changed
+
+- Busy now pulses, on both the state badge and the status-light dots. It is the one state
+  that means "still happening", and a still badge cannot tell an instrument mid-move from one
+  that stopped there. The pulse holds still for anyone whose system asks for reduced motion.
+- Every indicator that shows an INDI state now reads its colour from one place. A component
+  cannot build a Tailwind class name at runtime, so each of the five places that showed a
+  state carried its own copy of the four-way mapping, and they drifted. Elements now declare
+  `data-indi-state` and the theme sets `--indi-state` from it, so a badge, a dot, a bar and
+  an SVG fill can each use whichever CSS property they need. `StateDot` is exported for
+  frontends built on the hooks.
+
+#### Fixed
+
+- The selected member of a switch vector is now unmistakable, and safer to click. It was
+  drawn with the same `accent` token the toggles hover to, so a hovered unselected member
+  looked identical to the selected one, and the fill itself was nearly invisible against the
+  card; it now wears the same teal as the Set button, a colour hovering never reaches.
+
+  Clicking the member that is already on no longer turns it off. Under `OneOfMany` exactly
+  one member is on by definition, so there was no such state to reach - a stray click on a
+  lit "On" would have switched the instrument off. Selecting the member you want is now the
+  only way to change it. `AtMostOne`, which genuinely permits none, still clears that way.
 
 #### Packaging
 
@@ -48,5 +112,8 @@ pymdownx snippet, so the release notes live in exactly one place.
 
 #### Documentation
 
+- A flat-panel demo on the documentation site, running the guide's driver as an in-browser
+  simulator behind the panel that ships in the wheel, so the driver a reader has just been
+  taught can be operated with nothing installed.
 - `@indi-nexus/client` and `@indi-nexus/react` now ship a README and a copy of the licence,
   so both have documentation on their npm pages.

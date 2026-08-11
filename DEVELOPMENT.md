@@ -166,7 +166,8 @@ uv run towncrier build --version X.Y.Z
 ```
 
 Release-please is configured with `skip-changelog`, so it handles versions, tags and
-GitHub releases while towncrier owns the changelog file.
+GitHub releases while towncrier owns the changelog file. Cutting a release is written up
+in [RELEASING.md](RELEASING.md).
 
 ## Green baseline
 
