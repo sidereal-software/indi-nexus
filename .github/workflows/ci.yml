@@ -59,6 +59,26 @@ jobs:
       - name: Test
         run: pnpm -r test
 
+  diagrams:
+    name: Diagrams (Mermaid)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Mermaid's own CLI, rendering every diagram in the repository. A parse error
+      # exits non-zero here rather than shipping a diagram that renders as an empty
+      # box on the docs site. The file list comes from `git grep`, so a diagram added
+      # in a new file is picked up without editing this workflow. puppeteer is a peer
+      # dependency of the CLI; pnpm dlx resolves it and downloads its browser.
+      - name: Validate every diagram
+        working-directory: web
+        run: pnpm lint:diagrams
+
   package:
     name: Package (wheel bundles the panel)
     needs: [backend, frontend]

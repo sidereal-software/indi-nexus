@@ -113,21 +113,25 @@ Data flow (unchanged from the INDI model):
 ```mermaid
 flowchart LR
     subgraph py["Python (indi_nexus)"]
-        drv["Driver SDK<br/><code>driver/</code>"]
-        cli["IndiClient<br/><code>client/</code>"]
-        web["FastAPI bridge<br/><code>web/</code>"]
+        drv["Driver SDK<br/>driver/"]
+        cli["IndiClient<br/>client/"]
+        web["FastAPI bridge<br/>web/"]
     end
     hw(["Instrument"]) --- drv
-    drv -- "stdio<br/>INDI 1.7 XML" --> hub["<b>indiserver</b><br/>C hub, :7624"]
+    drv -- "stdio<br/>INDI 1.7 XML" --> hub["indiserver<br/>C hub, :7624"]
     hub -- "TCP<br/>INDI 1.7 XML" --> cli
     cli --> web
     web -- "WebSocket<br/>typed JSON" --> ui["Browser<br/>React/TS"]
 
-    classDef ours fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#111827
-    classDef ext fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
+    %% No colours here on purpose: GitHub and the docs site each theme the diagram
+    %% for their own light and dark modes, and a hardcoded light palette turns into
+    %% unreadable text on a dark page. Ownership rides on the border instead - thick
+    %% solid is ours, thin dashed is not - which survives any theme and never leans
+    %% on colour alone.
+    classDef ours stroke-width:3px
+    classDef ext stroke-width:1px,stroke-dasharray:4 4
     class drv,cli,web ours
     class hub,hw,ui ext
-    style py fill:#fff7ed,stroke:#fdba74,color:#7c2d12
 ```
 
 ### Keeping the diagrams current
@@ -146,6 +150,22 @@ boundary (`indiserver`, the browser, the instrument).
 Rendering is wired up already (`pymdownx.superfences` for MkDocs, native on GitHub). Keep
 diagrams legible as plain source, and mark anything INDINexus does not own with the shared
 `classDef ext`.
+
+Two rules keep them readable everywhere they render:
+
+- **No colours in a diagram.** Every one of these appears on GitHub *and* on the docs site,
+  each in light *and* dark mode, and each themes the diagram itself. A hardcoded palette
+  wins that fight and loses the page: a light fill lands as a bright island on a dark page
+  with unreadable text. Carry meaning in the border - `classDef ours` is thick and solid,
+  `classDef ext` is thin and dashed - which survives any theme and never leans on colour
+  alone.
+- **No HTML in a node label** beyond `<br/>`. Labels render as real DOM, so `<code>`,
+  `<b>` and `<i>` inherit the surrounding site's CSS: on the docs site `<code>` picked up
+  the theme's code colour and the label text went orange on an orange fill.
+
+`pnpm run lint:diagrams` (in `web/`, also run by CI) parses every diagram in the repository
+with Mermaid's own parser, so a broken one fails the build instead of rendering as an empty
+box.
 
 Purely internal refactors need no diagram edit; say so in the commit body rather than
 silently skipping it.

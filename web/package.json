@@ -12,6 +12,7 @@
     "dev": "pnpm --filter @indi-nexus/panel dev",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
+    "lint:diagrams": "mkdir -p node_modules/.mermaid-check && cd .. && for f in $(git grep -l '```mermaid' -- '*.md'); do echo \"mermaid: $f\" && pnpm dlx @mermaid-js/mermaid-cli@11.16.0 -q -i \"$f\" -o web/node_modules/.mermaid-check/out.md || exit 1; done",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "test": "pnpm -r test",

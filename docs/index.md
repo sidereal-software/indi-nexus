@@ -51,21 +51,25 @@ plugs into it. Your driver is an ordinary INDI driver, so existing INDI software
 ```mermaid
 flowchart LR
     subgraph py["Python (indi_nexus)"]
-        drv["Driver SDK<br/><code>driver/</code>"]
-        cli["IndiClient<br/><code>client/</code>"]
-        web["FastAPI bridge<br/><code>web/</code>"]
+        drv["Driver SDK<br/>driver/"]
+        cli["IndiClient<br/>client/"]
+        web["FastAPI bridge<br/>web/"]
     end
     hw(["Instrument"]) --- drv
-    drv -- "stdio<br/>INDI 1.7 XML" --> hub["<b>indiserver</b><br/>C hub, :7624"]
+    drv -- "stdio<br/>INDI 1.7 XML" --> hub["indiserver<br/>C hub, :7624"]
     hub -- "TCP<br/>INDI 1.7 XML" --> cli
     cli --> web
     web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
 
-    classDef ours fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#111827
-    classDef ext fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
+    %% No colours here on purpose: GitHub and the docs site each theme the diagram
+    %% for their own light and dark modes, and a hardcoded light palette turns into
+    %% unreadable text on a dark page. Ownership rides on the border instead - thick
+    %% solid is ours, thin dashed is not - which survives any theme and never leans
+    %% on colour alone.
+    classDef ours stroke-width:3px
+    classDef ext stroke-width:1px,stroke-dasharray:4 4
     class drv,cli,web ours
     class hub,hw,ui ext
-    style py fill:#fff7ed,stroke:#fdba74,color:#7c2d12
 ```
 
 Reading left to right:

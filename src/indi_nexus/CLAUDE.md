@@ -14,18 +14,23 @@ flowchart TB
     reader -->|newXxxVector| disp["@on_new handler"]
     timer["@every job<br/>deadline-scheduled"] --> tick["tick"]
 
-    setup --> guard{{"device guard<br/><i>serialize_dispatch</i>"}}
+    setup --> guard{{"device guard<br/>serialize_dispatch"}}
     disp --> guard
     tick --> guard
-    guard --> props["BoundProperty.set()<br/><i>emit policy applies</i>"]
+    guard --> props["BoundProperty.set()<br/>emit policy applies"]
     props --> outbox["outbox<br/>asyncio.Queue"]
     outbox --> writer["writer loop<br/>to_xml"]
     writer --> stdout(["stdout<br/>to indiserver"])
 
-    blocking["blocking hardware call<br/><i>off_thread</i>"] -.->|worker thread| tick
+    blocking["blocking hardware call<br/>off_thread"] -.->|worker thread| tick
 
-    classDef ours fill:#ffedd5,stroke:#c2410c,stroke-width:2px,color:#111827
-    classDef ext fill:#e5e7eb,stroke:#4b5563,stroke-width:1px,color:#111827
+    %% No colours here on purpose: GitHub and the docs site each theme the diagram
+    %% for their own light and dark modes, and a hardcoded light palette turns into
+    %% unreadable text on a dark page. Ownership rides on the border instead - thick
+    %% solid is ours, thin dashed is not - which survives any theme and never leans
+    %% on colour alone.
+    classDef ours stroke-width:3px
+    classDef ext stroke-width:1px,stroke-dasharray:4 4
     class reader,setup,disp,timer,tick,guard,props,outbox,writer ours
     class stdin,stdout,blocking ext
 ```
