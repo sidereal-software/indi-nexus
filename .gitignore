@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to the repo root: unanchored `lib/` also matches JS source dirs named
+# `lib/` anywhere under web/, and un-ignoring those re-included every `lib/` inside
+# node_modules when packaging (git prunes the ignored dir, hatchling does not).
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -227,11 +230,6 @@ node_modules/
 web/**/dist/
 web/**/*.tsbuildinfo
 .turbo/
-
-# The Python `lib/` rule above also matches JS source dirs named `lib/` under web/
-# (e.g. shadcn's `cn` helper at packages/react/src/lib); keep the frontend's source tracked.
-!web/**/lib/
-!web/**/lib/**
 
 # Built reference panel, emitted into the package by `pnpm --filter panel build`
 src/indi_nexus/web/static/panel/

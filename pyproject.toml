@@ -44,6 +44,22 @@ indi-nexus = "indi_nexus.cli:app"
 Homepage = "https://github.com/sidereal-software/indi-nexus"
 Documentation = "https://indi-nexus.sidereal.software/"
 
+# A trailing-slash ignore rule (`node_modules/`) matches files *under* the directory
+# but not the directory path itself, so hatchling walks into node_modules anyway. Its
+# walk follows symlinks and skips inodes it has already seen, and pnpm links
+# web/apps/panel/node_modules/@indi-nexus/* at the real web/packages/* - so the walk
+# consumed those inodes through the link and then dropped the real package sources
+# from the sdist. Excluding the directory itself keeps the walk out of it entirely.
+[tool.hatch.build]
+skip-excluded-dirs = true
+exclude = [
+    "**/node_modules",
+    # `skip-excluded-dirs` prunes on exclusion alone, and unlike `include_path` it does
+    # not consult `artifacts` - so without this the gitignored panel build output would
+    # be pruned before the force-include below could bring it back.
+    "!src/indi_nexus/web/static/panel",
+]
+
 # Build (and bundle) the TypeScript reference panel into the distribution so a
 # plain `pip install` ships the UI. See hatch_build.py.
 [tool.hatch.build.hooks.custom]
