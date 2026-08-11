@@ -73,11 +73,23 @@ jobs:
       # Mermaid's own CLI, rendering every diagram in the repository. A parse error
       # exits non-zero here rather than shipping a diagram that renders as an empty
       # box on the docs site. The file list comes from `git grep`, so a diagram added
-      # in a new file is picked up without editing this workflow. puppeteer is a peer
-      # dependency of the CLI; pnpm dlx resolves it and downloads its browser.
+      # in a new file is picked up without editing this workflow.
+      #
+      # The CLI renders in a real browser through puppeteer (a peer dependency that
+      # pnpm resolves). Its browser download is a postinstall step, which pnpm does not
+      # run for unapproved packages, so point it at the Chrome the runner image already
+      # ships instead - no 150 MB download, and nothing to keep approved.
       - name: Validate every diagram
         working-directory: web
-        run: pnpm lint:diagrams
+        run: |
+          set -euo pipefail
+          browser="$(command -v google-chrome || command -v chromium || true)"
+          if [ -z "$browser" ]; then
+            echo "::error::no Chrome or Chromium on the runner for Mermaid to render with"
+            exit 1
+          fi
+          echo "rendering with $browser"
+          PUPPETEER_EXECUTABLE_PATH="$browser" pnpm lint:diagrams
 
   package:
     name: Package (wheel bundles the panel)
