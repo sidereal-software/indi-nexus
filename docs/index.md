@@ -36,11 +36,12 @@ it, and watch the message log narrate what the driver is saying.
 
 [Launch the live demo](demo-app/index.html){ .md-button .md-button--primary }
 
-And a second one driving **real weather data**: the
-[Open-Meteo demo](weather-demo/weather.html) runs that driver in your browser and
-shows the same device two ways - the stock panel, and a custom screen built from
-the hooks. It is the driver the
-[tutorial](guides/tutorial-open-meteo.md) builds.
+Two more run the same way, with nothing to install. The
+[flat-panel demo](flat-demo/flat.html) is a lamp with an on/off switch and a brightness
+dial, which is the driver the [guide](guides/writing-drivers.md) builds line by line. The
+[Open-Meteo demo](weather-demo/weather.html) pulls **real weather data** and shows one
+device two ways: the stock panel, and a custom screen built from the hooks. It is the
+driver the [tutorial](guides/tutorial-open-meteo.md) builds.
 
 ## How the pieces fit
 

@@ -3,8 +3,16 @@
 Everything in `examples/` runs, and every one is covered by the test suite, so none of it
 can quietly rot.
 
-Read `demo_device.py` first to see the shape of a driver, then `weather_device.py` - it is
-the one to copy for real hardware. The rest are there when you need them.
+Read `flat_panel.py` first: it is the shortest thing here that is still a real driver. Then
+`demo_device.py` for the shape of a bigger one, and `weather_device.py` when you are ready
+to talk to actual hardware. The rest are there when you need them.
+
+## `flat_panel.py` - the shortest real driver
+
+A flat-field lamp: a switch to turn it on and a number for its brightness. That is the
+whole instrument, which makes it the smallest driver that still has both kinds of control,
+and the one the [driver guide](writing-drivers.md) builds line by line. You can
+[operate it in your browser](../flat-demo/flat.html) without installing anything.
 
 ## `demo_device.py` - the smallest complete driver
 
@@ -57,11 +65,11 @@ change as it happens - about fifteen lines.
 
 ## Running them
 
-The quickest way is the development bridge, which puts drivers and the web panel in one
-process. Repeat `--device` for as many as you like:
+The quickest way to look at one is `--device`, which runs the drivers inside the web
+process so there is no `indiserver` to install first. Repeat it for as many as you like:
 
 ```bash
-python -m examples.demo_bridge \
+indi-nexus serve \
     --device examples.telescope_device:TelescopeSimulator \
     --device examples.ccd_device:CCDSimulator \
     --device examples.dome_device:DomeSimulator
@@ -69,7 +77,9 @@ python -m examples.demo_bridge \
 
 Open <http://localhost:8000/> and all three are in the sidebar.
 
-To run them the way an observatory does, hand them to `indiserver` instead:
+That is for looking, not for running an observatory. The real arrangement hands the same
+files to `indiserver`, which is what lets KStars, PHD2 and the panel all drive them at
+once:
 
 ```bash
 indiserver ./examples/telescope_device.py ./examples/dome_device.py

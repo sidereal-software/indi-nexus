@@ -60,22 +60,27 @@ You do not need all three. Writing only a driver is completely normal.
 
 ## Try it in two minutes
 
-Requires [uv](https://docs.astral.sh/uv/) (Python 3.12+) and [pnpm](https://pnpm.io)
-(Node 20+) for the UI.
+Python 3.12 or newer is the only requirement. The web panel is compiled into the package,
+so there is no Node toolchain and no `indiserver` to install for any of this.
 
 ```bash
-git clone https://github.com/sidereal-software/indi-nexus && cd indi-nexus
+pip install indi-nexus
 
-uv venv --python 3.12                       # create the Python environment
-uv pip install -e ".[dev]"                  # install INDINexus
-cd web && pnpm install && pnpm -r build && cd ..   # build the web panel
-
-python -m examples.demo_bridge              # run a simulated device + the panel
+indi-nexus new my_driver.py                 # a complete, commented driver
+indi-nexus serve --device my_driver:MyDriver   # run it, with the panel
 ```
 
-Open <http://localhost:8000/> and you have a working control panel driven by a simulated
-device - no observatory, no `indiserver`, nothing to configure. Flip its power switch and
-watch the readouts change.
+Open <http://localhost:8000/> and you have a working control panel driven by the driver
+you just made. Press Connect and its telemetry starts counting; flip the power switch and
+the message log says so.
+
+`--device` runs the driver inside the web process so that trying it out needs one install
+instead of two. Real observatories run their drivers under `indiserver`, and so should
+you: `indiserver ./my_driver.py`, then `indi-nexus serve` with no `--device`. The driver
+file is the same either way.
+
+Prefer to look before installing? The [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
+runs the real panel against a simulated dome inside your browser.
 
 ## Writing a driver
 
@@ -122,7 +127,7 @@ Start from a working file and see it in the panel immediately:
 
 ```bash
 indi-nexus new my_driver.py
-python -m examples.demo_bridge --device my_driver:MyDriver
+indi-nexus serve --device my_driver:MyDriver
 ```
 
 The [driver guide](https://indi-nexus.sidereal.software/guides/writing-drivers/) walks
@@ -177,7 +182,7 @@ one is for.
 Run any of them in the panel:
 
 ```bash
-python -m examples.demo_bridge \
+indi-nexus serve \
     --device examples.telescope_device:TelescopeSimulator \
     --device examples.dome_device:DomeSimulator
 ```

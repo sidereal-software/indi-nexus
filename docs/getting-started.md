@@ -1,95 +1,109 @@
 # Getting started
 
 By the end of this page you will have a control panel open in your browser, driven by a
-driver you wrote yourself. No observatory and no hardware required.
+driver you wrote yourself. No observatory and no hardware.
 
-You need [uv](https://docs.astral.sh/uv/) (which manages Python 3.12+ for you) and, for
-the web panel, [pnpm](https://pnpm.io) with Node 20+.
+You need Python 3.12 or newer, and nothing else: the web panel is compiled into the
+package, so there is no Node and no JavaScript build.
+
+An observatory runs its drivers under `indiserver`, the hub every INDI system is built
+around, and so should you once you have hardware. INDINexus plugs into it rather than
+replacing it. To keep this page to one install, steps 2 and 3 use a stand-in for it that
+is built into the CLI, and [step 4](#4-running-under-indiserver) swaps in the real thing
+without changing your driver.
+
+!!! tip "Just want to look first?"
+
+    The [live demo](demo-app/index.html) runs the real panel against a simulated dome
+    inside your browser. Nothing to install at all.
 
 ## 1. Install
 
 ```bash
-git clone https://github.com/sidereal-software/indi-nexus && cd indi-nexus
-
-uv venv --python 3.12          # make a Python environment in .venv/
-uv pip install -e ".[dev]"     # install INDINexus into it
+pip install indi-nexus
 ```
 
-The web panel ships as compiled JavaScript, which needs building once:
+Or with [uv](https://docs.astral.sh/uv/), which will fetch a suitable Python for you:
 
 ```bash
-cd web && pnpm install && pnpm -r build && cd ..
+uv tool install indi-nexus
 ```
 
-## 2. Run something
+## 2. Write a driver
 
 ```bash
-uv run python -m examples.demo_bridge \
-    --device examples.telescope_device:TelescopeSimulator \
-    --device examples.dome_device:DomeSimulator
-```
-
-This starts two simulated instruments and a web server in a single process. Open
-<http://localhost:8000/>.
-
-Both simulators appear in the sidebar. Pick the dome, press **Connect**, then try:
-
-- **Shutter → Open.** The status badge goes `Busy` while it travels, then `Ok`.
-- **Absolute Position → 120 → Set.** Watch the azimuth count round to 120.
-- **Parking → Park.** It closes the shutter and returns to the park azimuth.
-
-The **Messages** panel is the driver's log - everything the driver told its clients. If
-you want to see the raw INDI traffic instead, <http://localhost:8000/debug> shows every
-frame as it goes past.
-
-!!! tip "What just happened"
-
-    `demo_bridge` is a development convenience: it wires drivers straight into the web
-    app in one process, standing in for `indiserver`. In production the pieces are
-    separate - see [Running for real](#4-running-for-real) below.
-
-## 3. Your own driver
-
-```bash
-uv run indi-nexus new my_driver.py
+indi-nexus new my_driver.py
 ```
 
 That writes a complete, commented, runnable driver: a Connect button, a number that gets
-polled, and a switch that does something when clicked. Open it and read it - it is short.
+polled once a second, and a switch that does something when clicked. Open it and read it.
+It is short, and every part of it is explained in the
+[driver guide](guides/writing-drivers.md).
 
-Now run *your* driver in the panel:
+## 3. See it
 
 ```bash
-uv run python -m examples.demo_bridge --device my_driver:MyDriver
+indi-nexus serve --device my_driver:MyDriver
 ```
 
-`--device` takes `module:ClassName`. Change the file, restart, refresh the browser.
+Open <http://localhost:8000/>. Your device is in the sidebar. Try this:
 
-When you want to understand what you are editing, the
-[driver guide](guides/writing-drivers.md) walks through a complete driver line by line.
+- **Press Connect.** The Telemetry value starts counting up once a second, and stops when
+  you disconnect. That is the `@every` job, which only runs while connected.
+- **Set Power to On.** A line appears in the **Messages** panel, which is the driver's log:
+  everything the driver has told its clients.
 
-## 4. Running for real
+Edit the file, restart the command, and refresh the browser to see the change.
 
-At an observatory the pieces are separate, and the hub is the standard `indiserver`
-program that INDI systems are built around:
+`--device` takes `module:ClassName` and can be repeated, so you can run several drivers
+side by side.
+
+!!! warning "`--device` is for trying things out"
+
+    It runs your drivers inside the web process, standing in for `indiserver` so that this
+    page needs one install instead of two. It serves a single client, has no access
+    control, and stops when you stop the command. It is a development convenience, not a
+    hub: run anything real under `indiserver`.
+
+!!! note "Where the worked examples live"
+
+    A telescope, a dome, a camera, a flat-field lamp and a weather station are in the
+    [examples](guides/examples.md), each one runnable and covered by tests. They ship with
+    the source rather than the wheel, so `git clone` the repository if you want to run them
+    locally. Two of them also run [in your browser](index.md#see-it-working).
+
+## 4. Running under indiserver
+
+This is how an observatory runs, and where your driver belongs once it talks to hardware.
+`indiserver` launches drivers as child processes and serves their combined stream on TCP,
+which is what lets several clients watch the same instruments at once. It comes with
+[libindi](https://github.com/indilib/indi), packaged for most Linux distributions and
+available through Homebrew on macOS.
+
+Nothing about your driver changes. The same file that ran under `--device` runs here:
 
 ```bash
 # indiserver launches your driver and serves INDI on TCP :7624
 indiserver ./my_driver.py
 
 # then, in another terminal, either:
-uv run indi-nexus serve       # the web panel at :8000
-uv run indi-nexus monitor     # a live feed in the terminal
+indi-nexus serve       # the web panel at :8000, against indiserver
+indi-nexus monitor     # a live feed in the terminal
 ```
 
-Because your driver is an ordinary INDI driver, other INDI software - KStars/Ekos, PHD2,
-existing C++ drivers - connects to the same `indiserver` and works with it unchanged.
+`indi-nexus serve` without `--device` connects to `indiserver` instead of running drivers
+itself. That is the only difference between the two setups.
+
+Running under the real hub is what makes your driver part of an observatory rather than a
+demo. Because it is an ordinary INDI driver, other INDI software (KStars/Ekos, PHD2,
+existing C++ drivers) connects to the same `indiserver` and drives it unchanged, at the
+same time as the panel does.
 
 !!! note "Running a driver on its own"
 
-    `python -m my_driver` also works, but it will sit there saying nothing. A driver only
-    speaks when a client asks it to, and on its own there is no client. It is not hung.
-    Paste `<getProperties version="1.7"/>` and press enter to see it reply.
+    `python ./my_driver.py` also works, but it will sit there saying nothing. A driver
+    only speaks when a client asks it to, and on its own there is no client. It is not
+    hung. Paste `<getProperties version="1.7"/>` and press enter to see it reply.
 
 ## Where to go next
 
