@@ -30,6 +30,7 @@ dev = [
     "mypy>=1.9",
     "lxml-stubs>=0.5",
     "httpx>=0.27",
+    "towncrier>=24.7",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -77,3 +78,46 @@ filterwarnings = [
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# One changelog for the whole monorepo, because the Python package and the two npm
+# packages release in lockstep (release-please `linked-versions`). Entries are written
+# as files under changelog.d/ during the work and collected into CHANGELOG.md at
+# release time; nothing hand-edits CHANGELOG.md. See DEVELOPMENT.md.
+[tool.towncrier]
+package = "indi_nexus"
+package_dir = "src"
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+title_format = "## {version} - {project_date}"
+issue_format = "[#{issue}](https://github.com/sidereal-software/indi-nexus/issues/{issue})"
+start_string = "<!-- towncrier release notes start -->\n"
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "changed"
+name = "Changed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removed"
+name = "Removed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "packaging"
+name = "Packaging"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "docs"
+name = "Documentation"
+showcontent = true
