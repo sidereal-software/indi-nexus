@@ -4,11 +4,18 @@ import type { IPState } from "@indi-nexus/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/ui/badge";
 
-/** Tailwind classes per state, using the theme's `--color-state-*` tokens. */
+/**
+ * Tailwind classes per state, using the theme's `--color-state-*` tokens.
+ *
+ * Busy pulses: it is the only state that means "still happening", and a badge that
+ * sits still cannot distinguish an instrument mid-move from one that stopped there.
+ * `motion-safe` so it holds still for anyone who asked the system for reduced motion.
+ * Kept in step with the status dots in `element-controls.tsx`.
+ */
 const STATE_CLASSES: Record<IPState, string> = {
   Idle: "bg-state-idle text-state-idle-foreground",
   Ok: "bg-state-ok text-state-ok-foreground",
-  Busy: "bg-state-busy text-state-busy-foreground",
+  Busy: "bg-state-busy text-state-busy-foreground motion-safe:animate-pulse",
   Alert: "bg-state-alert text-state-alert-foreground",
 };
 

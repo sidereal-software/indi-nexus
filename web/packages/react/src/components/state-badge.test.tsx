@@ -18,6 +18,17 @@ describe("StateBadge", () => {
     expect(screen.getByText(state)).toHaveClass(className);
   });
 
+  it("pulses only while Busy, and only when motion is welcome", () => {
+    render(<StateBadge state="Busy" />);
+    expect(screen.getByText("Busy")).toHaveClass("motion-safe:animate-pulse");
+
+    for (const state of [IPState.Idle, IPState.Ok, IPState.Alert]) {
+      cleanup();
+      render(<StateBadge state={state} />);
+      expect(screen.getByText(state).className).not.toContain("animate-pulse");
+    }
+  });
+
   it("merges a caller-supplied class name", () => {
     render(<StateBadge state="Ok" className="custom-class" />);
     expect(screen.getByText("Ok")).toHaveClass("custom-class");

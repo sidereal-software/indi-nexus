@@ -27,6 +27,7 @@ import {
   type TextVector,
   type Vector,
 } from "@indi-nexus/client";
+import { CheckIcon } from "lucide-react";
 import type { FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/ui/button";
@@ -35,11 +36,18 @@ import { Input } from "@/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { useIndiClient } from "../context";
 
-/** Tailwind background classes per light/vector state. */
+/**
+ * Tailwind background classes per light/vector state.
+ *
+ * Busy pulses, because it is the one state that means "still happening" - a still dot
+ * cannot say whether the instrument is working or has stopped mid-move. `motion-safe`
+ * so it holds still for anyone who asked the system for reduced motion. Kept in step
+ * with the same treatment in `StateBadge`.
+ */
 const STATE_DOT: Record<IPState, string> = {
   Idle: "bg-state-idle",
   Ok: "bg-state-ok",
-  Busy: "bg-state-busy",
+  Busy: "bg-state-busy motion-safe:animate-pulse",
   Alert: "bg-state-alert",
 };
 
@@ -166,20 +174,28 @@ export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
   const single = vector.rule === "OneOfMany" || vector.rule === "AtMostOne";
   const onNames = vector.elements.filter((element) => element.value === "On").map((e) => e.name);
 
-  // A selected member *is* the instrument state, so it has to read at a glance. The stock
-  // outline toggle draws selection with `accent` and hovers to `accent` as well, which
-  // leaves the two indistinguishable while the pointer is anywhere in the group, on top of
-  // being a near-invisible fill (#eee on white, #333 on #121212). Selection is inverted
-  // instead. The bare `hover:` classes are what tailwind-merge needs to drop the variant's
-  // accent hover (same modifier, same group); the `data-[state=on]:hover:` pair then holds
-  // the selected look under the pointer, on specificity, since it carries the extra
-  // attribute selector.
+  // A selected member *is* the instrument state, so mistaking it is a real error, not an
+  // aesthetic one. It wears `secondary` - the same teal as the Set button - so "this is
+  // the live state" looks like the rest of the action vocabulary, and it is never the
+  // colour an unselected member can take: the stock outline toggle drew selection with
+  // `accent` and hovered to `accent` too, which made a hovered unselected member identical
+  // to the selected one.
+  //
+  // Colour does not carry it alone. A tick marks the selected member, and its space is
+  // reserved on the others so the row does not resize as the selection moves. The bare
+  // `hover:` classes are what tailwind-merge needs to drop the variant's accent hover
+  // (same modifier, same group); the `data-[state=on]:hover:` pair then holds the selected
+  // look under the pointer, on specificity, since it carries the extra attribute selector.
   const items = vector.elements.map((element) => (
     <ToggleGroupItem
       key={element.name}
       value={element.name}
-      className="px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:hover:bg-foreground data-[state=on]:hover:text-background"
+      className="gap-1.5 px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground"
     >
+      <CheckIcon
+        aria-hidden
+        className={cn("size-3.5 shrink-0", element.value !== "On" && "invisible")}
+      />
       {element.label ?? element.name}
     </ToggleGroupItem>
   ));

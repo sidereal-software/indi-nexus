@@ -217,12 +217,17 @@ describe("SwitchVectorControl", () => {
     expect(off).toHaveAttribute("data-state", "off");
     // The regression: selection and hover both resolved to `accent`, so a hovered
     // unselected member looked exactly like the selected one.
-    expect(on?.className).toContain("data-[state=on]:bg-foreground");
-    expect(on?.className).toContain("data-[state=on]:hover:bg-foreground");
+    // Selection wears the same `secondary` as the Set button, and hover can never
+    // reach that colour - the original bug was both resolving to `accent`.
+    expect(on?.className).toContain("data-[state=on]:bg-secondary");
+    expect(on?.className).toContain("data-[state=on]:hover:bg-secondary");
     expect(off?.className).toContain("hover:bg-muted");
     for (const button of [on, off]) {
       expect(button?.className).not.toContain("hover:bg-accent");
     }
+    // Colour is not the only cue: the selected member is ticked.
+    expect(on?.querySelector("svg")).not.toHaveClass("invisible");
+    expect(off?.querySelector("svg")).toHaveClass("invisible");
   });
 
   it("disables the toggles and sends nothing when read-only", () => {
