@@ -24,7 +24,7 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    python -m examples.demo_bridge --device examples.telescope_device:TelescopeSimulator
+    indi-nexus serve --device examples.telescope_device:TelescopeSimulator
 """
 
 from __future__ import annotations

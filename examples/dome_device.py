@@ -19,7 +19,7 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    python -m examples.demo_bridge --device examples.dome_device:DomeSimulator
+    indi-nexus serve --device examples.dome_device:DomeSimulator
 """
 
 from __future__ import annotations

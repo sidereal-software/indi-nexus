@@ -13,9 +13,9 @@ Run it as a child of ``indiserver``::
 
     indiserver ./examples/flat_panel.py
 
-or see it in the reference panel with no ``indiserver`` at all::
+or, to try it without installing ``indiserver`` first::
 
-    python -m examples.demo_bridge --device examples.flat_panel:FlatPanel
+    indi-nexus serve --device examples.flat_panel:FlatPanel
 """
 
 from __future__ import annotations

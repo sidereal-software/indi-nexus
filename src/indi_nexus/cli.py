@@ -27,10 +27,9 @@ app = typer.Typer(help="INDINexus - modern INDI tooling.", no_args_is_help=True)
 _DRIVER_TEMPLATE = '''#!/usr/bin/env python3
 """{device_name}: an INDI driver built on INDINexus.
 
-Try it in the web panel (no indiserver needed), from the directory holding
-this file::
+To try it out, run it in the web panel from the directory holding this file::
 
-    python -m examples.demo_bridge --device {module_name}:{class_name}
+    indi-nexus serve --device {module_name}:{class_name}
 
 or under a real ``indiserver``::
 
@@ -170,7 +169,35 @@ def new(
     path.chmod(path.stat().st_mode | 0o111)
     typer.echo(f"Created {path} (device {device_name!r}).")
     typer.echo("Try it in the web panel with:")
-    typer.echo(f"  python -m examples.demo_bridge --device {path.stem}:{class_name}")
+    typer.echo(f"  indi-nexus serve --device {path.stem}:{class_name}")
+
+
+async def _serve_devices(host: str, port: int, specs: list[str]) -> None:
+    """Serve the panel against drivers running in this process.
+
+    Parameters
+    ----------
+    host : str
+        The interface uvicorn binds to.
+    port : int
+        The TCP port uvicorn listens on.
+    specs : list of str
+        Drivers to run, each as ``module:attr``.
+    """
+    import uvicorn
+
+    from indi_nexus.client import IndiClient
+    from indi_nexus.web import InProcessHub, create_app
+
+    hub = InProcessHub([load_device(spec)() for spec in specs])
+    app_ = create_app(client=IndiClient(connect=hub.connect))
+    server = uvicorn.Server(uvicorn.Config(app_, host=host, port=port, log_level="info"))
+    tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
+    try:
+        await server.serve()
+    finally:
+        hub.shutdown()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 @app.command()
@@ -179,8 +206,29 @@ def serve(
     port: int = typer.Option(8000, help="Web bind port."),
     indi_host: str = typer.Option("localhost", help="Upstream indiserver host."),
     indi_port: int = typer.Option(7624, help="Upstream indiserver port."),
+    device: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--device",
+            help="For trying a driver out: run it in this process instead of under "
+            "indiserver, as 'module:attr'. Repeat for several devices.",
+        ),
+    ] = None,
 ) -> None:
-    """Run the web bridge (debug page at ``/``, WebSocket at ``/ws``)."""
+    """Run the web bridge, serving the panel at ``/`` and a WebSocket at ``/ws``.
+
+    With no ``--device`` this connects to a running ``indiserver``. That is how an
+    observatory runs and what anything real should use: the hub is what lets several
+    clients drive the same instruments at once.
+
+    ``--device`` runs the named drivers inside this process instead, so a driver can be
+    seen on screen without installing ``indiserver`` first. It serves one client and
+    stops with the command, so it is for development, not for an observatory.
+    """
+    if device:
+        asyncio.run(_serve_devices(host, port, device))
+        return
+
     import uvicorn
 
     from indi_nexus.web import create_app

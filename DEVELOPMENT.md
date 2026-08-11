@@ -47,7 +47,7 @@ indi-nexus/
 │   ├── transport.py         # shared read/write byte-stream contract + TCP adapter
 │   ├── web/                 # FastAPI bridge (WS + REST) + static/debug.html
 │   └── cli.py               # Typer CLI (serve / run / monitor)
-├── examples/                # runnable references: drivers, client, demo bridge
+├── examples/                # runnable references: drivers and a client
 ├── tests/                   # pytest suite
 ├── docs/ + mkdocs.yml       # the documentation site
 └── web/                     # pnpm workspace (TypeScript frontend)
@@ -80,14 +80,14 @@ pnpm lint                             # lint + format check (Biome)
 pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxies to :8000)
 ```
 
-For panel development with hot reload, run a bridge (`python -m examples.demo_bridge`, or
+For panel development with hot reload, run a bridge (`indi-nexus serve --device examples.demo_device:Demo`, or
 `indi-nexus serve` against a real `indiserver`) and the Vite dev server, which proxies
 `/ws` and `/api` to it.
 
 ## Running things
 
 ```bash
-python -m examples.demo_bridge              # web panel + live demo device, no indiserver (open :8000)
+indi-nexus serve --device examples.demo_device:Demo   # panel + a driver in one process, for development
 indi-nexus new my_driver.py                 # scaffold a runnable driver file to start from
 indi-nexus serve                            # web panel against a real indiserver (open :8000)
 indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
@@ -95,7 +95,7 @@ indi-nexus monitor                          # print live INDI updates from indis
 indi-nexus --help                           # all CLI commands and options
 ```
 
-The bridge's HTTP surface (all served by `indi-nexus serve` / the demo bridge):
+The bridge's HTTP surface (served by `indi-nexus serve`, with or without `--device`):
 
 - `GET /` - the reference panel; `GET /debug` - the raw debug inspector.
 - `GET /health` - liveness + upstream connection state.

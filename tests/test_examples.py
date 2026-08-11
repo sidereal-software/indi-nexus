@@ -656,16 +656,16 @@ def test_scope_location_update_is_stored():
 
 
 def test_hub_serves_several_drivers_on_one_client():
-    """The demo bridge's hub multiplexes drivers like a miniature indiserver.
+    """The in-process hub multiplexes drivers like a miniature indiserver.
 
     Both devices define over the shared stream, and a write is acted on only
     by the device it is addressed to.
     """
 
     async def scenario() -> None:
-        from examples.demo_bridge import Hub
+        from indi_nexus.web import InProcessHub
 
-        hub = Hub([DomeSimulator(), TelescopeSimulator()])
+        hub = InProcessHub([DomeSimulator(), TelescopeSimulator()])
         tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
         try:
             async with IndiClient(connect=hub.connect) as client:

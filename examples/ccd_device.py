@@ -24,7 +24,7 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    python -m examples.demo_bridge --device examples.ccd_device:CCDSimulator
+    indi-nexus serve --device examples.ccd_device:CCDSimulator
 """
 
 from __future__ import annotations

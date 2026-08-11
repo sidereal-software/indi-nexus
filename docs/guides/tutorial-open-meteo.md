@@ -196,7 +196,7 @@ only the latitude, and the longitude must survive that.
 ## 8. Run it
 
 ```bash
-python -m examples.demo_bridge --device examples.openmeteo_device:OpenMeteo
+indi-nexus serve --device examples.openmeteo_device:OpenMeteo
 ```
 
 Open <http://localhost:8000/>, press **Connect**, and it is real weather. Edit

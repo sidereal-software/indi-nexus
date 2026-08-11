@@ -116,7 +116,7 @@ in the repository, and the test suite covers it, so it cannot quietly stop worki
 in the reference panel:
 
 ```bash
-python -m examples.demo_bridge --device examples.flat_panel:FlatPanel
+indi-nexus serve --device examples.flat_panel:FlatPanel
 ```
 
 Or [try it in your browser](../flat-demo/flat.html): the same driver simulated in

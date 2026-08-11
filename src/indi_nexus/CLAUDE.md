@@ -204,7 +204,7 @@ is import-tested so it cannot rot); `serve` runs the web bridge; `run module:att
   checked against what the service actually sends. If you change what the driver requests,
   re-record rather than hand-editing that fixture.
 - `examples/monitor_client.py` - the reference client.
-- `examples/demo_bridge.py` - driver, bridge and panel over in-memory pipes, so the whole
-  stack runs end to end with `python -m examples.demo_bridge` and no `indiserver`.
+- `indi-nexus serve --device` - driver, bridge and panel over in-memory pipes, so the whole
+  stack runs end to end with `indi-nexus serve --device examples.demo_device:Demo` and no `indiserver`.
 - `tests/test_integration.py` cross-wires a `DriverRuntime` and an `IndiClient` through
   in-memory pipes: a full round-trip with no `indiserver`.

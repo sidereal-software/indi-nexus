@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // In dev, proxy the bridge's HTTP + WebSocket endpoints to a locally running
-// `indi-nexus serve` (or `examples/demo_bridge.py`) on :8000. In production the
+// `indi-nexus serve` (or `indi-nexus serve --device`) on :8000. In production the
 // panel is served by that same FastAPI app, so these paths are same-origin.
 export default defineConfig({
   plugins: [react(), tailwindcss()],

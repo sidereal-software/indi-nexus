@@ -28,7 +28,7 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    python -m examples.demo_bridge --device examples.weather_device:WeatherStation
+    indi-nexus serve --device examples.weather_device:WeatherStation
 """
 
 from __future__ import annotations

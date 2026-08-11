@@ -387,7 +387,7 @@ def test_writes_addressed_to_other_devices_are_ignored() -> None:
     """A ``new`` naming a different device never reaches the handlers.
 
     Matches libindi's ``strcmp(dev, getDeviceName())`` guard; a broadcast hub
-    (several drivers on one stream, as in ``examples/demo_bridge.py``) relies
+    (several drivers on one stream, as in ``indi-nexus serve --device``) relies
     on this so only the addressed device reacts to a write.
     """
 

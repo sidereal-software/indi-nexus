@@ -17,7 +17,7 @@ It is also the shape almost every real driver has:
 
 Run it in the web panel::
 
-    python -m examples.demo_bridge --device examples.openmeteo_device:OpenMeteo
+    indi-nexus serve --device examples.openmeteo_device:OpenMeteo
 
 or under ``indiserver``::
 
