@@ -127,11 +127,21 @@ class IndiClient:
         """Open the default TCP connection to the configured host and port."""
         return await open_tcp(self._host, self._port, connect_timeout=self._connect_timeout)
 
-    async def start(self) -> None:
-        """Start the background connection loop and wait for the first connect."""
+    async def start(self, *, wait: bool = True) -> None:
+        """Start the background connection loop.
+
+        Parameters
+        ----------
+        wait : bool, optional
+            Whether to block until the first connection succeeds. Scripts and
+            monitors want that. A long-running server that must stay responsive
+            while ``indiserver`` is down passes `False` and watches
+            :meth:`on_connection` instead; the loop keeps retrying either way.
+        """
         if self._loop_task is None:
             self._loop_task = asyncio.create_task(self._connection_loop())
-        await self._ready.wait()
+        if wait:
+            await self._ready.wait()
 
     async def aclose(self) -> None:
         """Stop the connection loop and drop the connection."""

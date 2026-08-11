@@ -165,7 +165,10 @@ A FastAPI app putting one shared `IndiClient` behind an HTTP/WebSocket surface.
   `on_connection` becomes a small `{"event":"connection"}` **control** frame (the one
   non-INDI frame; the UI needs it and the protocol has no message for it). `snapshot()`
   primes a new browser with the cache plus a bounded history of recent `message` frames,
-  without which a freshly opened page's log would always start empty.
+  without which a freshly opened page's log would always start empty. `start()` calls
+  `IndiClient.start(wait=False)`: the server must come up with `indiserver` down (the state a
+  first `indi-nexus serve` usually starts in) and show a disconnected panel rather than hang
+  in startup. Scripts and monitors still get the blocking default.
 - `app.py` - `create_app(*, client=None, indi_host=, indi_port=)`. Lifespan starts and stops
   the bridge. `GET /health`; `GET /api/devices[/{device}[/{name}]]`; `WS /ws` (snapshot on
   connect, then live, browser frames forwarded upstream); `GET /` serves the built panel,

@@ -84,9 +84,49 @@ def test_health_reports_connection():
     """/health returns ok and reflects the upstream connection state."""
     app, _ = _app_and_server()
     with TestClient(app) as tc:
+        assert tc.get("/health").json()["status"] == "ok"
+        # Startup no longer blocks on the upstream, so connect lands just after.
+        _wait_until(lambda: tc.get("/health").json()["connected"] is True)
+
+
+async def test_bridge_start_does_not_wait_for_upstream():
+    """``Bridge.start`` returns while indiserver is unreachable, and keeps trying."""
+    attempts = 0
+
+    async def _refuse() -> tuple[object, object, object]:
+        """Fail every connection attempt, as a down indiserver would."""
+        nonlocal attempts
+        attempts += 1
+        raise OSError("connection refused")
+
+    client = IndiClient(connect=_refuse, reconnect_delay=0.01)
+    bridge = Bridge(client)
+    try:
+        # Without this the whole web app hangs in startup whenever indiserver is
+        # down, which is the state a first-time `indi-nexus serve` starts in.
+        async with asyncio.timeout(2):
+            await bridge.start()
+        assert client.connected is False
+        await asyncio.sleep(0.05)
+        assert attempts > 1, "the client should keep retrying in the background"
+    finally:
+        await bridge.aclose()
+
+
+def test_app_serves_while_upstream_is_down():
+    """The app starts and answers requests with no indiserver to talk to."""
+
+    async def _refuse() -> tuple[object, object, object]:
+        """Fail every connection attempt, as a down indiserver would."""
+        raise OSError("connection refused")
+
+    app = create_app(client=IndiClient(connect=_refuse, reconnect_delay=0.05))
+    with TestClient(app) as tc:
         body = tc.get("/health").json()
         assert body["status"] == "ok"
-        assert body["connected"] is True
+        assert body["connected"] is False
+        assert tc.get("/api/devices").json() == []
+        assert tc.get("/").status_code == 200
 
 
 def test_rest_snapshot_reflects_cache():

@@ -54,11 +54,18 @@ class Bridge:
         return self._client
 
     async def start(self) -> None:
-        """Subscribe to the client and open its upstream connection."""
+        """Subscribe to the client and open its upstream connection.
+
+        Returns once the connection attempt is under way rather than once it
+        succeeds: the bridge has to come up whether or not ``indiserver`` is
+        reachable, so a browser gets the panel and a disconnected indicator
+        instead of a server that never finishes starting. The client keeps
+        retrying in the background and announces the connection when it lands.
+        """
         self._client.subscribe(self._on_event)
         self._client.on_message(self._on_message)
         self._client.on_connection(self._on_connection)
-        await self._client.start()
+        await self._client.start(wait=False)
 
     async def aclose(self) -> None:
         """Close the upstream connection."""
