@@ -27,7 +27,6 @@ from indi_nexus.driver.property import BoundProperty, EmitPolicy
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
-    DefVector,
     GetProperties,
     IndiMessage,
     IPerm,
@@ -278,7 +277,7 @@ class Device:
             vector.device = self._device
         prop = BoundProperty(vector, self._send, policy=emit)
         self._properties[vector.name] = prop
-        self._send(DefVector(vector=vector))
+        prop._announce()
         return prop
 
     def define_number(
@@ -859,7 +858,7 @@ class Device:
                     self._setup_complete.set()
             else:
                 for prop in self._properties.values():
-                    self._send(DefVector(vector=prop.vector))
+                    prop._announce()
 
     def _roll_back_setup(self, announced: dict[str, BoundProperty[Any]], exc: Exception) -> None:
         """Undo the property definitions of a :meth:`setup` attempt that raised.
@@ -891,7 +890,7 @@ class Device:
                 prop.delete(message=f"{self._device} setup failed: {exc}")
         self._properties = announced
         for prop in announced.values():
-            self._send(DefVector(vector=prop.vector))
+            prop._announce()
 
     async def _dispatch_new(self, vector: Vector) -> None:
         """Route a client write to its ``@on_new`` handler or the default.

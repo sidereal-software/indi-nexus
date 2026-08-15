@@ -736,6 +736,82 @@ def test_a_muted_parser_is_resynced_in_place_and_keeps_its_counters(monkeypatch,
 
 
 # --------------------------------------------------------------------------- #
+# Emissions are values, not views                                              #
+# --------------------------------------------------------------------------- #
+class _Slewer(Device):
+    """A device whose handler announces Busy, works, and then announces Ok.
+
+    The commonest shape there is in a real driver, and the one that exposes a
+    queued message still pointing at the live vector: the writer serialises both
+    emissions after the handler has finished, so both would report the final
+    state.
+    """
+
+    name = "Slewer"
+
+    async def setup(self) -> None:
+        """Define the position the handler slews."""
+        self.define_number("POS", [Number(name="AZ", value=0.0)])
+
+    @on_new("POS")
+    async def _go(self, vector: NumberVector) -> None:
+        """Publish the move as Busy, then publish its result as Ok."""
+        self["POS"].set(AZ=10.0, state=IPState.BUSY)
+        self["POS"].set(AZ=90.0, state=IPState.OK)
+
+
+def test_a_busy_transient_reaches_the_wire_intact() -> None:
+    """Two sets in one handler serialise as two different states, not one twice."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.feed(
+            "<newNumberVector device='Slewer' name='POS'>"
+            "<oneNumber name='AZ'>90</oneNumber></newNumberVector>"
+        )
+        harness.eof()
+        await DriverRuntime(_Slewer(), harness.read, harness.write).serve()
+
+        sets = [m for m in harness.messages() if isinstance(m, SetVector)]
+        assert [(m.vector.state, m.vector.get("AZ")) for m in sets] == [
+            (IPState.BUSY, 10.0),
+            (IPState.OK, 90.0),
+        ]
+
+    asyncio.run(scenario())
+
+
+class _Restamper(Device):
+    """A device that publishes a new value the instant after defining it."""
+
+    name = "Restamper"
+
+    async def setup(self) -> None:
+        """Define a property at its initial value, then immediately move it."""
+        prop = self.define_number("POS", [Number(name="AZ", value=1.0)], state=IPState.IDLE)
+        prop.set(AZ=99.0, state=IPState.OK)
+
+
+def test_a_def_reports_the_values_it_was_defined_with() -> None:
+    """A ``def`` is a value too: a later ``set`` must not rewrite it in the queue."""
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.eof()
+        await DriverRuntime(_Restamper(), harness.read, harness.write).serve()
+
+        (definition,) = [m for m in harness.messages() if isinstance(m, DefVector)]
+        assert definition.vector.get("AZ") == 1.0
+        assert definition.vector.state is IPState.IDLE
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
 # BoundProperty                                                                #
 # --------------------------------------------------------------------------- #
 def test_set_one_of_many_clears_siblings_and_round_trips() -> None:

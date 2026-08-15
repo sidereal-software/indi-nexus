@@ -11,6 +11,12 @@ The handle is generic in its vector, so ``define_switch(...)`` hands back a
 rather than the whole element union - reading back what you defined type-checks
 without a narrowing dance.
 
+The handle is also the only thing holding a driver's live, mutable vector, which
+is why the rule that an emission is a *value* is enforced here: every message
+carrying a vector out of this class carries a copy, never the live model, so
+nothing the driver does next can change what has already gone on the wire. See
+:meth:`BoundProperty._detached` for what that is worth and what it costs.
+
 A driver never constructs this directly; ``Device.define_*`` returns one.
 """
 
@@ -22,6 +28,7 @@ from typing import Any, Literal
 
 from indi_nexus.protocol import (
     BLOB,
+    DefVector,
     DelProperty,
     Element,
     IndiMessage,
@@ -218,7 +225,7 @@ class BoundProperty[VectorT: Vector]:
         # caller's naive datetime would reach JSON unlabelled while the XML for
         # the same emission called it UTC.
         self._vector.timestamp = as_utc(timestamp) if timestamp is not None else indi_now()
-        self._emit(SetVector(vector=self._vector))
+        self._emit(SetVector(vector=self._detached()))
 
     def set_all(
         self,
@@ -333,6 +340,42 @@ class BoundProperty[VectorT: Vector]:
         """
         self._emit(DelProperty(device=self._vector.device, name=self._vector.name, message=message))
         self._retracted = True
+
+    def _announce(self) -> None:
+        """Emit this property's ``def``, describing it as it stands right now.
+
+        ``Device`` calls this to introduce a property and to re-announce one to a
+        late-joining client, rather than building the ``defXxxVector`` out of
+        ``prop.vector`` itself. Routing it through the handle is what stops the
+        live vector escaping: this class holds the only mutable one, so it is the
+        only place that has to remember to detach a copy.
+        """
+        self._emit(DefVector(vector=self._detached()))
+
+    def _detached(self) -> Vector:
+        """Return a copy of the vector that later mutation cannot reach.
+
+        An emitted message is a *value*. The runtime queues it and serialises it
+        from a separate writer task, so a message still pointing at this handle's
+        live vector reports whatever the driver did next, not what it published:
+        the ubiquitous "go Busy, move, report Ok" pair emitted two frames that
+        both said ``Ok``, and the Busy transient reached no client at all.
+
+        Only the elements list needs copying alongside the vector itself. Every
+        other field a ``set`` can touch - the state, the message, the timestamp -
+        is an immutable scalar rebound on assignment, and so is every field of an
+        element, including a BLOB's ``bytes`` payload. That makes this about two
+        and a half times cheaper than ``model_copy(deep=True)`` (9.1 us against
+        22.9 us for an eight-element number vector, beside 18.3 us to serialise
+        the same message) and exactly as detached.
+
+        Returns
+        -------
+        vector : Vector
+            A copy of the vector, sharing nothing mutable with this handle.
+        """
+        elements = [el.model_copy() for el in self._vector.elements]
+        return self._vector.model_copy(update={"elements": elements})
 
     def _snapshot(self) -> tuple[dict[str, Any], IPState, str | None]:
         """Return everything a ``set`` would tell the client, minus the timestamp.

@@ -213,3 +213,40 @@ async def test_clear_drops_history_but_not_state(harness) -> None:
 
     assert harness.emitted == []
     assert harness.device.ticks == 1
+
+
+# --------------------------------------------------------------------------- #
+# Emissions are values, not views                                              #
+# --------------------------------------------------------------------------- #
+class _Slewer(Device):
+    """A device whose handler announces Busy, works, and then announces Ok."""
+
+    name = "Slewer"
+
+    async def setup(self) -> None:
+        """Define the position the handler slews."""
+        self.define_number("POS", [Number(name="AZ")])
+
+    @on_new("POS")
+    async def _go(self, vector: NumberVector) -> None:
+        """Publish the move as Busy, then publish its result as Ok."""
+        self["POS"].set(AZ=10.0, state=IPState.BUSY)
+        self["POS"].set(AZ=90.0, state=IPState.OK)
+
+
+async def test_each_recorded_set_holds_the_state_it_was_published_with() -> None:
+    """Announce-Busy-then-Ok is the commonest driver shape, so both must be visible.
+
+    A recorded emission is a value, not a window onto the device's live vector:
+    a test that read the second ``set`` back off the first would see the driver's
+    end state twice and never notice a transient that never happened.
+    """
+    harness = DeviceHarness(_Slewer())
+    await harness.setup()
+
+    await harness.write("POS", AZ=90.0)
+
+    assert [(v.state, v.get("AZ")) for v in harness.sets("POS")] == [
+        (IPState.BUSY, 10.0),
+        (IPState.OK, 90.0),
+    ]

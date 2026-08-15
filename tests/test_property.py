@@ -217,6 +217,49 @@ def test_on_change_policy_still_writes_the_values() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Emissions are values, not views                                              #
+# --------------------------------------------------------------------------- #
+def test_an_emitted_set_is_detached_from_the_live_vector() -> None:
+    """What was published stays published, whatever the driver does next.
+
+    The runtime serialises an emission from its own task, long after the handler
+    that produced it has moved on, so a message holding the handle's live vector
+    reports the driver's end state rather than the transition it announced.
+    """
+    prop, emitted = _numbers()
+
+    prop.set(ra=1.0, state=IPState.BUSY)
+    prop.set(ra=9.0, state=IPState.OK)
+
+    first, second = emitted
+    assert isinstance(first, SetVector)
+    assert isinstance(second, SetVector)
+    assert (first.vector.state, first.vector.get("ra")) == (IPState.BUSY, 1.0)
+    assert (second.vector.state, second.vector.get("ra")) == (IPState.OK, 9.0)
+
+
+def test_an_emitted_vector_survives_a_later_element_write() -> None:
+    """The copy reaches the elements, not just the fields on the vector itself."""
+    prop, emitted = _numbers()
+
+    prop.set(ra=1.0)
+    prop.vector.element("ra").value = 42.0  # the driver, mutating its own model
+
+    assert emitted[0].vector.get("ra") == 1.0  # type: ignore[union-attr]
+
+
+def test_an_emitted_vector_keeps_its_own_element_list() -> None:
+    """Adding an element to the live vector does not retro-fit an old emission."""
+    prop, emitted = _numbers()
+
+    prop.set(ra=1.0)
+    prop.vector.elements.append(Number(name="epoch", value=2000.0))
+
+    assert "epoch" not in emitted[0].vector  # type: ignore[union-attr]
+    assert "epoch" in prop.vector
+
+
+# --------------------------------------------------------------------------- #
 # set_all                                                                      #
 # --------------------------------------------------------------------------- #
 def test_set_all_writes_every_element_in_one_emit() -> None:
