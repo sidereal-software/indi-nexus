@@ -1,6 +1,6 @@
 {
   "name": "@indi-nexus/client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-agnostic TypeScript client and typed property store for the INDINexus web bridge.",
   "license": "MIT",
   "author": "Sidereal Software",
