@@ -46,7 +46,12 @@ dev = [
     "httpx>=0.27",
 ]
 docs = [
-    "mkdocs-material>=9.5",
+    # The imaging extra (Pillow + cairosvg) is what the built-in `social` plugin needs to
+    # render the og:/twitter: preview cards; without it that plugin fails the build. It
+    # also needs the system libcairo that cairosvg dlopens, which the Ubuntu runners
+    # already have - Chrome depends on it - so docs.yml installs no apt packages. See the
+    # note beside the plugin in mkdocs.yml for the macOS story, which is less pleasant.
+    "mkdocs-material[imaging]>=9.5",
     "mkdocstrings[python]>=0.25",
 ]
 # Only needed for the browser test in the nightly interop suite; everything else

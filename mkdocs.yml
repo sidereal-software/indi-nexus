@@ -8,30 +8,47 @@ repo_name: indi-nexus
 
 theme:
   name: material
+  # `custom` matches no rule Material ships, which is the point: docs/stylesheets/palette.css
+  # then owns every primary/accent variable outright. Read the comment at the top of that
+  # file before changing either of these - `custom` also forfeits Material's per-colour link
+  # overrides, so the link colour has to be set per scheme there or slate links go
+  # dark-on-dark. Keep the scheme names as-is; inventing one loses slate's ~40 surface vars.
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep orange
-      accent: teal
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep orange
-      accent: teal
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
   icon:
     logo: material/telescope
   features:
+    # Instant navigation only rewrites links that appear in sitemap.xml. MkDocs treats the
+    # three demo .html files as static pages and leaves them out of it, so clicking a demo
+    # still does a full page load - which is what those standalone Vite apps need.
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
     - navigation.tabs
     - navigation.sections
     - navigation.top
     - content.code.copy
     - content.code.annotate
+    # Selecting a tab by its label - uv over pip, say - selects the same label in every
+    # other tabbed block on the site. Needs pymdownx.tabbed's alternate_style, set below.
+    - content.tabs.link
     - search.suggest
+
+extra_css:
+  - stylesheets/palette.css
 
 markdown_extensions:
   - admonition
@@ -59,6 +76,17 @@ markdown_extensions:
 
 plugins:
   - search
+  # Generates the og:/twitter: preview image every page links to, so a URL pasted into
+  # Slack or Matrix renders as a card instead of a bare link. It needs Pillow and cairosvg,
+  # which is why the docs extra is mkdocs-material[imaging]; cairosvg in turn dlopens the
+  # system libcairo. Ubuntu runners already have it. On macOS it is
+  # `brew install cairo freetype libffi`, and on Apple Silicon that is not sufficient on its
+  # own - Homebrew installs to /opt/homebrew/lib, which is not on the dynamic loader's
+  # search path, so ctypes cannot find libcairo and every page logs a warning that fails
+  # --strict. Build with DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib, or set CARDS=false to
+  # skip card generation entirely: the site still builds, it just ships no preview images.
+  - social:
+      cards: !ENV [CARDS, true]
   - mkdocstrings:
       handlers:
         python:

@@ -5,6 +5,16 @@
  * `@import` into any Tailwind v4 stylesheet - the library's own build
  * (`styles.css`) and a downstream app both pull it in after importing Tailwind.
  * Exported as `@indi-nexus/react/theme.css`.
+ *
+ * `--primary` is "Deep Field", the same violet the documentation chrome uses,
+ * anchored on viridis 0.15 (#463480) so the panel and the docs read as one
+ * product. It replaced an orange that failed on both counts a brand colour has
+ * to pass here: white on it measured 3.12:1, below AA, and it sat only 8.3
+ * CIEDE2000 from the Busy amber, which made the brand colour a near-miss for a
+ * status colour. The violet is 12.03:1 in light mode and no closer than 22.4 to
+ * any of the four states. Re-measure before changing it - the ratios are in the
+ * comment beside each value, and `--state-*` is tuned separately and is not
+ * ours to move.
  */
 
 /* Enable `dark:` utilities via the `.dark` class (toggled on <html>). */
@@ -17,7 +27,9 @@
   --card-foreground: #111827;
   --popover: #ffffff;
   --popover-foreground: #111827;
-  --primary: #d87943;
+  /* 12.03:1 with white on it, and 12.03 / 10.93 / 10.37:1 as `text-primary` on the
+     background, the sidebar and the accent surfaces. */
+  --primary: #3a2a70;
   --primary-foreground: #ffffff;
   --secondary: #527575;
   --secondary-foreground: #ffffff;
@@ -28,7 +40,7 @@
   --destructive: #ef4444;
   --border: #e5e7eb;
   --input: #e5e7eb;
-  --ring: #d87943;
+  --ring: #3a2a70;
   --chart-1: #5f8787;
   --chart-2: #e78a53;
   --chart-3: #fbcb97;
@@ -36,12 +48,12 @@
   --chart-5: #999999;
   --sidebar: #f3f4f6;
   --sidebar-foreground: #111827;
-  --sidebar-primary: #d87943;
+  --sidebar-primary: #3a2a70;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ffffff;
   --sidebar-accent-foreground: #111827;
   --sidebar-border: #e5e7eb;
-  --sidebar-ring: #d87943;
+  --sidebar-ring: #3a2a70;
 
   --font-sans: Geist Mono, ui-monospace, monospace;
   --font-serif: serif;
@@ -78,7 +90,13 @@
   --card-foreground: #c1c1c1;
   --popover: #121113;
   --popover-foreground: #c1c1c1;
-  --primary: #e78a53;
+  /* The light-mode violet inverted rather than reused: #3a2a70 on a near-black card would
+     be invisible, and `--primary` is read as text here (the wordmark, the message log's
+     device name, link-variant buttons) as well as filled behind `--primary-foreground`. So
+     it is the same hue lifted to the lightness the docs use for slate links, which also
+     makes the embedded demos match the page around them. 7.56:1 both ways - as text on the
+     background and as the dark foreground on the fill - and 6.30:1 at the /90 hover. */
+  --primary: #a99ae4;
   --primary-foreground: #121113;
   --secondary: #5f8787;
   --secondary-foreground: #121113;
@@ -89,7 +107,7 @@
   --destructive: #5f8787;
   --border: #222222;
   --input: #222222;
-  --ring: #e78a53;
+  --ring: #a99ae4;
   --chart-1: #5f8787;
   --chart-2: #e78a53;
   --chart-3: #fbcb97;
@@ -97,12 +115,12 @@
   --chart-5: #999999;
   --sidebar: #121212;
   --sidebar-foreground: #c1c1c1;
-  --sidebar-primary: #e78a53;
+  --sidebar-primary: #a99ae4;
   --sidebar-primary-foreground: #121113;
   --sidebar-accent: #333333;
   --sidebar-accent-foreground: #c1c1c1;
   --sidebar-border: #222222;
-  --sidebar-ring: #e78a53;
+  --sidebar-ring: #a99ae4;
 
   --shadow-2xs: 0 1px 3px 0px rgb(0 0 0 / 0.04);
   --shadow-xs: 0 1px 3px 0px rgb(0 0 0 / 0.04);

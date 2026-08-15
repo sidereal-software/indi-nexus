@@ -1,0 +1,69 @@
+/*
+ * "Deep Field" - the INDINexus documentation palette.
+ *
+ * Anchored on two points of the viridis colormap, #463480 (0.15) and #3b528b
+ * (0.25), because those are the violets an astronomer has already looked at ten
+ * thousand times in a science plot. Kept muted and low-chroma on purpose: it
+ * should read as deep sky, not as a neon gradient.
+ *
+ * WHY THIS FILE EXISTS AT ALL, and why `primary: custom` in mkdocs.yml is not
+ * enough on its own. Material ships a `[data-md-color-primary=<name>]` rule per
+ * built-in colour; there is no `custom` rule in palette.css, so the attribute
+ * mkdocs.yml emits matches nothing shipped and every variable below is ours to
+ * set. `extra_css` loads after the theme's own stylesheets, so these win.
+ *
+ * The trap is `--md-typeset-a-color`. Material sets it to
+ * `var(--md-primary-fg-color)` for both schemes, then ships 13 light-mode and 9
+ * slate-mode per-colour overrides precisely because a primary dark enough for
+ * the header is the wrong lightness for body links in one scheme or the other.
+ * `custom` inherits NONE of those overrides, so a link would come out #3a2a70
+ * in slate: dark violet on a near-black page. It has to be set per scheme, and
+ * that is what the last two rules do. `--md-primary-bg-color` has the same
+ * shape of problem, defaulting to #fff from `:root` no matter how light the
+ * primary is, so it is set explicitly rather than left to luck.
+ *
+ * Measured contrast ratios (WCAG 2.x, sRGB). Do not "tidy" a value without
+ * re-measuring - the palette this replaced looked fine and failed AA outright
+ * (its light link was 2.78:1, below even the 3:1 large-text floor).
+ *
+ *   header text  #ffffff on #3a2a70   12.03:1   AAA
+ *   light link   #4b3a91 on #ffffff    9.08:1   AAA  (8.33:1 on #f5f5f5 code)
+ *   light accent #0f7f96 on #ffffff    4.67:1   AA
+ *   slate link   #a99ae4 on #221e29    6.56:1   AAA  (5.82:1 on #2c2735 code)
+ *   slate accent #38bcd6 on #221e29    7.26:1   AAA
+ */
+
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #3a2a70;
+  --md-primary-fg-color--light: #584499;
+  --md-primary-fg-color--dark: #241a48;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #0f7f96;
+  --md-accent-fg-color--transparent: #0f7f961a;
+}
+
+/*
+ * Per-scheme link and accent colours. These have the same specificity as the
+ * `custom` rules above and must stay after them, or the slate overrides lose.
+ */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #4b3a91;
+}
+
+[data-md-color-scheme="slate"] {
+  /*
+   * Tint the whole slate surface ramp toward the palette. Material derives every
+   * slate surface from `hsla(var(--md-hue), ...)`, so this one line moves the page
+   * background from #1e2129 to #221e29 and carries the rest with it. Body-text
+   * contrast is unchanged (8.94:1 -> 8.97:1) and the link and accent ratios above
+   * are quoted against the tinted background.
+   */
+  --md-hue: 262deg;
+
+  --md-typeset-a-color: #a99ae4;
+  --md-accent-fg-color: #38bcd6;
+}
