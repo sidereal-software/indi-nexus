@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import json
+import logging
+import os
+import time
+
 import pytest
 from lxml import etree
 
@@ -29,10 +35,14 @@ from indi_nexus.protocol import (
     Text,
     TextVector,
     XMLStreamParser,
+    as_utc,
+    indi_now,
     parse_indi,
     slugify,
+    to_json,
     to_xml,
 )
+from indi_nexus.protocol import xml as xml_module
 from indi_nexus.protocol.xml import (
     _element_from_xml,
     _element_xml,
@@ -81,6 +91,15 @@ def test_enum_rejects_unknown_tokens():
         (10.5, "%12.9m", " 10:30:00.00"),
         (12.582777778, "%9.6m", " 12:34:58"),  # width-9 field pads the degrees (libindi-faithful)
         (1.0, "%.2f", "1.00"),
+        # Values landing exactly on half a tick, where half-to-even and
+        # half-away-from-zero part company. Every expectation below was taken
+        # from compiled libindi (fs_sexa, indicom.c:165) - they are the spec
+        # here, not a preference, so do not "correct" them to Python's round().
+        (0.03125, "%10.6m", "   0:01:53"),
+        (-0.03125, "%10.6m", "  -0:01:53"),
+        (0.15625, "%9.6m", "  0:09:23"),
+        (0.1875, "%8.5m", "  0:11.3"),
+        (0.375, "%7.3m", "   0:23"),
     ],
 )
 def test_format_number(value, fmt, expected):
@@ -468,6 +487,412 @@ def test_from_labels_round_trips_through_the_wire():
 
     assert parsed.vector.elements[0].name == "link_up"
     assert parsed.vector.elements[0].label == "Link Up"
+
+
+# --------------------------------------------------------------------------- #
+# Lenient parsing: a malformed element must not stop the stream                #
+# --------------------------------------------------------------------------- #
+#: A number whose text cannot be a float. ``value`` is not nullable on the model,
+#: so there is nothing to degrade to and the whole element has to go.
+_BAD_NUMBER = (
+    "<setNumberVector device='CCD' name='EXPOSURE'>"
+    "<oneNumber name='secs'>not-a-number</oneNumber></setNumberVector>"
+)
+
+
+def test_a_malformed_value_costs_its_own_message_and_nothing_else():
+    """The junk message is dropped and counted; the next one still arrives.
+
+    Before this, the ``ValueError`` escaped mid-iteration of ``feed()`` - past
+    the driver runtime's per-message isolation and past the client's reconnect
+    loop - so one bad element from somebody else's driver killed the process.
+    """
+    parser = XMLStreamParser()
+
+    out = list(parser.feed(_BAD_NUMBER + "<message message='still here'/>"))
+
+    assert [m.message for m in out] == ["still here"]
+    assert parser.dropped == 1
+    assert parser.resets == 0
+
+
+def test_a_malformed_value_is_dropped_at_any_chunk_boundary():
+    """Fed one byte at a time, the same chunk drops exactly one element."""
+    data = (_BAD_NUMBER + "<message message='still here'/>").encode()
+    parser = XMLStreamParser()
+
+    out = []
+    for i in range(len(data)):
+        out.extend(parser.feed(data[i : i + 1]))
+
+    assert [m.message for m in out] == ["still here"]
+    assert parser.dropped == 1
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        _BAD_NUMBER,
+        "<setSwitchVector device='CCD' name='MODE'>"
+        "<oneSwitch name='a'>Maybe</oneSwitch></setSwitchVector>",
+        "<defNumberVector device='CCD' name='EXPOSURE' state='Sideways' perm='rw'>"
+        "<defNumber name='secs'>1</defNumber></defNumberVector>",
+    ],
+)
+def test_every_unrepresentable_leaf_drops_rather_than_raises(frame):
+    """Numbers and wire tokens have no "absent" to fall back to, so they drop."""
+    parser = XMLStreamParser()
+
+    assert list(parser.feed(frame)) == []
+    assert parser.dropped == 1
+
+
+def test_a_dropped_element_is_logged_without_its_payload(caplog):
+    """The log names the element, never quotes it: a bad BLOB can be tens of MB."""
+    payload = "SECRET" + "A" * 27  # 33 base64 characters: 4n+1 never decodes
+    frame = (
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        f"<oneBLOB name='image' size='9' format='.fits'>{payload}</oneBLOB>"
+        "</setBLOBVector>"
+    )
+    parser = XMLStreamParser()
+
+    with caplog.at_level(logging.WARNING, logger="indi_nexus.protocol.xml"):
+        assert list(parser.feed(frame)) == []
+
+    assert parser.dropped == 1
+    assert "SECRET" not in caplog.text
+    assert "setBLOBVector" in caplog.text
+    assert "CCD1" in caplog.text
+
+
+def test_an_unparseable_optional_attribute_costs_only_that_attribute():
+    """``min=''`` - what a C driver emits for an unset field - keeps the def.
+
+    Dropping the whole ``defNumberVector`` here is far more expensive than it
+    looks: a client that never saw the definition ignores every later ``set``
+    for that property, so it stays blind to it until the next reconnect.
+    """
+    (msg,) = parse_indi(
+        "<defNumberVector device='CCD' name='EXPOSURE' state='Ok' perm='rw'>"
+        "<defNumber name='secs' format='%.2f' min='' max='3600' step='junk'>1.5</defNumber>"
+        "</defNumberVector>"
+    )
+
+    assert isinstance(msg, DefVector)
+    element = msg.vector["secs"]
+    assert element.min is None
+    assert element.step is None
+    assert element.max == 3600
+    assert element.value == 1.5
+
+
+def test_an_unparseable_blob_size_costs_only_the_size():
+    """``size`` is optional on the model, and the payload is the point anyway."""
+    (msg,) = parse_indi(
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        "<oneBLOB name='image' size='' format='.fits'>QUJD</oneBLOB></setBLOBVector>"
+    )
+
+    assert isinstance(msg, SetVector)
+    assert msg.vector["image"].size is None
+    assert msg.vector["image"].data == b"ABC"
+
+
+# --------------------------------------------------------------------------- #
+# Lenient parsing: an unmatched close tag must not mute the stream             #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("closer", [b"</indinexus>", b"</bogus>"])
+def test_an_unmatched_close_tag_reopens_the_stream(closer):
+    """Any close tag at depth 1 ends the lxml document, whatever it is named.
+
+    A peer sending its own document's close - or any stray one - would otherwise
+    leave the parser silently emitting nothing for the rest of the session.
+    """
+    parser = XMLStreamParser()
+    assert [m.message for m in parser.feed(to_xml(Message(message="before")))] == ["before"]
+
+    assert list(parser.feed(closer)) == []
+
+    assert [m.message for m in parser.feed(to_xml(Message(message="after")))] == ["after"]
+    assert parser.resets == 1
+    assert parser.dropped == 0
+
+
+def test_a_close_tag_split_across_chunks_is_still_recovered():
+    """The token arriving in two reads is the same event, seen later."""
+    parser = XMLStreamParser()
+
+    assert list(parser.feed(b"</indi")) == []
+    assert list(parser.feed(b"nexus>")) == []
+
+    assert [m.message for m in parser.feed(to_xml(Message(message="after")))] == ["after"]
+    assert parser.resets == 1
+
+
+def test_the_rest_of_the_offending_chunk_is_lost():
+    """Known and accepted: bytes after the close tag in the *same* read are gone.
+
+    Recovering them would mean lexing the chunk here to find where the token
+    ended, which is the framing work this parser exists to leave to lxml. Pinned
+    so it reads as a decision rather than a regression somebody should chase.
+    """
+    parser = XMLStreamParser()
+
+    out = list(parser.feed(to_xml(Message(message="a")) + b"</indinexus>"))
+    out += list(parser.feed(to_xml(Message(message="b"))))
+
+    assert [m.message for m in out] == ["a", "b"]
+
+    parser = XMLStreamParser()
+    swallowed = list(
+        parser.feed(
+            to_xml(Message(message="a")) + b"</indinexus>" + to_xml(Message(message="lost"))
+        )
+    )
+    swallowed += list(parser.feed(to_xml(Message(message="c"))))
+
+    assert [m.message for m in swallowed] == ["a", "c"]
+    assert parser.resets == 1
+
+
+def test_a_close_tag_inside_an_open_vector_self_heals():
+    """At depth 2 lxml just closes the vector, so there is nothing to recover."""
+    parser = XMLStreamParser()
+
+    out = list(
+        parser.feed(
+            "<setNumberVector device='CCD' name='EXPOSURE'>"
+            "<oneNumber name='secs'>1</oneNumber></indinexus>"
+        )
+    )
+    out += list(parser.feed(to_xml(Message(message="after"))))
+
+    assert isinstance(out[0], SetVector)
+    assert out[0].vector["secs"].value == 1.0
+    assert out[1].message == "after"
+    assert parser.resets == 0
+
+
+def test_resets_counts_framing_violations_not_lost_messages():
+    """50 consecutive resets can lose nothing at all, which is why they are separate."""
+    parser = XMLStreamParser()
+
+    for _ in range(50):
+        assert list(parser.feed(b"</indinexus>")) == []
+
+    assert parser.resets == 50
+    assert parser.dropped == 0
+    assert [m.message for m in parser.feed(to_xml(Message(message="fine")))] == ["fine"]
+
+
+# --------------------------------------------------------------------------- #
+# The stall backstop                                                           #
+# --------------------------------------------------------------------------- #
+def test_a_stream_of_nothing_but_close_tags_still_trips_the_stall(monkeypatch):
+    """Reopening is recovery, not progress, so it does not buy the peer more silence.
+
+    Frequent resets stay harmless - see
+    ``test_resets_counts_framing_violations_not_lost_messages`` - but a reset
+    used to zero the stall budget, which pinned ``bytes_since_last_message``
+    near zero for a peer that only ever sent close tags: the one stream
+    guaranteed never to produce a message was the one that could never be
+    called lost.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+    parser = XMLStreamParser()
+
+    for _ in range(4):  # 12 bytes each, and not a message between them
+        assert list(parser.feed(b"</indinexus>")) == []
+
+    assert parser.resets == 4
+    assert parser.stalled
+
+
+def test_a_completed_element_clears_the_stall_counter():
+    """The counter measures "bytes in, nothing out", so any element resets it."""
+    parser = XMLStreamParser()
+
+    list(parser.feed(b"<setNumberVector device='CCD' name='EXPOSURE'"))
+    assert parser.bytes_since_last_message > 0
+    assert not parser.stalled
+
+    list(parser.feed(b"><oneNumber name='secs'>1</oneNumber></setNumberVector>"))
+    assert parser.bytes_since_last_message == 0
+
+
+def test_a_parser_muted_mid_start_tag_is_caught_by_the_byte_counter(monkeypatch):
+    """The one break the parser cannot see from the inside.
+
+    A root close arriving while a start tag is half-parsed emits no depth-0
+    event and leaves ``error_log`` empty, so :meth:`_reset` never fires and the
+    stream goes quiet for good. The reader's evidence is arithmetic: bytes keep
+    going in and nothing comes out.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+    parser = XMLStreamParser()
+
+    list(parser.feed(b"<setNumberVector device='CCD' name='EXPOSURE'"))
+    list(parser.feed(b"</indinexus>"))
+    assert parser.resets == 0  # invisible to the parser itself
+
+    for _ in range(4):
+        assert list(parser.feed(to_xml(Message(message="lost")))) == []
+
+    assert parser.stalled
+
+
+def test_a_resync_rebuilds_the_parser_without_forgetting_the_peer(monkeypatch):
+    """The counters describe the stream, so the rebuild that fixes it keeps them.
+
+    A driver cannot reconnect, so its reader replaces the parser object in
+    place - and used to drop ``dropped`` and ``resets`` on the floor with it,
+    at exactly the moment a peer's malformed-input history is most interesting.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+    parser = XMLStreamParser()
+    assert list(parser.feed(_BAD_NUMBER)) == []  # dropped: 1
+    assert list(parser.feed(b"</indinexus>")) == []  # reset: 1
+    list(parser.feed(b"<setNumberVector device='CCD' name='EXPOSURE'"))
+    list(parser.feed(b"</indinexus>"))  # closes that element, then lxml goes quiet for good
+    for _ in range(4):
+        assert list(parser.feed(to_xml(Message(message="lost")))) == []
+    assert parser.stalled
+
+    parser.resync()
+
+    assert not parser.stalled
+    assert parser.dropped == 1
+    assert parser.resets == 2  # the reopen the reader inferred counts as one too
+    assert [m.message for m in parser.feed(to_xml(Message(message="after")))] == ["after"]
+
+
+# --------------------------------------------------------------------------- #
+# Timestamps: UTC in both directions                                           #
+# --------------------------------------------------------------------------- #
+def test_a_naive_timestamp_is_read_as_utc():
+    """A bare INDI timestamp means UTC; guessing a local zone would invent an instant."""
+    msg = Message(message="hi", timestamp=dt.datetime(2026, 1, 1, 12, 0, 0))
+
+    assert msg.timestamp == dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)
+
+
+def test_a_timestamp_in_another_zone_is_converted_to_utc():
+    """An aware datetime keeps its instant and changes its wall clock."""
+    plus_five = dt.timezone(dt.timedelta(hours=5))
+    msg = Message(message="hi", timestamp=dt.datetime(2026, 1, 1, 12, 0, tzinfo=plus_five))
+
+    assert msg.timestamp == dt.datetime(2026, 1, 1, 7, 0, tzinfo=dt.UTC)
+    assert 'timestamp="2026-01-01T07:00:00"' in to_xml(msg).decode()
+
+
+def test_as_utc_labels_the_naive_and_converts_the_aware():
+    """The one normalisation point, used by the models and by driver writes alike."""
+    assert as_utc(dt.datetime(2026, 1, 1, 12, 0)) == dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)
+    assert as_utc(dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)) == dt.datetime(
+        2026, 1, 1, 12, 0, tzinfo=dt.UTC
+    )
+
+
+def test_indi_now_is_aware_utc_at_whole_seconds():
+    """Truncated because the XML format is: otherwise one emission disagrees with itself."""
+    now = indi_now()
+
+    assert now.tzinfo is dt.UTC
+    assert now.microsecond == 0
+
+
+def test_the_xml_timestamp_is_bare_and_the_json_one_is_zulu():
+    """Each wire gets the form its readers require, from the same instant.
+
+    The XML stays byte-identical to libindi's ``indi_timestamp()`` (gmtime, no
+    offset, no ``Z``). The JSON must carry the ``Z``: ECMAScript reads an
+    offsetless string as *local* time, so the panel's ``new Date(timestamp)``
+    would silently shift every log line by the viewer's own zone.
+    """
+    msg = Message(message="hi", timestamp=dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC))
+
+    assert 'timestamp="2026-01-01T12:00:00"' in to_xml(msg).decode()
+
+    stamp = json.loads(to_json(msg))["timestamp"]
+    assert stamp == "2026-01-01T12:00:00Z"
+    # The Z is what makes this an instant: against a naive datetime the
+    # subtraction below is a TypeError, which is what the JSON used to produce.
+    assert dt.datetime.fromisoformat(stamp) - dt.datetime(
+        2026, 1, 1, 11, 0, tzinfo=dt.UTC
+    ) == dt.timedelta(hours=1)
+
+
+def test_a_timestamp_round_trips_through_xml_as_the_same_instant():
+    """Serialise, parse back, and the model still holds aware UTC."""
+    msg = Message(device="CCD", message="hi", timestamp=dt.datetime(2026, 1, 1, 12, 0))
+
+    (back,) = parse_indi(to_xml(msg))
+
+    assert back.timestamp == dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)
+
+
+def test_a_bare_wire_timestamp_is_utc_whatever_zone_the_reader_runs_in():
+    """The reading of a peer's timestamp cannot depend on where we are hosted."""
+    original = os.environ.get("TZ")
+    os.environ["TZ"] = "America/Los_Angeles"
+    time.tzset()  # process-global; the finally below puts it back
+    try:
+        (back,) = parse_indi("<message message='hi' timestamp='2026-01-01T12:00:00'/>")
+
+        assert back.timestamp == dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)
+        assert indi_now().tzinfo is dt.UTC
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        time.tzset()
+
+
+# --------------------------------------------------------------------------- #
+# `state` is #IMPLIED on a set                                                 #
+# --------------------------------------------------------------------------- #
+def test_a_stateless_set_records_that_state_was_absent():
+    """``state`` is #IMPLIED on every set*Vector and means "no change if absent".
+
+    The absence has to be carried across the parse boundary or it cannot be
+    honoured downstream, and it rides on the wrapper so that a cached vector's
+    ``state`` stays non-nullable for everything that reads one.
+    """
+    (msg,) = parse_indi(
+        "<setNumberVector device='CCD' name='EXPOSURE'>"
+        "<oneNumber name='secs'>2</oneNumber></setNumberVector>"
+    )
+
+    assert isinstance(msg, SetVector)
+    assert msg.state_present is False
+    assert msg.vector.state is IPState.IDLE  # the parse default, not a claim
+
+
+def test_a_set_that_carries_state_says_so():
+    """A state on the wire is a state change, and the flag reports it as one."""
+    (msg,) = parse_indi(
+        "<setNumberVector device='CCD' name='EXPOSURE' state='Busy'>"
+        "<oneNumber name='secs'>2</oneNumber></setNumberVector>"
+    )
+
+    assert isinstance(msg, SetVector)
+    assert msg.state_present is True
+    assert msg.vector.state is IPState.BUSY
+
+
+def test_our_own_sets_always_carry_state_on_the_wire():
+    """Round-trip: this codec always writes a state, so a parse back says present."""
+    vec = NumberVector(
+        device="CCD", name="EXPOSURE", state=IPState.ALERT, elements=[Number(name="secs", value=2)]
+    )
+
+    back = _reparse(SetVector(vector=vec))
+
+    assert isinstance(back, SetVector)
+    assert back.state_present is True
+    assert back.vector.state is IPState.ALERT
 
 
 def test_membership_finds_elements_that_exist():

@@ -35,6 +35,8 @@ from indi_nexus.protocol import (
     SwitchVector,
     Text,
     Vector,
+    as_utc,
+    indi_now,
 )
 from indi_nexus.protocol.xml import format_number
 
@@ -96,6 +98,9 @@ class BoundProperty[VectorT: Vector]:
         self._vector = vector
         self._emit = emit
         self._policy: EmitPolicy = policy
+        # Set by delete(): the client has been told this property is gone, so
+        # anything published through this handle afterwards contradicts that.
+        self._retracted = False
 
     @property
     def vector(self) -> VectorT:
@@ -178,13 +183,26 @@ class BoundProperty[VectorT: Vector]:
         message : str, optional
             Optional message to attach to the update.
         timestamp : datetime, optional
-            Update timestamp; defaults to now.
+            Update timestamp; defaults to now. INDI timestamps are UTC, so a
+            naive one is read as UTC and an aware one is converted.
         force : bool, optional
             Emit even under ``"on_change"`` when nothing differs - for the
             occasional deliberate re-announcement.
         **kwargs : object
             Element values by name (the common case).
+
+        Raises
+        ------
+        KeyError
+            Raised if a named element is not part of this vector.
+        RuntimeError
+            Raised if the property has been retracted (see :meth:`delete`).
         """
+        if self._retracted:
+            raise RuntimeError(
+                f"{self._vector.device}.{self._vector.name} was retracted with a delProperty; "
+                "this handle is dead. Define the property again and use the handle that returns."
+            )
         merged = {**(values or {}), **kwargs}
         before = self._snapshot()
         for elem_name, val in merged.items():
@@ -195,7 +213,11 @@ class BoundProperty[VectorT: Vector]:
             self._vector.message = message
         if not force and self._policy == "on_change" and self._snapshot() == before:
             return
-        self._vector.timestamp = timestamp or dt.datetime.now()
+        # Normalise the argument, not just the default: assigning to a model
+        # attribute skips the field validator that would otherwise do it, so a
+        # caller's naive datetime would reach JSON unlabelled while the XML for
+        # the same emission called it UTC.
+        self._vector.timestamp = as_utc(timestamp) if timestamp is not None else indi_now()
         self._emit(SetVector(vector=self._vector))
 
     def set_all(
@@ -299,12 +321,18 @@ class BoundProperty[VectorT: Vector]:
     def delete(self, message: str | None = None) -> None:
         """Tell the client this property has gone away (``delProperty``).
 
+        The handle goes with the property: :meth:`set` through it afterwards
+        raises instead of publishing an update for something the client has been
+        told no longer exists. A property that comes back comes back through
+        ``define_*``, which hands out a fresh handle.
+
         Parameters
         ----------
         message : str, optional
             Optional explanation to include with the deletion.
         """
         self._emit(DelProperty(device=self._vector.device, name=self._vector.name, message=message))
+        self._retracted = True
 
     def _snapshot(self) -> tuple[dict[str, Any], IPState, str | None]:
         """Return everything a ``set`` would tell the client, minus the timestamp.

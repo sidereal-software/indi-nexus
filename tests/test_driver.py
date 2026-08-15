@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import os
 import sys
 import time
@@ -38,6 +39,7 @@ from indi_nexus.protocol import (
     parse_indi,
     to_xml,
 )
+from indi_nexus.protocol import xml as xml_module
 
 
 class _Harness:
@@ -465,6 +467,272 @@ def test_raising_on_new_handler_does_not_kill_the_driver() -> None:
         assert "Fragile.power" in str(errors[0].message)
 
     asyncio.run(scenario())
+
+
+def test_a_malformed_client_write_does_not_kill_the_driver() -> None:
+    """Junk on stdin costs one message; the driver keeps serving.
+
+    The parse failure happened while the reader *iterated* the parser, so it
+    came up outside ``_handle``'s per-message try/except and ended ``serve()``:
+    ``indiserver`` saw the driver exit and every property went away. The
+    malformed element is now dropped by the codec, so the reader never sees it.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Handler()
+        harness.feed(
+            "<newNumberVector device='Handler' name='power'>"
+            "<oneNumber name='v'>not-a-number</oneNumber></newNumberVector>"
+        )
+        harness.feed(
+            "<newSwitchVector device='Handler' name='power'>"
+            "<oneSwitch name='on'>On</oneSwitch></newSwitchVector>"
+        )
+        harness.eof()
+        async with asyncio.timeout(5):
+            await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        # The good write that followed the junk still reached the handler.
+        assert dev.handled is not None
+        assert dev.handled["on"].value == ISState.ON
+
+    asyncio.run(scenario())
+
+
+def test_a_failing_setup_is_retried_and_does_not_strand_the_periodic_jobs() -> None:
+    """Hardware absent at boot must leave a driver retryable, not wedged.
+
+    ``_setup_done`` used to latch before ``setup()`` ran and ``_setup_complete``
+    only after it returned, so a raising setup was never retried *and* every
+    ``@every`` job waited on the gate forever: zero ticks, one ERROR message,
+    and a process that looks alive to ``indiserver`` while being dead.
+    """
+
+    class _AbsentHardware(Device):
+        """A device whose setup fails until its (fake) hardware turns up."""
+
+        name = "Absent"
+
+        def __init__(self, name: str | None = None) -> None:
+            """Start with the hardware missing and nothing having run."""
+            super().__init__(name)
+            self.present = False
+            self.setup_calls = 0
+            self.ticks = 0
+
+        async def setup(self) -> None:
+            """Fail while the hardware is missing, define the property once it is not."""
+            self.setup_calls += 1
+            if not self.present:
+                raise RuntimeError("no hardware on /dev/ttyUSB0")
+            self.define_number("counters", [Number(name="v")])
+
+        @every(seconds=0.001, start_immediately=True)
+        async def poll(self) -> None:
+            """Tick regardless, so a job can be what notices the hardware appear."""
+            self.ticks += 1
+
+    async def scenario() -> None:
+        """Fail the first getProperties, then succeed on the second."""
+        harness = _Harness()
+        dev = _AbsentHardware()
+        harness.feed("<getProperties/>")  # setup() raises
+        serve = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.05)
+
+        # The gate opened despite the failure, so the jobs are running.
+        assert dev.ticks > 0
+        assert dev.setup_calls == 1
+
+        dev.present = True
+        harness.feed("<getProperties/>")  # retried, and this time it works
+        await asyncio.sleep(0.05)
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        assert dev.setup_calls == 2
+        defs = [m for m in harness.messages() if isinstance(m, DefVector)]
+        assert [d.vector.name for d in defs] == ["counters"]
+        errors = [m for m in harness.messages() if isinstance(m, Message)]
+        assert any("no hardware" in str(m.message) for m in errors)
+
+    asyncio.run(scenario())
+
+
+def test_a_partially_completed_setup_retracts_everything_it_defined() -> None:
+    """A setup that raises half-way leaves no trace, on the wire or in the device.
+
+    The realistic shape is a probe - "channel 1 found, channel 2 found, channel
+    3 timed out" - and ``define_*`` only replaces a name the *retry* defines
+    again. So an orphan used to sit in the device for the life of the process:
+    never retracted, and re-announced to every client that joined later.
+    """
+
+    class _Probing(Device):
+        """A device that probes for channels and fails part-way the first time."""
+
+        name = "Probing"
+
+        def __init__(self, name: str | None = None) -> None:
+            """Start with nothing probed and no handle captured."""
+            super().__init__(name)
+            self.attempts = 0
+            self.transient: BoundProperty[Any] | None = None
+
+        async def setup(self) -> None:
+            """Define what the probe found; the first attempt dies on the last channel."""
+            self.attempts += 1
+            self.define_number("ch1", [Number(name="v")])
+            if self.attempts == 1:
+                self.transient = self.define_number("ch2", [Number(name="v")])
+                raise RuntimeError("ch3 timed out")
+
+    async def scenario() -> None:
+        """Fail the first getProperties, succeed on the second, then re-announce."""
+        harness = _Harness()
+        dev = _Probing()
+        harness.feed("<getProperties/>")  # attempt 1: defines ch1 and ch2, then raises
+        serve = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.05)
+
+        harness.feed("<getProperties/>")  # attempt 2: this time only ch1 exists
+        await asyncio.sleep(0.05)
+        harness.feed("<getProperties/>")  # what a late-joining client sees
+        await asyncio.sleep(0.05)
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        assert dev.attempts == 2
+        assert "ch2" not in dev
+
+        msgs = harness.messages()
+        # ch2 is announced once, by the attempt that defined it, and never again.
+        assert [m.vector.name for m in msgs if isinstance(m, DefVector)] == [
+            "ch1",
+            "ch2",
+            "ch1",
+            "ch1",
+        ]
+        deletions = [m for m in msgs if isinstance(m, DelProperty)]
+        assert [m.name for m in deletions] == ["ch1", "ch2"]
+        assert all("ch3 timed out" in str(m.message) for m in deletions)
+
+        # The handle that attempt handed out is dead, not silently publishing.
+        assert dev.transient is not None
+        with pytest.raises(RuntimeError, match="retracted"):
+            dev.transient.set(v=1.0)
+
+    asyncio.run(scenario())
+
+
+def test_the_rollback_leaves_a_property_a_job_defined_alone() -> None:
+    """The rollback undoes the attempt, not everything the device happens to hold.
+
+    Once the ``@every`` gate opens a job can define properties of its own -
+    that is how a driver heals itself when the hardware turns up - and a later
+    failed setup must not take them with it. Which is why the rollback compares
+    handles instead of assuming a retrying device is empty.
+    """
+
+    class _Healer(Device):
+        """A device whose setup keeps failing while its job defines a property."""
+
+        name = "Healer"
+
+        def __init__(self, name: str | None = None) -> None:
+            """Start with nothing probed."""
+            super().__init__(name)
+            self.attempts = 0
+
+        async def setup(self) -> None:
+            """Define a property, then fail - the hardware is still not there."""
+            self.attempts += 1
+            self.define_number("probe", [Number(name="v")])
+            raise RuntimeError("still no hardware")
+
+        @every(seconds=0.001, start_immediately=True)
+        async def heal(self) -> None:
+            """Define the job's own property once, the way a recovering driver would."""
+            if "healer" not in self:
+                self.define_number("healer", [Number(name="v")])
+
+    async def scenario() -> None:
+        """Fail setup twice, with the job getting its property in between."""
+        harness = _Harness()
+        dev = _Healer()
+        harness.feed("<getProperties/>")
+        serve = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.05)
+        assert "healer" in dev  # the job ran once the gate opened
+
+        harness.feed("<getProperties/>")
+        await asyncio.sleep(0.05)
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        assert dev.attempts == 2
+        assert "healer" in dev
+        msgs = harness.messages()
+        assert [m.name for m in msgs if isinstance(m, DelProperty)] == ["probe", "probe"]
+        # The second rollback re-announces the restored set, which is the job's
+        # property and nothing else.
+        assert [m.vector.name for m in msgs if isinstance(m, DefVector)] == [
+            "probe",
+            "healer",
+            "probe",
+            "healer",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_a_muted_parser_is_resynced_in_place_and_keeps_its_counters(monkeypatch, caplog) -> None:
+    """A driver has one stdin, so it rebuilds the parser instead of reconnecting.
+
+    The rebuild used to throw the old parser away unread, taking the peer's
+    ``dropped``/``resets`` history with it - discarded at the one moment it is
+    most worth having. The counters describe the stream, so they now survive the
+    rebuild and the warning reports them.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+
+    async def scenario() -> None:
+        """Drop an element, mute the parser, then write again after the resync."""
+        harness = _Harness()
+        dev = _Handler()
+        harness.feed(
+            "<newNumberVector device='Handler' name='power'>"
+            "<oneNumber name='v'>not-a-number</oneNumber></newNumberVector>"  # dropped
+        )
+        # A root close landing mid-start-tag: lxml emits nothing from here on.
+        harness.feed("<newSwitchVector device='Handler' name='power'")
+        harness.feed("</indinexus>")
+        for _ in range(4):
+            harness.feed("<message message='swallowed'/>")
+        harness.feed(
+            "<newSwitchVector device='Handler' name='power'>"
+            "<oneSwitch name='on'>On</oneSwitch></newSwitchVector>"
+        )
+        harness.eof()
+        async with asyncio.timeout(5):
+            await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        # The write after the resync reached the handler: the driver kept serving.
+        assert dev.handled is not None
+        assert dev.handled["on"].value == ISState.ON
+
+    with caplog.at_level(logging.WARNING, logger="indi_nexus.driver.runtime"):
+        asyncio.run(scenario())
+
+    # Only this logger's own records: the codec logs each drop as it happens too.
+    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.driver.runtime"]
+    assert "resyncing the parser" in warning
+    assert "1 dropped" in warning  # the malformed element, remembered across the rebuild
 
 
 # --------------------------------------------------------------------------- #

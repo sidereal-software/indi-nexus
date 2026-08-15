@@ -16,6 +16,11 @@ Design notes
 * The ``def`` / ``set`` / ``new`` distinction is a wire *intent*, not a
   different data shape, so it is expressed by the thin event wrappers at the
   bottom of this module rather than by duplicating every vector five times.
+
+* Every timestamp is UTC. INDI requires it (white paper p.5) and libindi writes
+  a bare, offset-less ``%Y-%m-%dT%H:%M:%S``, so :data:`IndiTimestamp` normalises
+  whatever a caller or a peer supplies into an aware UTC datetime in one place -
+  the model - rather than at each of the codecs.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ import datetime as dt
 from collections.abc import Callable, Iterable
 from typing import Annotated, Any, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 
@@ -49,6 +54,54 @@ def slugify(label: str) -> str:
         The label lowercased with runs of whitespace collapsed to underscores.
     """
     return "_".join(label.lower().split())
+
+
+# --------------------------------------------------------------------------- #
+# Timestamps                                                                   #
+# --------------------------------------------------------------------------- #
+def as_utc(value: dt.datetime) -> dt.datetime:
+    """Return a datetime as aware UTC, reading a naive one *as* UTC.
+
+    A bare INDI timestamp carries no offset and means UTC, so that is what a
+    naive datetime is taken to be. Guessing a local offset for an unknown peer
+    would invent information: the same string would mean a different instant
+    depending on where the reader happens to be running.
+
+    Parameters
+    ----------
+    value : datetime
+        The datetime to normalise. Naive values are labelled UTC; aware values
+        in another zone are converted.
+
+    Returns
+    -------
+    value : datetime
+        The same instant, expressed in UTC with ``tzinfo`` set.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=dt.UTC)
+    return value.astimezone(dt.UTC)
+
+
+def indi_now() -> dt.datetime:
+    """Return the current time the way INDI stamps one: aware UTC, whole seconds.
+
+    Truncated to the second because that is the resolution the XML format has:
+    keeping microseconds would let one emission disagree with itself, the JSON
+    carrying a precision the XML for the same message had already dropped.
+
+    Returns
+    -------
+    now : datetime
+        The current UTC time with a zero microsecond field.
+    """
+    return dt.datetime.now(dt.UTC).replace(microsecond=0)
+
+
+#: A wire timestamp: whatever is supplied, held as aware UTC. The static type is
+#: still :class:`datetime.datetime`, so annotations and type checking are
+#: unaffected; only the validated value changes.
+IndiTimestamp = Annotated[dt.datetime, AfterValidator(as_utc)]
 
 
 class _Model(BaseModel):
@@ -163,7 +216,7 @@ class _Vector(_Model):
     group: str | None = None
     state: IPState = IPState.IDLE
     timeout: float | None = None
-    timestamp: dt.datetime | None = None
+    timestamp: IndiTimestamp | None = None
     message: str | None = None
 
     def element(self, name: str) -> Element:
@@ -336,7 +389,7 @@ class DelProperty(_Model):
     tag: Literal["delProperty"] = "delProperty"
     device: str
     name: str | None = None
-    timestamp: dt.datetime | None = None
+    timestamp: IndiTimestamp | None = None
     message: str | None = None
 
 
@@ -345,7 +398,7 @@ class Message(_Model):
 
     tag: Literal["message"] = "message"
     device: str | None = None
-    timestamp: dt.datetime | None = None
+    timestamp: IndiTimestamp | None = None
     message: str = ""
 
 
@@ -373,10 +426,24 @@ class DefVector(_Model):
 
 
 class SetVector(_Model):
-    """A value update to an already-defined property (device -> client)."""
+    """A value update to an already-defined property (device -> client).
+
+    Attributes
+    ----------
+    state_present : bool
+        Whether the wire message actually carried a ``state``. It is
+        ``#IMPLIED`` on every ``set*Vector`` (white paper p.7) and means "no
+        change if absent", where on a ``def*Vector`` it is ``#REQUIRED``. The
+        absence has to survive the parse or it cannot be honoured later, and it
+        rides here rather than on the vector because a vector's ``state`` is
+        never absent in memory - a cached property is always in some state, and
+        making the field nullable would push a `None` into every consumer of a
+        cached vector to no purpose.
+    """
 
     tag: Literal["set"] = "set"
     vector: Vector
+    state_present: bool = True
 
 
 class NewVector(_Model):

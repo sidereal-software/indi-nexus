@@ -154,7 +154,9 @@ def test_on_change_policy_emits_when_only_the_message_moves() -> None:
 def test_on_change_policy_leaves_the_timestamp_alone_when_silent() -> None:
     """A suppressed set does not restamp the vector; nothing was published."""
     prop, _ = _numbers("on_change")
-    stamped = dt.datetime(2026, 1, 1, 12, 0, 0)
+    # Aware, because set() normalises a caller's timestamp to UTC: an aware
+    # value compared against a naive one is quietly False rather than an error.
+    stamped = dt.datetime(2026, 1, 1, 12, 0, 0, tzinfo=dt.UTC)
     prop.set(ra=9.0, timestamp=stamped)
 
     prop.set(ra=9.0)
@@ -350,3 +352,25 @@ def test_text_elements_coerce_non_strings() -> None:
     assert prop.value("count") == "3"
     # ...and it survives the trip to the wire, which a raw int would not.
     assert b">3<" in to_xml(emitted[0])
+
+
+# --------------------------------------------------------------------------- #
+# Retraction                                                                   #
+# --------------------------------------------------------------------------- #
+def test_a_retracted_handle_refuses_to_publish() -> None:
+    """The handle dies with the property, loudly rather than silently.
+
+    The client has been told the property is gone, so a ``set`` through the old
+    handle would put an update on the wire for something that does not exist -
+    which is what a driver holding a handle across a rolled-back ``setup()``
+    would otherwise do.
+    """
+    vector = NumberVector(device="Dev", name="coords", elements=[Number(name="ra")])
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append)
+
+    prop.delete("no hardware")
+
+    with pytest.raises(RuntimeError, match="retracted"):
+        prop.set(ra=1.0)
+    assert len(emitted) == 1  # the delProperty, and nothing after it

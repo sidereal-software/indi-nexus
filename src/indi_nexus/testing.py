@@ -15,8 +15,15 @@ This module gives that a first-class seam::
 
 No sockets, no subprocess, no XML. Writes go through the device's real dispatch
 path - the ``@on_new`` map, the device-name guard, the serialisation lock - so a
-handler that works here works under ``indiserver``, and ticks run through the
-same per-tick isolation the runtime applies.
+handler that works here works under ``indiserver``.
+
+Failures are *not* isolated here, and that is the one place the harness departs
+from the runtime on purpose. Under ``indiserver`` a raising handler or tick is
+caught, reported to the client as an ``ERROR`` message and stepped over; in a
+test that would turn a bug into a missing emission and an assertion failure ten
+lines away from its cause. So :meth:`DeviceHarness.write` and
+:meth:`DeviceHarness.tick` let the exception out with its traceback, and the
+runtime's isolation is covered where it lives, in ``tests/test_driver.py``.
 
 For coverage of the wire itself (framing, chunk boundaries, the codec), drive a
 :class:`~indi_nexus.driver.runtime.DriverRuntime` over byte streams instead; see
@@ -150,8 +157,10 @@ class DeviceHarness:
     async def tick(self, job: str) -> None:
         """Run one iteration of an ``@every`` job, by method name.
 
-        Runs the job body directly - the schedule is the runtime's business, and
-        a test should not have to wait out an interval to see one tick.
+        Runs the job body directly under the device guard - the schedule is the
+        runtime's business, and a test should not have to wait out an interval
+        to see one tick. A job that raises raises here too, rather than being
+        swallowed the way the runtime swallows it; see the module docstring.
 
         Parameters
         ----------

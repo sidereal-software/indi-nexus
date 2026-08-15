@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -34,6 +35,10 @@ from indi_nexus.protocol import (
     to_xml,
 )
 from indi_nexus.transport import ReadFn, WriteFn
+
+# A driver's stderr is relayed into indiserver's own log, so a warning logged
+# here reaches the operator with no logging configuration at all.
+logger = logging.getLogger(__name__)
 
 _READ_CHUNK = 65536
 
@@ -87,7 +92,16 @@ class DriverRuntime:
             await writer
 
     async def _reader_loop(self) -> None:
-        """Read, frame, and dispatch inbound messages until EOF."""
+        """Read, frame, and dispatch inbound messages until EOF.
+
+        A driver cannot reconnect its way out of trouble - stdin is the only
+        input it will ever have - so a parser that has gone mute is resynced in
+        place and the stream picks up at the next well-formed element. The
+        resync keeps the parser's counters, which describe this stdin and not
+        the object being rebuilt, and the warning carries them: a peer's
+        malformed-input history is exactly what an operator wants at the moment
+        the stream goes quiet.
+        """
         parser = XMLStreamParser()
         while True:
             data = await self._read()
@@ -95,6 +109,16 @@ class DriverRuntime:
                 return
             for msg in parser.feed(data):
                 await self._handle(msg)
+            if parser.stalled:
+                logger.warning(
+                    "%s: no message parsed in %d bytes of input; resyncing the parser "
+                    "(%d dropped, %d resets so far on this stream)",
+                    self._device.device,
+                    parser.bytes_since_last_message,
+                    parser.dropped,
+                    parser.resets,
+                )
+                parser.resync()
 
     async def _handle(self, msg: IndiMessage) -> None:
         """Route one inbound message to the device, isolating handler failures.

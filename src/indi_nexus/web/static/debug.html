@@ -118,15 +118,16 @@ function handle(text) {
   try { msg = JSON.parse(text); } catch { return; }
   if (msg.event === "connection") { setDot("up-dot", msg.connected); logLine("event", text); return; }
   logLine(msg.tag || "?", text);
-  if (msg.tag === "def" || msg.tag === "set") applyVector(msg.tag, msg.vector);
+  if (msg.tag === "def" || msg.tag === "set") applyVector(msg);
   else if (msg.tag === "delProperty") applyDelete(msg);
   // message frames only go to the log
   render();
 }
 
-function applyVector(tag, vec) {
+function applyVector(msg) {
+  const vec = msg.vector;
   const dev = (store[vec.device] ||= {});
-  if (tag === "def" || !dev[vec.name]) { dev[vec.name] = vec; return; }
+  if (msg.tag === "def" || !dev[vec.name]) { dev[vec.name] = vec; return; }
   // merge a set onto the cached def: copy element values + status, keep metadata
   const cur = dev[vec.name];
   const byName = Object.fromEntries(cur.elements.map((e) => [e.name, e]));
@@ -136,7 +137,13 @@ function applyVector(tag, vec) {
     if ("value" in el) c.value = el.value;
     if ("data" in el) c.data = el.data;
   }
-  cur.state = vec.state;
+  // `state` is #IMPLIED on a set*Vector and means "no change if absent", so an
+  // absent one must not reset a property latched into Alert. state_present says
+  // whether the XML actually carried it. The bridge relays its own merged cache,
+  // where the state is always set, so this is the belt to the server's braces -
+  // and the chip below renders v.state straight into a class name, which an
+  // undefined would turn into a blank badge.
+  if (msg.state_present !== false && vec.state) cur.state = vec.state;
 }
 
 function applyDelete(msg) {

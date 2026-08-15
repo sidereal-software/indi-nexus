@@ -49,7 +49,17 @@ streaming parser (no runtime DTD reflection, no "accumulate stdin and retry
     is the canonical in-memory property, discriminated on `kind`.
   - `def` / `set` / `new` are a wire **intent**, not different data, so they are thin
     wrappers (`DefVector`, `SetVector`, `NewVector`) around a vector rather than five
-    duplicated classes each.
+    duplicated classes each. Facts about the *message* rather than the property live on
+    the wrapper: `SetVector.state_present` records whether the wire carried a `state`,
+    which is `#IMPLIED` on a `set*Vector` and means "no change if absent". Keeping it
+    there is what lets `Vector.state` stay non-nullable for every reader of a cached
+    property.
+  - Every timestamp is UTC. `IndiTimestamp` (an `AfterValidator` around `as_utc`) is the
+    one normalisation point: a naive datetime is **read as** UTC, because that is what a
+    bare INDI timestamp means, and an aware one is converted. `indi_now()` is the driver
+    default - aware UTC truncated to the second, since the XML format has no more
+    resolution than that. Assigning straight to a model attribute skips the validator, so
+    code that does (`BoundProperty.set`) calls `as_utc` itself.
   - Element metadata (number `format`/`min`/`max`/`step`, switch `rule`) is optional with
     defaults, because `set`/`one` messages carry only `name` + value. Clients merge `set`
     values onto the previous definition, which is standard INDI behavior.
@@ -62,9 +72,31 @@ streaming parser (no runtime DTD reflection, no "accumulate stdin and retry
 - `xml.py` - `to_xml(msg)` serializes; `parse_indi(data)` parses a complete chunk;
   `XMLStreamParser` is the incremental parser for a stream (synthetic root, emits depth-1
   elements as they complete, clears consumed nodes so memory stays flat). Number values
-  honor the INDI printf `format` including the `%m` sexagesimal form (`format_number` /
-  `parse_number` mirror libindi's `fs_sexa` / `f_scansexa`), which is what makes RA/Dec
-  interop work.
+  honor the INDI printf `format` including the `%m` sexagesimal form, which is what makes
+  RA/Dec interop work.
+  - **Nothing a peer sends makes the parser raise.** A raise here escapes the driver
+    runtime's per-message isolation (it happens while *iterating* `feed()`) and kills the
+    client's reconnect loop, so malformed input is absorbed and counted instead:
+    `dropped` for an element whose values would not parse, `resets` for a reopening of the
+    document after an unmatched close tag. `resets` is a framing signal, not a loss count.
+    Both counters describe **the peer on this stream**, not one lxml object: `resync()`
+    rebuilds the parser underneath them and leaves them running. The rule the leniency
+    follows: **a leaf may degrade to a representable absence, it may never invent a
+    value** - `min=''` becomes `None`, a junk `oneNumber` costs the whole element, because
+    `value` is not nullable.
+  - `stalled` is the backstop for the failure the parser cannot see: lxml can be left
+    emitting nothing at all (a root close arriving mid-start-tag), with no event and an
+    empty `error_log`. The reader loops watch `bytes_since_last_message` against
+    `STALL_THRESHOLD_BYTES` and reconnect (client) or call `resync()` (driver), logging
+    the stream's `dropped`/`resets` history as they go. Reopening the document is
+    recovery, not progress, so it leaves the counter running: a peer sending nothing but
+    close tags trips the stall too, rather than holding the budget at zero forever.
+  - `format_number` matches `fs_sexa` including its rounding: half-way values go **away
+    from zero**, not to even. This was a **Python-only** divergence - the TypeScript
+    mirror in `web/packages/client/src/format.ts` was correct all along - so fix them
+    apart, not together. `parse_number` is a deliberate **superset** of `f_scansexa`: it
+    reads sexagesimal on the `set` path too, where libindi uses `std::stod` and would read
+    `10:30:00` as `10.0`. Keep it; matching libindi there is a data-corruption bug.
 - `json.py` - the browser codec. `to_json` / `from_json` mirror `to_xml` / `parse_indi` over
   a `TypeAdapter(IndiMessage)` (the `tag` literals discriminate the union). Same models, so
   the JSON *is* the frontend contract; BLOB bytes travel as base64.
@@ -80,6 +112,15 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
   name lookup cannot know the kind) or the typed getters `self.number/text/switch/light/blob`
   when you need `.vector.elements` narrowed. `self.message()` / `self.log_error()` send INDI
   `message`s; `Device.run()` serves over stdio.
+  - A `setup()` that **raises** is a retry, not a death sentence: the `@every` gate opens
+    anyway (a driver whose jobs never run is dead while still looking alive to
+    `indiserver`, and a job is the only thing left that can notice hardware appearing),
+    and the attempt is not latched, so a later `getProperties` runs `setup()` again. The
+    failed attempt is **rolled back** the way a raising `on_connect` is: everything it
+    defined before raising is retracted with a `delProperty` and dropped, so a partial
+    probe never leaves a channel announced that the retry does not define again. The
+    handles it returned die with it - `set()` on one raises - so reach properties through
+    `self["NAME"]` rather than caching a handle across a failed setup.
   - `define_connection()` adds the standard `CONNECTION` switch with a built-in handler
     (flip + `on_connect`/`on_disconnect` + announcement). A hook that **raises** rolls the
     switch back and leaves the property `Alert` with the reason, so a device never claims a
@@ -122,7 +163,9 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
   Plain `asyncio`: an outbox queue, a writer task, one task per periodic job, all driven by
   the reader until stdin EOF. Inbound dispatch has the same error isolation as ticks - a
   raising `@on_new` handler or `setup()` is reported to the client and swallowed, so one bad
-  client write never kills the driver.
+  client write never kills the driver. A driver cannot reconnect its way out of trouble, so
+  a `stalled` parser is replaced in place and the stream resyncs on the next well-formed
+  element.
 
 ## `testing.py` - the harness
 
@@ -138,6 +181,11 @@ guard and the serialisation lock are all exercised. `tick(job)` runs one iterati
 `latest(name)` (last emission, falling back to the device's live vector so it survives
 `clear()`).
 
+Failures are **not** isolated here, unlike in the runtime: a raising handler or tick comes
+out of `write()`/`tick()` with its traceback, because in a test the runtime's swallow-and-
+report would turn a bug into a missing emission and an assertion failure far from its
+cause. The runtime's isolation is covered where it lives, in `tests/test_driver.py`.
+
 Wire-level concerns - framing, chunk boundaries, the codec - still get a `DriverRuntime` over
 byte streams (`tests/test_driver.py`). The harness deliberately does not touch XML.
 
@@ -149,9 +197,12 @@ cache, always as protocol models and never raw XML.
 - `store.py` - `PropertyStore`, the pure cache (no socket behavior, so trivially testable).
   `apply(msg)` folds one message in following INDI semantics (`def` defines, `set` **merges**
   values and state onto the definition keeping def-only metadata, `del` removes a property or
-  a whole device) and returns a `PropertyEvent`. It holds the subscription registry;
-  `matching(event)` returns the interested callbacks and the client does the actual dispatch,
-  keeping the store pure.
+  a whole device) and returns a `PropertyEvent`. A `set` that carried no `state` leaves the
+  cached one alone (`SetVector.state_present`), so a property latched into `Alert` stays
+  there. That wire rule has three implementations - here, `web/packages/client/src/store.ts`
+  and `web/static/debug.html` - so a change to it belongs in all three. It holds the
+  subscription registry; `matching(event)` returns the interested callbacks and the client
+  does the actual dispatch, keeping the store pure.
 - `client.py` - `IndiClient`. Async context manager or `run()` for monitors. A background
   loop connects, sends `getProperties` and replays any `enableBLOB` policies on every
   reconnect, runs a reader (folds into the store, dispatches to sync **and** async
@@ -160,6 +211,10 @@ cache, always as protocol models and never raw XML.
   Sends: `get_properties`, `enable_blob`, `set_number/text/switch/blob`. The transport is
   injectable, so tests drive it over in-memory streams. Every ended connection - EOF, error
   or `aclose()` - invokes `close`, so the OS socket never lingers between reconnects.
+  Subscriber callbacks are application code and are isolated in the one `_invoke` funnel:
+  a raising callback is logged, not allowed up through the reader where it would look
+  exactly like a dropped server. A parser that has gone mute (`stalled`) ends the
+  connection, and the reconnect is what resyncs.
 
 ## `web/` - the bridge
 

@@ -9,6 +9,7 @@ M1 codec to assert on the exact wire output.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import indi_nexus.client.client as client_module
 from indi_nexus.client import IndiClient
@@ -29,6 +30,7 @@ from indi_nexus.protocol import (
     parse_indi,
     to_xml,
 )
+from indi_nexus.protocol import xml as xml_module
 
 
 class _Server:
@@ -517,6 +519,125 @@ def test_run_blocks_until_interrupted(monkeypatch):
 
     assert not client.connected
     assert any(isinstance(m, GetProperties) for m in server.sent())
+
+
+def test_a_malformed_frame_does_not_kill_the_client():
+    """Junk from the server costs one message, not the session.
+
+    The parse error used to surface while the reader iterated the parser's
+    generator, so it escaped the ``except OSError`` around the connection and
+    ended the reconnect loop for good: the client stayed "up" and never read
+    another byte.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            server.feed(
+                b"<setNumberVector device='CCD' name='EXPOSURE'>"
+                b"<oneNumber name='secs'>not-a-number</oneNumber></setNumberVector>"
+            )
+            await _settle()
+
+            assert client.connected
+            assert client._loop_task is not None and not client._loop_task.done()
+
+            # and the connection is still carrying traffic
+            server.feed(DefVector(vector=_numvec(1.0)))
+            await _settle()
+            assert client.get("CCD", "EXPOSURE") is not None
+
+    asyncio.run(scenario())
+
+
+def test_a_raising_subscriber_does_not_kill_the_client():
+    """Application code is isolated: one bad callback is not a dropped server."""
+
+    def explode(_arg: object) -> None:
+        """Stand in for a subscriber with a bug in it."""
+        raise RuntimeError("boom")
+
+    async def scenario() -> None:
+        server = _Server()
+        seen: list[str] = []
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            client.subscribe(explode)
+            client.subscribe(lambda event: seen.append(event.type))
+            client.on_message(explode)
+
+            server.feed(DefVector(vector=_numvec(1.0)))
+            server.feed(Message(device="CCD", message="hello"))
+            await _settle()
+
+            assert seen == ["def"]  # the healthy subscriber still ran
+            assert client.connected
+            assert client._loop_task is not None and not client._loop_task.done()
+
+    asyncio.run(scenario())
+
+
+def test_a_muted_parser_is_treated_as_a_lost_connection(monkeypatch):
+    """Bytes arriving with no message coming out means reconnect and resync.
+
+    lxml can be left in a state that emits nothing at all - a root close landing
+    mid-start-tag does it - and the client's only way out is a new connection: a
+    fresh parser, and a server that re-sends every definition.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+
+    async def scenario() -> _Server:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            server.feed(b"<setNumberVector device='CCD' name='EXPOSURE'")
+            server.feed(b"</indinexus>")
+            for _ in range(4):
+                server.feed(Message(device="CCD", message="lost"))
+            await _settle()
+
+            assert client.connected  # reconnected rather than sitting mute
+            assert server.closed >= 1
+        return server
+
+    server = asyncio.run(scenario())
+    # The resync is the point: a second getProperties re-enumerates the server.
+    assert len([m for m in server.sent() if isinstance(m, GetProperties)]) >= 2
+
+
+def test_the_stall_warning_carries_what_this_connection_saw(monkeypatch, caplog):
+    """The parser dies with the connection, so its history goes out in the warning.
+
+    Carrying the counters into the *next* connection would be a lie - that is a
+    new parser and a fresh peer state - but dropping them silently at the moment
+    the stream went quiet threw away the evidence of what the peer had been
+    sending. The driver's reader logs the same two numbers before it resyncs.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+
+    async def scenario() -> None:
+        """Drop one element, then mute the parser with a root close mid-start-tag."""
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            server.feed(
+                b"<setNumberVector device='CCD' name='EXPOSURE'>"
+                b"<oneNumber name='secs'>not-a-number</oneNumber></setNumberVector>"
+            )
+            server.feed(b"<setNumberVector device='CCD' name='EXPOSURE'")
+            server.feed(b"</indinexus>")
+            for _ in range(4):
+                server.feed(Message(device="CCD", message="lost"))
+            await _settle()
+
+            assert client.connected
+
+    with caplog.at_level(logging.WARNING, logger="indi_nexus.client.client"):
+        asyncio.run(scenario())
+
+    # Only this logger's own records: the codec logs each drop as it happens too.
+    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.client.client"]
+    assert "reconnecting to resync" in warning
+    assert "1 dropped" in warning
 
 
 def test_reconnects_after_connection_drop():

@@ -55,7 +55,7 @@ class PropertyEvent:
     vector: Vector | None
 
 
-def _merge(dst: Vector, src: Vector) -> None:
+def _merge(dst: Vector, src: Vector, *, state_present: bool = True) -> None:
     """Merge a ``set`` vector's values and status onto a cached definition.
 
     Only values (and vector status) are copied; element metadata such as a
@@ -68,6 +68,12 @@ def _merge(dst: Vector, src: Vector) -> None:
         The cached, previously-defined vector to update in place.
     src : Vector
         The incoming ``set`` vector carrying new values.
+    state_present : bool, optional
+        Whether the wire message carried a ``state``. It is ``#IMPLIED`` on
+        every ``set*Vector`` and means "no change if absent", so a stateless
+        ``set`` must leave the cached state alone rather than reset it to the
+        parsed default - a property latched into ``Alert`` stays there until the
+        device says otherwise.
     """
     by_name = {el.name: el for el in dst.elements}
     for new_el in src.elements:
@@ -81,7 +87,8 @@ def _merge(dst: Vector, src: Vector) -> None:
                 cur.format = new_el.format
         else:
             cur.value = new_el.value  # type: ignore[union-attr]
-    dst.state = src.state
+    if state_present:
+        dst.state = src.state
     if src.timeout is not None:
         dst.timeout = src.timeout
     if src.timestamp is not None:
@@ -171,7 +178,7 @@ class PropertyStore:
             cur = self.get(msg.vector.device, msg.vector.name)
             if cur is None:
                 return None
-            _merge(cur, msg.vector)
+            _merge(cur, msg.vector, state_present=msg.state_present)
             return PropertyEvent("set", cur.device, cur.name, cur)
         if isinstance(msg, DelProperty):
             return self._delete(msg)

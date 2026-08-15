@@ -17,6 +17,7 @@ from indi_nexus.protocol import (
     SetVector,
     Switch,
     SwitchVector,
+    parse_indi,
 )
 
 
@@ -136,6 +137,53 @@ def test_set_carries_timeout_and_message():
     assert cached is not None
     assert cached.timeout == 30.0
     assert cached.message == "exposing"
+
+
+def test_a_stateless_set_leaves_the_cached_state_alone():
+    """``state`` is #IMPLIED on a set*Vector: absent means "no change".
+
+    The value update still lands. Before this, the parse default (``Idle``) was
+    copied over the cached state, so a property the device had latched into
+    ``Alert`` quietly went green on its next reading.
+    """
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec(state=IPState.ALERT)))
+
+    store.apply(SetVector(vector=_numvec(value=7.0), state_present=False))
+
+    cached = store.get("CCD", "EXPOSURE")
+    assert cached is not None
+    assert cached.state is IPState.ALERT
+    assert cached.element("secs").value == 7.0
+
+
+def test_a_stateless_set_parsed_off_the_wire_preserves_the_state():
+    """The same rule, end to end from XML, since the loss happens at parse."""
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec(state=IPState.ALERT)))
+
+    (update,) = parse_indi(
+        "<setNumberVector device='CCD' name='EXPOSURE'>"
+        "<oneNumber name='secs'>7</oneNumber></setNumberVector>"
+    )
+    store.apply(update)
+
+    cached = store.get("CCD", "EXPOSURE")
+    assert cached is not None
+    assert cached.state is IPState.ALERT
+    assert cached.element("secs").value == 7.0
+
+
+def test_a_set_that_carries_state_still_updates_it():
+    """The guard must not make the cache deaf to a real state change."""
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec(state=IPState.ALERT)))
+
+    store.apply(SetVector(vector=_numvec(value=7.0, state=IPState.OK)))
+
+    cached = store.get("CCD", "EXPOSURE")
+    assert cached is not None
+    assert cached.state is IPState.OK
 
 
 def test_getitem_and_iteration_expose_devices():

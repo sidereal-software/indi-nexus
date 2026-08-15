@@ -8,6 +8,15 @@ this project wrote, with no libindi installed and no subprocess.
 Chunk boundaries are the point of the second test. A streaming parser that works on
 whole messages can still break when a tag, an attribute or a multi-byte character is
 split across two reads, and a real socket splits wherever it likes.
+
+Both tests also assert the parser's leniency counters stayed at zero. The parser
+absorbs malformed input rather than raising, so without that assertion a future
+regression could quietly drop half the recording and still "parse" it.
+
+What this corpus does *not* cover: it is an 8-second capture taken right after
+``getProperties``, so it is definitions only - 71 ``defSwitchVector``, 30
+``defTextVector``, 25 ``defNumberVector``, and no ``set``, ``message``,
+``delProperty`` or BLOB at all. It says nothing about the update paths.
 """
 
 from __future__ import annotations
@@ -43,6 +52,8 @@ def test_every_recorded_message_parses():
     parser = XMLStreamParser()
     messages = list(parser.feed(_corpus()))
     assert len(messages) > 100, f"only {len(messages)} messages parsed"
+    assert parser.dropped == 0, "real hub traffic should need no leniency"
+    assert parser.resets == 0
 
     store = PropertyStore()
     for message in messages:
@@ -77,3 +88,5 @@ def test_the_corpus_parses_at_any_chunk_boundary(size):
     assert got == expected, (
         f"chunking at {size} bytes changed the parse: {len(got)} vs {len(expected)} messages"
     )
+    assert chunked.dropped == 0, f"chunking at {size} bytes made the parser drop elements"
+    assert chunked.resets == 0

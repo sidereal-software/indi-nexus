@@ -17,6 +17,7 @@ from indi_nexus.protocol.models import (
     EnableBLOB,
     GetProperties,
     IndiMessage,
+    IndiTimestamp,
     Light,
     LightVector,
     Message,
@@ -29,6 +30,8 @@ from indi_nexus.protocol.models import (
     Text,
     TextVector,
     Vector,
+    as_utc,
+    indi_now,
     slugify,
 )
 from indi_nexus.protocol.xml import XMLStreamParser, parse_indi, to_xml
@@ -64,6 +67,10 @@ __all__ = [
     "SetVector",
     "NewVector",
     "IndiMessage",
+    # timestamps
+    "IndiTimestamp",
+    "as_utc",
+    "indi_now",
     # codec
     "to_xml",
     "parse_indi",

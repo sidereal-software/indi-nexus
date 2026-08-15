@@ -44,6 +44,7 @@ from indi_nexus.protocol import (
     Text,
     TextVector,
     Vector,
+    indi_now,
 )
 
 Emit = Callable[[IndiMessage], None]
@@ -730,12 +731,13 @@ class Device:
         level : str, optional
             A severity label prefixed to the text (e.g. ``INFO``, ``ERROR``).
         timestamp : datetime, optional
-            Message timestamp; defaults to now.
+            Message timestamp; defaults to now. INDI timestamps are UTC, so a
+            naive one is read as UTC and an aware one is converted.
         """
         self._send(
             Message(
                 device=self._device,
-                timestamp=timestamp or dt.datetime.now(),
+                timestamp=timestamp or indi_now(),
                 message=f"[{level}] {text}",
             )
         )
@@ -805,6 +807,35 @@ class Device:
         The first matching request runs :meth:`setup`; later ones (a late-joining
         client) re-emit the ``def`` for every property already defined.
 
+        A :meth:`setup` that **raises** - hardware absent at boot, the ordinary
+        case - is not a terminal state:
+
+        * The ``@every`` gate is released either way. A driver whose periodic
+          jobs never run is dead while still looking alive to ``indiserver``,
+          and nothing but those jobs is left to notice the hardware appearing.
+          A tick that then fails is isolated and reported per tick, so the
+          failure is loud instead of invisible - and a job written to reconnect
+          can heal the device on its own.
+        * The attempt is not latched, so a later ``getProperties`` retries it,
+          and the failed attempt leaves nothing behind: whatever it defined
+          before it raised is retracted with a ``delProperty`` and dropped, so
+          the retry starts from the state the device was in before it. This is
+          the rule :meth:`_on_connection_write` already follows for a hook that
+          raises - roll back, do not half-commit - and it is what a probing
+          setup needs ("channel 1 found, channel 2 found, channel 3 timed
+          out"): without it, channel 2 stays defined for the life of the
+          process and is re-announced to every client that joins later, even
+          though the retry never defines it again.
+
+        A handle captured during the failed attempt is retracted along with its
+        property, and :meth:`BoundProperty.set` on a retracted handle raises
+        rather than publish an update for something the client has been told is
+        gone. Reach properties through ``self["NAME"]`` rather than caching what
+        a ``define_*`` returned across a failure.
+
+        The exception itself still propagates, so the runtime reports it to the
+        client.
+
         Parameters
         ----------
         request : GetProperties
@@ -814,12 +845,53 @@ class Device:
             return
         async with self._guard():
             if not self._setup_done:
+                # Latched before the await, not after: a second getProperties
+                # arriving mid-setup must not start setup() a second time.
                 self._setup_done = True
-                await self.setup()
-                self._setup_complete.set()
+                announced = dict(self._properties)
+                try:
+                    await self.setup()
+                except Exception as exc:
+                    self._roll_back_setup(announced, exc)
+                    self._setup_done = False  # let a later getProperties retry
+                    raise
+                finally:
+                    self._setup_complete.set()
             else:
                 for prop in self._properties.values():
                     self._send(DefVector(vector=prop.vector))
+
+    def _roll_back_setup(self, announced: dict[str, BoundProperty[Any]], exc: Exception) -> None:
+        """Undo the property definitions of a :meth:`setup` attempt that raised.
+
+        The device goes back to ``announced`` and the client is brought back in
+        line with it: every property the attempt introduced is retracted with a
+        ``delProperty``, because the client has already seen its ``def`` and
+        dropping it here alone would leave a panel rendering a property the
+        driver no longer has, and the restored set is re-announced, which is the
+        same repeated ``def`` a late-joining client gets.
+
+        Identity, not name, decides what the attempt introduced. In practice
+        ``announced`` is empty - a setup that succeeded is never retried - but a
+        property defined outside :meth:`setup`, by an ``@every`` job that got in
+        first, must survive a failed attempt whether or not the attempt happened
+        to redefine its name.
+
+        Parameters
+        ----------
+        announced : dict
+            The properties as they stood before the attempt began, keyed by
+            name. The device is restored to exactly this mapping.
+        exc : Exception
+            The failure, quoted to the client on each retraction so the panel
+            says why the property went away.
+        """
+        for name, prop in self._properties.items():
+            if announced.get(name) is not prop:
+                prop.delete(message=f"{self._device} setup failed: {exc}")
+        self._properties = announced
+        for prop in announced.values():
+            self._send(DefVector(vector=prop.vector))
 
     async def _dispatch_new(self, vector: Vector) -> None:
         """Route a client write to its ``@on_new`` handler or the default.

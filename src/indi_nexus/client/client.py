@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -46,12 +47,12 @@ from indi_nexus.protocol import (
 )
 from indi_nexus.transport import CloseFn, ReadFn, WriteFn, open_tcp
 
+logger = logging.getLogger(__name__)
+
 Connect = Callable[[], Awaitable[tuple[ReadFn, WriteFn, CloseFn]]]
 MessageCallback = Callable[[Message], object]
 ConnectionCallback = Callable[[bool], object]
 Predicate = Callable[[Vector], bool]
-
-_READ_CHUNK = 65536
 
 
 def _coerce_switch(value: Any) -> ISState:
@@ -167,31 +168,44 @@ class IndiClient:
 
     # -- connection loop --------------------------------------------------- #
     async def _connection_loop(self) -> None:
-        """Connect, serve, and reconnect until :meth:`aclose` is called."""
-        while not self._closing:
-            try:
-                read, write, close = await self._connect()
-            except (OSError, TimeoutError):
+        """Connect, serve, and reconnect until :meth:`aclose` is called.
+
+        This task is the whole engine: if it stops, nothing reads and nothing
+        reconnects, and the client goes on reporting whatever it last cached. So
+        an unexpected failure is logged rather than dying quietly in a task
+        nobody awaits. It is re-raised rather than retried - a loop that retries
+        a failure it does not understand can spin hot forever.
+        """
+        try:
+            while not self._closing:
+                try:
+                    read, write, close = await self._connect()
+                except (OSError, TimeoutError):
+                    await asyncio.sleep(self._reconnect_delay)
+                    continue
+                self._connected = True
+                self._enqueue_handshake()
+                self._ready.set()
+                await self._dispatch_connection(True)
+                try:
+                    await self._run_connection(read, write)
+                except OSError:  # ConnectionError is an OSError subclass
+                    pass
+                finally:
+                    self._connected = False
+                    # Always release the socket - on EOF, error, or cancellation
+                    # via aclose() - so the peer sees FIN, not a half-open socket.
+                    with contextlib.suppress(OSError):
+                        await close()
+                    await self._dispatch_connection(False)
+                if self._closing:
+                    break
                 await asyncio.sleep(self._reconnect_delay)
-                continue
-            self._connected = True
-            self._enqueue_handshake()
-            self._ready.set()
-            await self._dispatch_connection(True)
-            try:
-                await self._run_connection(read, write)
-            except (OSError, ConnectionError):
-                pass
-            finally:
-                self._connected = False
-                # Always release the socket - on EOF, error, or cancellation via
-                # aclose() - so the peer sees FIN instead of a half-open socket.
-                with contextlib.suppress(OSError):
-                    await close()
-                await self._dispatch_connection(False)
-            if self._closing:
-                break
-            await asyncio.sleep(self._reconnect_delay)
+        except asyncio.CancelledError:
+            raise  # aclose() cancels us; that is not a failure
+        except Exception:
+            logger.exception("indi client connection loop stopped")
+            raise
 
     def _enqueue_handshake(self) -> None:
         """Queue the messages sent on every (re)connect: enumerate + BLOB policies."""
@@ -219,6 +233,16 @@ class IndiClient:
     async def _reader_loop(self, read: ReadFn) -> None:
         """Read, frame, and dispatch inbound messages until EOF.
 
+        Returning ends the connection, which the loop above then re-establishes.
+        A parser that has stopped producing messages while the peer keeps
+        sending is treated as an ended connection for exactly that reason: a
+        reconnect is the client's way of getting a fresh parser and a server
+        that re-sends every definition.
+
+        The parser's counters describe the connection, so they go out with it:
+        the warning reports what this connection saw before it went quiet, since
+        the next one starts a parser - and a history - from scratch.
+
         Parameters
         ----------
         read : ReadFn
@@ -231,6 +255,17 @@ class IndiClient:
                 return
             for msg in parser.feed(data):
                 await self._handle(msg)
+            if parser.stalled:
+                logger.warning(
+                    "no message parsed in %d bytes from %s:%d "
+                    "(%d dropped, %d resets on this connection); reconnecting to resync",
+                    parser.bytes_since_last_message,
+                    self._host,
+                    self._port,
+                    parser.dropped,
+                    parser.resets,
+                )
+                return
 
     async def _handle(self, msg: IndiMessage) -> None:
         """Fold one inbound message into the store and dispatch callbacks.
@@ -264,6 +299,13 @@ class IndiClient:
     async def _invoke(callback: Callable[..., object], arg: object) -> None:
         """Call a callback, awaiting it if it returns a coroutine.
 
+        Every dispatch to application code funnels through here, which is why
+        the isolation lives here: a subscriber that raises would otherwise come
+        up through the reader and take the connection with it, so one bad
+        callback would look exactly like a dropped server.
+        :class:`asyncio.CancelledError` is a :class:`BaseException`, so
+        :meth:`aclose`'s cancellation still propagates.
+
         Parameters
         ----------
         callback : Callable
@@ -271,9 +313,12 @@ class IndiClient:
         arg : object
             The single argument passed to the callback.
         """
-        result = callback(arg)
-        if inspect.isawaitable(result):
-            await result
+        try:
+            result = callback(arg)
+            if inspect.isawaitable(result):
+                await result
+        except Exception:  # noqa: BLE001 - deliberate per-callback isolation
+            logger.exception("indi client subscriber %r failed", callback)
 
     async def _dispatch_connection(self, up: bool) -> None:
         """Notify connection-state subscribers of a transition.
@@ -462,16 +507,6 @@ class IndiClient:
         """
         self._outbox.put_nowait(msg)
 
-    async def _send(self, msg: IndiMessage) -> None:
-        """Queue one message for the writer.
-
-        Parameters
-        ----------
-        msg : IndiMessage
-            The message to send.
-        """
-        self._outbox.put_nowait(msg)
-
     async def get_properties(self, device: str | None = None, name: str | None = None) -> None:
         """Ask the server to (re-)send property definitions.
 
@@ -482,7 +517,7 @@ class IndiClient:
         name : str, optional
             Restrict to one property; `None` requests every property.
         """
-        await self._send(GetProperties(device=device, name=name))
+        await self.send(GetProperties(device=device, name=name))
 
     async def enable_blob(
         self, device: str, name: str | None = None, policy: BLOBPolicy = BLOBPolicy.ALSO
@@ -503,7 +538,7 @@ class IndiClient:
         """
         msg = EnableBLOB(device=device, name=name, policy=policy)
         self._blob_policies[(device, name)] = msg
-        await self._send(msg)
+        await self.send(msg)
 
     async def set_number(self, device: str, name: str, values: dict[str, float]) -> None:
         """Send new number values for a property.
@@ -519,7 +554,7 @@ class IndiClient:
         """
         elements = [Number(name=k, value=v) for k, v in values.items()]
         vector = NumberVector(device=device, name=name, elements=elements)
-        await self._send(NewVector(vector=vector))
+        await self.send(NewVector(vector=vector))
 
     async def set_text(self, device: str, name: str, values: dict[str, str]) -> None:
         """Send new text values for a property.
@@ -535,7 +570,7 @@ class IndiClient:
         """
         elements = [Text(name=k, value=v) for k, v in values.items()]
         vector = TextVector(device=device, name=name, elements=elements)
-        await self._send(NewVector(vector=vector))
+        await self.send(NewVector(vector=vector))
 
     async def set_switch(self, device: str, name: str, values: dict[str, Any]) -> None:
         """Send new switch states for a property.
@@ -552,7 +587,7 @@ class IndiClient:
         """
         elements = [Switch(name=k, value=_coerce_switch(v)) for k, v in values.items()]
         vector = SwitchVector(device=device, name=name, elements=elements)
-        await self._send(NewVector(vector=vector))
+        await self.send(NewVector(vector=vector))
 
     async def set_blob(self, device: str, name: str, values: dict[str, bytes]) -> None:
         """Send new BLOB payloads for a property.
@@ -567,7 +602,7 @@ class IndiClient:
             Mapping of element name to raw ``bytes`` payload.
         """
         elements = [BLOB(name=k, data=v, size=len(v)) for k, v in values.items()]
-        await self._send(NewVector(vector=BLOBVector(device=device, name=name, elements=elements)))
+        await self.send(NewVector(vector=BLOBVector(device=device, name=name, elements=elements)))
 
     def run(self) -> None:
         """Connect and process the stream until interrupted (blocking).
