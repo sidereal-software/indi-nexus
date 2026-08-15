@@ -39,6 +39,29 @@ class _Pipe:
         self._q.put_nowait(b"")
 
 
+async def _connect_device(client: IndiClient) -> None:
+    """Turn the demo device's CONNECTION switch on and wait for it to take.
+
+    Every example driver guards its handlers with ``require_connected()``, so a
+    client that skips this gets an ``ERROR`` message back instead of the write it
+    asked for - exactly as a real client would.
+
+    Parameters
+    ----------
+    client : IndiClient
+        The connected client to drive.
+    """
+    await client.set_switch("Demo", "CONNECTION", {"CONNECT": True})
+    # The built-in handler publishes Busy first and Ok once on_connect returns,
+    # so wait for the settled state rather than the first set to arrive.
+    await client.wait_for(
+        "Demo",
+        "CONNECTION",
+        lambda v: v.element("CONNECT").value == ISState.ON and v.state == IPState.OK,
+        timeout=2,
+    )
+
+
 def test_driver_and_client_interoperate():
     """A client drives the demo device end-to-end: enumerate, set, confirm."""
 
@@ -65,6 +88,8 @@ def test_driver_and_client_interoperate():
                 power = await client.wait_for("Demo", "power", timeout=2)
                 assert power is not None
                 assert "Demo" in client.store
+
+                await _connect_device(client)
 
                 # Client turns the switch on; the driver's @on_new echoes it back.
                 await client.set_switch("Demo", "power", {"on": True})
@@ -113,6 +138,7 @@ def test_bridge_relays_driver_to_a_browser_sink():
         await bridge.start()
         try:
             await client.wait_for("Demo", "power", timeout=2)
+            await _connect_device(client)
             bridge.add_sink(sink)
 
             # A browser turns the power switch on; it flows bridge -> client ->

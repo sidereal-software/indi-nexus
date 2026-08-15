@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """A reference INDINexus driver.
 
-It exposes one of every INDI vector kind, uses ``@every`` to animate them once a
-second, and handles a client write to the switch vector with ``@on_new``. Run it
-as a child of ``indiserver``::
+It exposes the standard ``CONNECTION`` switch plus a number, a text, a light and a
+switch vector, uses ``@every`` to animate them once a second while connected, and
+handles a client write to the switch vector with ``@on_new``. There is no BLOB
+here; ``ccd_device.py`` is the example that publishes one. Run it as a child of
+``indiserver``::
 
     indiserver ./examples/demo_device.py
 
@@ -39,7 +41,10 @@ class Demo(Device):
         self._tick = 0
 
     async def setup(self) -> None:
-        """Define one of each vector kind and announce readiness."""
+        """Define the connection switch, one of each vector kind, and announce readiness."""
+        # Every device gets this, including a simulated one. It is the property
+        # clients look for first, and it is what gates the animation below.
+        self.define_connection()
         self.define_number(
             "counters",
             [
@@ -76,12 +81,24 @@ class Demo(Device):
         )
         self.message("Demo device ready.")
 
-    @every(seconds=1)
+    async def on_disconnect(self) -> None:
+        """Park the animated properties when the client goes away.
+
+        The ``@every`` job stops on its own because it is declared
+        ``when_connected=True``, but whatever it published last would otherwise
+        sit there looking live. A real driver closes its hardware link here.
+        """
+        self._quiesce()
+        self["power"].set(off=ISState.ON, state=IPState.IDLE)
+
+    @every(seconds=1, when_connected=True)
     async def animate(self) -> None:
         """Advance the counter and cycle every property through the states.
 
-        Only ticks while the power switch is on, so the demo sits quietly at
-        startup until a client flips it.
+        ``when_connected=True`` pauses this while the client is disconnected, so
+        the two gates differ: connection decides whether the driver is running at
+        all, and the power switch decides whether this particular job does
+        anything.
         """
         if self["power"]["on"].value is not ISState.ON:
             return
@@ -100,15 +117,20 @@ class Demo(Device):
         full pair - so ``selected()`` asks "which element is On in the request",
         never assuming a particular element is present.
         """
+        if not self.require_connected():
+            return
         turned_on = vector.selected() == "on"
         # OneOfMany: setting one member On clears its sibling.
         self["power"].set(**{"on" if turned_on else "off": ISState.ON}, state=IPState.OK)
         if not turned_on:
-            # Park the animated properties in a quiet Idle state.
-            self["counters"].set(state=IPState.IDLE)
-            self["status_text"].set(value="Idle", state=IPState.IDLE)
-            self["status_light"].set(value=IPState.IDLE, state=IPState.IDLE)
+            self._quiesce()
         self.message(f"Power turned {'on' if turned_on else 'off'}.")
+
+    def _quiesce(self) -> None:
+        """Park the animated properties in a quiet Idle state."""
+        self["counters"].set(state=IPState.IDLE)
+        self["status_text"].set(value="Idle", state=IPState.IDLE)
+        self["status_light"].set(value=IPState.IDLE, state=IPState.IDLE)
 
 
 if __name__ == "__main__":

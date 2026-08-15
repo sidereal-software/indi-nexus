@@ -99,11 +99,26 @@ def test_monitor_consumes_updates():
     asyncio.run(scenario())
 
 
-def _switch_write(element: str) -> SwitchVector:
+def _switch_write(element: str, prop: str = "power") -> SwitchVector:
     """Build a panel-style OneOfMany write naming only the selected element."""
-    return SwitchVector(
-        device="Demo", name="power", elements=[Switch(name=element, value=ISState.ON)]
-    )
+    return SwitchVector(device="Demo", name=prop, elements=[Switch(name=element, value=ISState.ON)])
+
+
+async def _demo(*, connect: bool = True) -> tuple[Demo, list[object]]:
+    """Build a set-up demo device with its emitted messages captured.
+
+    Parameters
+    ----------
+    connect : bool, optional
+        Whether to turn the CONNECTION switch on, as an operator would first.
+    """
+    captured: list[object] = []
+    device = Demo()
+    device._bind(captured.append)
+    await device.setup()
+    if connect:
+        await device._dispatch_new(_switch_write("CONNECT", "CONNECTION"))
+    return device, captured
 
 
 def _counter_sets(captured: list[object]) -> list[SetVector]:
@@ -115,10 +130,7 @@ def test_demo_animation_only_runs_while_power_is_on():
     """The demo's animation is gated on the power switch."""
 
     async def scenario() -> None:
-        captured: list[object] = []
-        device = Demo()
-        device._bind(captured.append)
-        await device.setup()
+        device, captured = await _demo()
 
         await device.animate()  # power starts Off
         assert _counter_sets(captured) == []
@@ -144,10 +156,7 @@ def test_demo_power_off_accepts_partial_write_and_parks_idle():
     """
 
     async def scenario() -> None:
-        captured: list[object] = []
-        device = Demo()
-        device._bind(captured.append)
-        await device.setup()
+        device, _ = await _demo()
 
         await device._dispatch_new(_switch_write("on"))
         await device._dispatch_new(_switch_write("off"))
@@ -158,6 +167,51 @@ def test_demo_power_off_accepts_partial_write_and_parks_idle():
         # The animated properties were parked in Idle.
         assert device["status_light"].vector.state is IPState.IDLE
         assert device["status_text"]["value"].value == "Idle"
+
+    asyncio.run(scenario())
+
+
+def test_demo_defines_a_connection_and_starts_disconnected():
+    """Every example driver exposes CONNECTION, and it starts off."""
+
+    async def scenario() -> None:
+        device, _ = await _demo(connect=False)
+
+        assert "CONNECTION" in device
+        assert not device.connected
+
+    asyncio.run(scenario())
+
+
+def test_demo_refuses_power_writes_while_disconnected():
+    """A client write is rejected until the operator has pressed Connect."""
+
+    async def scenario() -> None:
+        device, captured = await _demo(connect=False)
+
+        await device._dispatch_new(_switch_write("on"))
+
+        assert device["power"]["on"].value is ISState.OFF
+        assert any("not connected" in str(getattr(m, "message", "")) for m in captured)
+
+    asyncio.run(scenario())
+
+
+def test_demo_parks_its_properties_when_the_client_disconnects():
+    """Disconnecting stops the animation and leaves nothing looking live."""
+
+    async def scenario() -> None:
+        device, _ = await _demo()
+        await device._dispatch_new(_switch_write("on"))
+        await device.animate()
+        assert device["status_light"].vector.state is not IPState.IDLE
+
+        await device._dispatch_new(_switch_write("DISCONNECT", "CONNECTION"))
+
+        assert not device.connected
+        assert device["status_light"].vector.state is IPState.IDLE
+        assert device["status_text"]["value"].value == "Idle"
+        assert device["power"]["off"].value is ISState.ON
 
     asyncio.run(scenario())
 
@@ -923,19 +977,27 @@ def test_ccd_rejects_commands_while_disconnected():
 # --------------------------------------------------------------------------- #
 # The flat-field lamp example (the "Writing a driver" guide)                    #
 # --------------------------------------------------------------------------- #
-async def _flat() -> tuple[FlatPanel, list[object]]:
-    """Build a set-up flat panel with its emitted messages captured."""
+async def _flat(*, connect: bool = True) -> tuple[FlatPanel, list[object]]:
+    """Build a set-up flat panel with its emitted messages captured.
+
+    Parameters
+    ----------
+    connect : bool, optional
+        Whether to turn the CONNECTION switch on (as an operator would first).
+    """
     captured: list[object] = []
     panel = FlatPanel()
     panel._bind(captured.append)
     await panel.setup()
+    if connect:
+        await panel._dispatch_new(_flat_switch("CONNECTION", "CONNECT"))
     return panel, captured
 
 
-def _flat_switch(element: str) -> SwitchVector:
-    """Build a panel-style lamp write naming only the selected element."""
+def _flat_switch(prop: str, element: str) -> SwitchVector:
+    """Build a panel-style switch write naming only the selected element."""
     return SwitchVector(
-        device="Flat Panel", name="LIGHT_CONTROL", elements=[Switch(name=element, value=ISState.ON)]
+        device="Flat Panel", name=prop, elements=[Switch(name=element, value=ISState.ON)]
     )
 
 
@@ -949,10 +1011,13 @@ def _flat_brightness(value: float) -> NumberVector:
 
 
 def test_flat_panel_starts_off_with_a_declared_brightness_range():
-    """Setup advertises an exclusive lamp switch, off, and a bounded brightness."""
+    """Setup advertises a connection switch, an exclusive lamp, and a bounded dial."""
 
     async def scenario() -> None:
-        panel, _ = await _flat()
+        panel, _ = await _flat(connect=False)
+        assert panel["CONNECTION"]["DISCONNECT"].value is ISState.ON
+        assert not panel.connected
+
         lamp = panel["LIGHT_CONTROL"].vector
         assert lamp.rule is ISRule.ONE_OF_MANY
         assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
@@ -970,13 +1035,13 @@ def test_flat_panel_lamp_toggles_exclusively():
     async def scenario() -> None:
         panel, captured = await _flat()
 
-        await panel._dispatch_new(_flat_switch("ON"))
+        await panel._dispatch_new(_flat_switch("LIGHT_CONTROL", "ON"))
         assert panel["LIGHT_CONTROL"]["ON"].value is ISState.ON
         assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.OFF
         assert panel["LIGHT_CONTROL"].vector.state is IPState.OK
         assert _has_message(captured, "Lamp turned on.")
 
-        await panel._dispatch_new(_flat_switch("OFF"))
+        await panel._dispatch_new(_flat_switch("LIGHT_CONTROL", "OFF"))
         assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
         assert panel["LIGHT_CONTROL"]["ON"].value is ISState.OFF
         assert _has_message(captured, "Lamp turned off.")
@@ -999,5 +1064,39 @@ def test_flat_panel_brightness_is_clamped_to_its_range():
         await panel._dispatch_new(_flat_brightness(-5))
         assert panel["LIGHT_BRIGHTNESS"]["BRIGHTNESS"].value == MIN_BRIGHTNESS
         assert panel["LIGHT_BRIGHTNESS"].vector.state is IPState.OK
+
+    asyncio.run(scenario())
+
+
+def test_flat_panel_rejects_commands_while_disconnected():
+    """Lamp and brightness writes are refused until CONNECTION is on."""
+
+    async def scenario() -> None:
+        panel, captured = await _flat(connect=False)
+
+        await panel._dispatch_new(_flat_switch("LIGHT_CONTROL", "ON"))
+        await panel._dispatch_new(_flat_brightness(200))
+
+        assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
+        assert panel["LIGHT_BRIGHTNESS"]["BRIGHTNESS"].value == 128
+        assert _has_message(captured, "Flat Panel is not connected.")
+
+    asyncio.run(scenario())
+
+
+def test_flat_panel_turns_the_lamp_off_when_the_client_disconnects():
+    """Disconnecting darkens the lamp, because a lit panel fogs the next exposure."""
+
+    async def scenario() -> None:
+        panel, captured = await _flat()
+        await panel._dispatch_new(_flat_switch("LIGHT_CONTROL", "ON"))
+        assert panel["LIGHT_CONTROL"]["ON"].value is ISState.ON
+
+        await panel._dispatch_new(_flat_switch("CONNECTION", "DISCONNECT"))
+
+        assert panel["LIGHT_CONTROL"]["ON"].value is ISState.OFF
+        assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
+        assert panel["LIGHT_CONTROL"].vector.state is IPState.IDLE
+        assert _has_message(captured, "Lamp turned off on disconnect.")
 
     asyncio.run(scenario())
