@@ -98,13 +98,25 @@
      background and as the dark foreground on the fill - and 6.30:1 at the /90 hover. */
   --primary: #a99ae4;
   --primary-foreground: #121113;
-  --secondary: #5f8787;
+  /* The action colour, worn by the selected member of a switch vector and by the
+     Set button. It was #5f8787, which is only deltaE 5.7 from `--state-idle` under
+     deuteranomaly - so the one element a client has turned On was near enough
+     indistinguishable from an Idle light for a red-green colour-blind operator, which
+     is the failure the `--state-*` colours were tuned to avoid. This is the same cyan
+     the documentation chrome uses as its slate accent, which puts it deltaE 23.2 from
+     the nearest state in the worst of normal, deuteranomalous and protanomalous
+     vision, and 8.37:1 against the background. */
+  --secondary: #38bcd6;
   --secondary-foreground: #121113;
   --muted: #222222;
   --muted-foreground: #888888;
   --accent: #333333;
   --accent-foreground: #c1c1c1;
-  --destructive: #5f8787;
+  /* Was #5f8787: byte-identical to `--secondary` above, so a destructive button and a
+     secondary one were the same colour in dark mode. Light mode had the red all along;
+     the dark block simply lost it. 5.00:1 on the background, and deltaE 11.3 from
+     `--state-alert` - related, as danger should be, without being the same swatch. */
+  --destructive: #ef4444;
   --border: #222222;
   --input: #222222;
   --ring: #a99ae4;
