@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indi-nexus"
-version = "0.1.0"
+version = "0.2.0"
 description = "A modern, typed Python framework for INDI instrument control: driver SDK, async client, and FastAPI web bridge."
 readme = "README.md"
 license = { file = "LICENSE" }
