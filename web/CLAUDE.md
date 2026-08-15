@@ -101,6 +101,13 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
 
 - **The simulators mirror real drivers.** Change a driver's properties or its safety rule and
   change its simulator too, or the demo stops being a demo of anything.
+- **Every simulator has a `CONNECTION` property**, for the same reason every example driver
+  does (see `src/indi_nexus/CLAUDE.md`): it is the first thing a client looks for, and a demo
+  without one shows visitors a device shape that does not exist in the field. It has to
+  behave, not just appear. Writes are refused while disconnected, and disconnecting leaves
+  the instrument safe and its properties `Idle`. These demos are the first contact most
+  people have with the project, so a panel whose Connect button does nothing is worse than
+  no demo.
 - **Construct a simulator lazily *inside* `webSocketFactory`.** It starts delivering frames
   the moment it exists, and a client that has not attached its handlers yet misses every
   `def`.

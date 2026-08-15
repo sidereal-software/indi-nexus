@@ -149,6 +149,14 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
     result matches what clients were last told. `force=True` overrides.
   - The protocol models stay behavior-free. This wrapper is where "and tell the client"
     lives.
+  - **A message leaving here carries a detached copy of the vector, never the live one.**
+    `BoundProperty` owns the only mutable vector a driver has, so it is the only place that
+    can leak one, and it builds every vector-carrying message itself (`_detached`, and
+    `_announce` for the `def` that `Device.define` used to construct). The outbox is a
+    queue drained by a separate writer task, so a handler that reports `Busy`, works, then
+    reports `Ok` would otherwise serialise both frames from the same object after both
+    mutations and put `Ok` on the wire twice. That is the commonest shape in a driver, and
+    it was silently broken. Do not reintroduce a `SetVector(vector=self._vector)` anywhere.
 - `scheduling.py` - `@every(seconds=, minutes=, hours=)` only *tags* a method;
   discovery and execution are **per instance**, one supervised task each, with per-tick error
   isolation. Ticks run against a rolling **deadline** (in `runtime.py`) rather than sleeping
@@ -246,8 +254,24 @@ is import-tested so it cannot rot); `serve` runs the web bridge; `run module:att
 
 ## The examples
 
-- `examples/demo_device.py` - the reference driver: one of each vector kind, an `@every`
-  animation gated on a power switch, an `@on_new` handler.
+**Every example driver calls `define_connection()`, without exception.** `CONNECTION` is
+the property a client looks for first, libindi's `INDI::DefaultDevice` provides it
+implicitly, and an example without one teaches a device shape that does not exist in the
+field. That means all four of these, not just the first:
+
+- `define_connection()` is the first line of `setup()`.
+- Every `@on_new` handler opens with `if not self.require_connected(): return`.
+- A job that touches hardware is `@every(..., when_connected=True)`.
+- `on_disconnect()` leaves the instrument safe and its properties `Idle`, so nothing keeps
+  reading live after the client has gone. Skip `on_connect()` when there is genuinely
+  nothing to open; an empty override teaches nothing.
+
+The same rule holds for the TypeScript simulators that mirror these drivers, which is
+`web/CLAUDE.md`'s problem but the same requirement.
+
+- `examples/demo_device.py` - the reference driver: a number, a text, a light and a switch
+  vector (no BLOB; `ccd_device.py` has that), an `@every` animation gated on both the
+  connection and a power switch, an `@on_new` handler.
 - `examples/weather_device.py` - the reference **site** driver: a blocking vendor-style
   client behind `off_thread`, the connection lifecycle, hardware that stops answering, and
   `emit="on_change"` readbacks. **Keep at least one example in this shape** - the simulator
