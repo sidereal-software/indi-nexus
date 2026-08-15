@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # The examples
 
 Everything in `examples/` runs, and every one is covered by the test suite, so none of it
@@ -45,7 +50,7 @@ then puts a custom screen on it - and you can
 libindi's classic Dome Simulator, rebuilt on INDINexus. Connect, rotate to an azimuth the
 short way round, open and close a shutter over time, park, unpark, abort. It uses the
 standard INDI dome property names, so any INDI client recognises it. This is also the
-driver behind the [live demo](../index.md#see-it-working).
+driver behind the [live demo](../demo-app/index.html).
 
 ## `telescope_device.py` - pointing and tracking
 

@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # Protocol concepts
 
 You do not need this page to write a driver - the [driver guide](writing-drivers.md)

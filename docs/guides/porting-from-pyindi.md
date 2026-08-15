@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # Porting a pyINDI driver
 
 [pyINDI](https://github.com/so-mops/pyINDI) mirrors the libindi C API in Python:

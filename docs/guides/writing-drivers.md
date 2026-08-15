@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # Writing a driver
 
 A driver is the small program that sits between one instrument and everything else. It

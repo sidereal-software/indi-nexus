@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # Getting started
 
 By the end of this page you will have a control panel open in your browser, driven by a
@@ -67,8 +72,8 @@ side by side.
     simulated, one on a live public API) are in the [examples](guides/examples.md), each
     runnable and covered by tests. They ship with the source rather than the wheel, so
     `git clone` the repository if you want to run them locally. Three also run
-    [in your browser](index.md#see-it-working): the dome, the lamp, and the live weather
-    station.
+    [in your browser](index.md#three-demos-nothing-installed): the dome, the lamp,
+    and the live weather station.
 
 ## 4. Running under indiserver
 

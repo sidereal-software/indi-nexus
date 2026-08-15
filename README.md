@@ -123,6 +123,12 @@ if __name__ == "__main__":
     Mount.run()
 ```
 
+`open_serial_link`, `read_mount` and `slew_to` are the only parts you write - they are
+whatever talks to your instrument. Everything else on that page is the framework: the
+Connect button and its lifecycle, the timer, the dispatch, the wire format, the error
+handling. For a driver that runs as written, see
+[`examples/flat_panel.py`](examples/flat_panel.py), 90 lines for a real device.
+
 Start from a working file and see it in the panel immediately:
 
 ```bash

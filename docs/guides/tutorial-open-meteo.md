@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # Tutorial: a driver for real data, and a UI for it
 
 The simulators are useful for learning the shape of a driver, but they never

@@ -1,3 +1,8 @@
+---
+search:
+  boost: 2
+---
+
 # Building a frontend
 
 Every instrument tells you what it has - its properties, their kinds, their ranges, their
