@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from indi_nexus.protocol import (
     BLOB,
@@ -46,6 +46,9 @@ from indi_nexus.protocol import (
     indi_now,
 )
 from indi_nexus.protocol.xml import format_number
+
+if TYPE_CHECKING:
+    from indi_nexus.driver.device import Device
 
 Emit = Callable[[IndiMessage], None]
 
@@ -98,13 +101,26 @@ class BoundProperty[VectorT: Vector]:
         Callback that queues an outbound message on the runtime.
     policy : str, optional
         When to put a ``set`` on the wire; see :data:`EmitPolicy`.
+    owner : Device, optional
+        The device this property is registered with, so :meth:`delete` can
+        remove it there rather than only announcing its removal. `None` for a
+        handle built outside a device (a unit test over a bare vector), which
+        makes :meth:`delete` announce-only.
     """
 
-    def __init__(self, vector: VectorT, emit: Emit, *, policy: EmitPolicy = "always") -> None:
+    def __init__(
+        self,
+        vector: VectorT,
+        emit: Emit,
+        *,
+        policy: EmitPolicy = "always",
+        owner: Device | None = None,
+    ) -> None:
         """Wrap ``vector`` with the runtime's outbound-message callback."""
         self._vector = vector
         self._emit = emit
         self._policy: EmitPolicy = policy
+        self._owner = owner
         # Set by delete(): the client has been told this property is gone, so
         # anything published through this handle afterwards contradicts that.
         self._retracted = False
@@ -326,20 +342,59 @@ class BoundProperty[VectorT: Vector]:
         )
 
     def delete(self, message: str | None = None) -> None:
-        """Tell the client this property has gone away (``delProperty``).
+        """Withdraw this property: drop it from the device, then tell the client.
+
+        Deletion is a *removal*, not just an announcement. The property leaves
+        the device's registry first and the ``delProperty`` follows, so a
+        ``getProperties`` arriving afterwards - a client joining late - is not
+        told about a property the driver has withdrawn. That order is libindi's:
+        ``INDI::DefaultDevice::deleteProperty`` calls ``removeProperty`` and only
+        emits if it succeeded.
 
         The handle goes with the property: :meth:`set` through it afterwards
-        raises instead of publishing an update for something the client has been
+        raises rather than publishing an update for something the client has been
         told no longer exists. A property that comes back comes back through
-        ``define_*``, which hands out a fresh handle.
+        ``define_*``, which registers it again and hands out a fresh handle.
+
+        Deleting twice is a no-op the second time - nothing is left to remove and
+        the client has already been told - so a driver that keeps its handle can
+        retract unconditionally::
+
+            async def on_disconnect(self) -> None:
+                self._cooler.delete("only while connected")
+
+        A driver that reaches its properties by name wants
+        `~indi_nexus.driver.device.Device.delete_property` instead:
+        ``self["CCD_COOLER"]`` raises :class:`KeyError` once the property is
+        gone, so the name-based call is the one that can be repeated.
 
         Parameters
         ----------
         message : str, optional
-            Optional explanation to include with the deletion.
+            Optional explanation to include with the deletion, shown by clients
+            that surface it (libindi logs it as a device message before applying
+            the deletion).
         """
-        self._emit(DelProperty(device=self._vector.device, name=self._vector.name, message=message))
+        if self._retracted:
+            return
         self._retracted = True
+        # A handle retracts exactly the property it owns, and says nothing when
+        # it owns nothing: already retracted above, or superseded here by a
+        # redefinition under the same name, whose ``def`` the client has already
+        # seen and which a ``delProperty`` for that name would wrongly withdraw.
+        if self._owner is not None and not self._owner._forget(self):
+            return
+        self._emit(
+            DelProperty(
+                device=self._vector.device,
+                name=self._vector.name,
+                # Stamped like every other emission: libindi's IDDelete always
+                # dates the retraction, and a client logging the event has
+                # nothing else to date it by.
+                timestamp=indi_now(),
+                message=message,
+            )
+        )
 
     def _announce(self) -> None:
         """Emit this property's ``def``, describing it as it stands right now.

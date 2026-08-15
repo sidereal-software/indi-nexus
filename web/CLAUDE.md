@@ -17,9 +17,12 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
 - `store.ts` is `PropertyStore` with the same `def` / `set`-merge / `del` semantics as
   `client/store.py`, except **merges are immutable** (a `set` replaces the vector and element
   objects) so React can detect changes by reference. A `set` that carried no `state`
-  (`SetVector.state_present`) leaves the cached one alone, so a latched Alert stays. That
-  wire rule has three implementations - here, `client/store.py` and `web/static/debug.html` -
-  so a change to it belongs in all three.
+  (`SetVector.state_present`) leaves the cached one alone, so a latched Alert stays. A
+  **named** `delProperty` removes one property and leaves the device standing even when it
+  was the last one - that is a driver defining on connect, seen while disconnected, and not
+  the same as the device being gone, which only an unnamed `delProperty` means. Both wire
+  rules have three implementations - here, `client/store.py` and `web/static/debug.html` -
+  so a change to either belongs in all three.
 - `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts` is
   `IndiClient` mirroring the Python surface. It tracks two connection states: `transport`
   (browser to bridge) and `upstream` (bridge to `indiserver`, from the bridge's `connection`

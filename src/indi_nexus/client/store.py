@@ -13,6 +13,7 @@ returns the callbacks interested in that event. The client performs the actual
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from itertools import count
@@ -47,12 +48,23 @@ class PropertyEvent:
         The property name, or `None` for a whole-device ``del``.
     vector : Vector or None
         The affected (post-merge) vector, or `None` for a ``del``.
+    message : str or None
+        The explanation a ``delProperty`` carried, if any. Only a ``del`` sets
+        this: a ``def`` or ``set`` keeps its message on the vector, whereas a
+        deletion has no vector to keep anything on, and the text is often the
+        only account of *why* the property went away.
+    timestamp : datetime or None
+        When a ``delProperty`` said the retraction happened, if it said. Carried
+        for the same reason as ``message``, and `None` for a ``def`` or ``set``,
+        whose vector is already stamped.
     """
 
     type: EventType
     device: str
     name: str | None
     vector: Vector | None
+    message: str | None = None
+    timestamp: dt.datetime | None = None
 
 
 def _merge(dst: Vector, src: Vector, *, state_present: bool = True) -> None:
@@ -187,6 +199,14 @@ class PropertyStore:
     def _delete(self, msg: DelProperty) -> PropertyEvent | None:
         """Remove a property or a whole device from the cache.
 
+        A named deletion removes only that property. The device stays, even when
+        it was the last one: "this device is here and currently publishes
+        nothing" is an ordinary state - it is what a driver that defines its
+        properties on connect looks like while disconnected - and it is not the
+        same thing as the device being gone, which is what an unnamed
+        ``delProperty`` means. libindi draws the line in the same place
+        (``INDI::AbstractBaseClient`` erases the property and leaves the device).
+
         Parameters
         ----------
         msg : DelProperty
@@ -202,12 +222,10 @@ class PropertyStore:
             return None
         if msg.name is None:
             del self._by_device[msg.device]
-            return PropertyEvent("del", msg.device, None, None)
+            return PropertyEvent("del", msg.device, None, None, msg.message, msg.timestamp)
         if msg.name in props:
             del props[msg.name]
-            if not props:
-                del self._by_device[msg.device]
-            return PropertyEvent("del", msg.device, msg.name, None)
+            return PropertyEvent("del", msg.device, msg.name, None, msg.message, msg.timestamp)
         return None
 
     # -- subscriptions ----------------------------------------------------- #

@@ -150,6 +150,12 @@ class Bridge:
     async def _on_event(self, event: PropertyEvent) -> None:
         """Broadcast a property change as the matching INDI message.
 
+        The ``del`` frame is rebuilt from the event rather than forwarded, so it
+        carries the deletion's ``message`` and ``timestamp`` explicitly. Both are
+        the only account the browser gets of a property going away - the driver
+        writes real text there ("only while connected", or why a ``setup``
+        rolled back) - and a frame reassembled without them silently drops it.
+
         Parameters
         ----------
         event : PropertyEvent
@@ -160,7 +166,14 @@ class Bridge:
         elif event.type == "set" and event.vector is not None:
             frame = to_json(SetVector(vector=event.vector))
         else:  # "del"
-            frame = to_json(DelProperty(device=event.device, name=event.name))
+            frame = to_json(
+                DelProperty(
+                    device=event.device,
+                    name=event.name,
+                    timestamp=event.timestamp,
+                    message=event.message,
+                )
+            )
         await self._broadcast(frame)
 
     async def _on_message(self, message: Message) -> None:

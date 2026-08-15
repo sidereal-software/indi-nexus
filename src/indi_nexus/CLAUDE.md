@@ -121,6 +121,15 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
     probe never leaves a channel announced that the retry does not define again. The
     handles it returned die with it - `set()` on one raises - so reach properties through
     `self["NAME"]` rather than caching a handle across a failed setup.
+  - `delete_property(name, message=None)` is the counterpart to `define_*`: it **removes**
+    the property from the device and *then* emits the `delProperty`, so a later
+    `getProperties` cannot re-announce something the driver withdrew. An unknown name is a
+    silent no-op - no wire traffic, no raise - which is what lets a disconnect hook retract
+    unconditionally, the way the whole libindi corpus does. Nothing is protected, including
+    `CONNECTION`; libindi guards nothing here either, and a device that deletes its
+    `CONNECTION` is simply a device without connection semantics from then on. Define,
+    delete and define again is the **normal** life of a property (once per connect cycle,
+    for the life of the process), not an edge case, so keep the re-define path clear.
   - `define_connection()` adds the standard `CONNECTION` switch with a built-in handler
     (flip + `on_connect`/`on_disconnect` + announcement). A hook that **raises** rolls the
     switch back and leaves the property `Alert` with the reason, so a device never claims a
@@ -142,6 +151,14 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
   - `.select(name, value)` is the whole "one of N lights is lit" idiom in one call, the most
     repeated shape in real status reporting; `.set_all(value)` writes every element in one
     emit; `name in prop` asks whether hardware reported something this vector has.
+  - `.delete()` is the handle-shaped half of `Device.delete_property`; both go through this
+    one implementation, so removal and announcement cannot drift apart. The rule is that a
+    handle retracts **exactly the property it owns** and says nothing at all when it owns
+    nothing - already retracted, or superseded by a redefinition under the same name, where
+    emitting a `delProperty` would make every client drop the replacement. It stamps a
+    timestamp, as libindi's `IDDelete` does. The handle is the wrong shape for the
+    repeated-disconnect idiom, because `self["NAME"]` raises once the property is gone;
+    reach for the name-based call there.
   - A `Text` element coerces a non-string at assignment rather than at serialisation, so a
     bad publish fails at the call site, never inside the writer loop.
   - The `emit` policy chosen at `define_*` time is enforced here: under `"on_change"` values
@@ -207,8 +224,14 @@ cache, always as protocol models and never raw XML.
   values and state onto the definition keeping def-only metadata, `del` removes a property or
   a whole device) and returns a `PropertyEvent`. A `set` that carried no `state` leaves the
   cached one alone (`SetVector.state_present`), so a property latched into `Alert` stays
-  there. That wire rule has three implementations - here, `web/packages/client/src/store.ts`
-  and `web/static/debug.html` - so a change to it belongs in all three. It holds the
+  there. A **named** `del` removes only that property and leaves the device standing even
+  when it was the last one: "here but publishing nothing" is where a driver that defines on
+  connect sits while disconnected, and it is not the same as the device being gone, which is
+  what an unnamed `delProperty` means. Both of those wire rules have three implementations -
+  here, `web/packages/client/src/store.ts` and `web/static/debug.html` - so a change to
+  either belongs in all three. A `del` event also carries the `delProperty`'s `message` and
+  `timestamp`, since it has no vector to hang them on and the text is usually the only
+  account of *why* the property went away. It holds the
   subscription registry; `matching(event)` returns the interested callbacks and the client
   does the actual dispatch, keeping the store pure.
 - `client.py` - `IndiClient`. Async context manager or `run()` for monitors. A background

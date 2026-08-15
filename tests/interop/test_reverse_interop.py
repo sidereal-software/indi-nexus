@@ -142,3 +142,80 @@ def test_our_sexagesimal_output_is_read_back_correctly(indi_server, python_drive
     assert ra is not None and dec is not None
     assert abs(ra - 5.5) < 0.01, f"RA came back as {ra}"
     assert abs(dec - -10.25) < 0.01, f"Dec came back as {dec}"
+
+
+def _await_presence(port: int, spec: str, present: bool, timeout: float = 20.0) -> bool:
+    """Poll one property until libindi's client does or does not report it.
+
+    Existence rather than value, because that is the whole question when a
+    property is defined and withdrawn per connection - and asserting on the
+    rendered value instead would tie the test to libindi's formatting.
+
+    Parameters
+    ----------
+    port : int
+        The server's port.
+    spec : str
+        A fully qualified ``device.property.element``.
+    present : bool
+        The state being waited for: `True` for the property to appear, `False`
+        for it to go away.
+    timeout : float, optional
+        How long to keep polling.
+
+    Returns
+    -------
+    settled : bool
+        Whether the property reached that state before the deadline.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if (spec in getprop(port, spec)) is present:
+            return True
+        time.sleep(0.25)
+    return (spec in getprop(port, spec)) is present
+
+
+def test_a_retracted_property_is_gone_for_a_later_client(indi_server, python_driver):
+    """A property withdrawn on disconnect is not announced to the next client.
+
+    Every ``indi_getprop`` run is a fresh client: it opens its own connection and
+    sends its own ``getProperties``. So asking again after the disconnect is
+    exactly the case that matters - a second client (a phone, a second KStars)
+    joining after the driver retracted something - and it is the case our
+    ``delete`` used to get wrong, announcing the retraction but keeping the
+    property, which meant the next client was told about a property that no
+    longer existed.
+
+    Only a real ``indiserver`` can settle this, because the hub is what relays
+    the ``delProperty`` and what forwards the second client's ``getProperties``.
+    """
+    server = indi_server(python_driver("tests/interop/drivers/retracting_driver.py"))
+    device = "Retractor"
+    cooler = f"{device}.CCD_COOLER.TEMPERATURE"
+
+    # While disconnected the cooler does not exist yet.
+    assert _await_value(server.port, f"{device}.CONNECTION.DISCONNECT", "On") == "On"
+    assert cooler not in getprop(server.port, cooler)
+
+    # Connecting defines it...
+    _connect(server.port, device)
+    assert _await_presence(server.port, cooler, True), "the cooler was never defined"
+
+    # ...and disconnecting takes it away.
+    setprop(server.port, f"{device}.CONNECTION.DISCONNECT=On", kind="-s")
+    assert _await_value(server.port, f"{device}.CONNECTION.DISCONNECT", "On") == "On"
+    assert _await_presence(server.port, cooler, False), "the retracted property came back"
+
+    # The device itself is still there, and still says what it does have: the
+    # cooler is gone, not the driver.
+    props = getprop(server.port, f"{device}.*.*")
+    assert props[f"{device}.CONNECTION.DISCONNECT"] == "On"
+    assert cooler not in props
+
+    # And the whole cycle runs again, because define-delete-define is the normal
+    # life of an INDI property rather than a one-shot.
+    _connect(server.port, device)
+    assert _await_presence(server.port, cooler, True), "the redefined cooler never arrived"
+    setprop(server.port, f"{device}.CONNECTION.DISCONNECT=On", kind="-s")
+    assert _await_presence(server.port, cooler, False), "the second retraction did not take"

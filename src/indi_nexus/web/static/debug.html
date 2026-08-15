@@ -146,10 +146,14 @@ function applyVector(msg) {
   if (msg.state_present !== false && vec.state) cur.state = vec.state;
 }
 
+// A named delProperty removes one property and leaves the device, even when it
+// was the last one: a driver that defines on connect publishes nothing at all
+// while disconnected, and that is not the same as the device being gone, which
+// is what an unnamed delProperty means. Same rule in client/store.py and
+// packages/client/src/store.ts.
 function applyDelete(msg) {
   if (!store[msg.device]) return;
   if (msg.name) delete store[msg.device][msg.name]; else delete store[msg.device];
-  if (store[msg.device] && !Object.keys(store[msg.device]).length) delete store[msg.device];
 }
 
 function render() {
@@ -162,8 +166,15 @@ function render() {
     const dEl = document.createElement("div");
     dEl.className = "device";
     dEl.innerHTML = `<h3>${esc(dev)}</h3>`;
+    const names = Object.keys(store[dev]).sort();
+    // A device with nothing in it is a state worth naming rather than a bare
+    // heading: it is what a driver that defines on connect looks like while
+    // disconnected, and the operator should see that it is still here.
+    if (!names.length) {
+      dEl.insertAdjacentHTML("beforeend", '<div class="empty">No properties defined right now.</div>');
+    }
     const groups = {};
-    for (const name of Object.keys(store[dev]).sort()) {
+    for (const name of names) {
       const v = store[dev][name];
       (groups[v.group || ""] ||= []).push(v);
     }

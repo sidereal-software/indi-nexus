@@ -46,6 +46,10 @@ The browser test additionally needs Playwright (`pip install -e ".[interop]"` th
 | `test_panel_e2e.py` | A browser drives a real C++ driver through the whole stack. |
 | `test_capture_corpus.py` | Records real traffic into a fixture the fast suite replays. |
 
+`drivers/` holds drivers written for these tests rather than for readers - a shape no
+example covers, exercised against a real hub. Anything meant to be read as a model driver
+belongs in `examples/` instead, which is where `test_reverse_interop.py` gets the rest.
+
 ## Refreshing the recorded corpus
 
 `tests/data/interop_corpus.xml` is real traffic, replayed by

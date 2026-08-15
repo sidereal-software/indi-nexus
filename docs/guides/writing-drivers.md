@@ -173,6 +173,30 @@ Then:
   button springs back to Disconnected and the property shows `Alert` with the reason.
   Let it raise; do not catch it.
 
+## Properties that only exist while connected
+
+Some properties describe the hardware rather than the driver: a cooler set point, a filter
+count read off the wheel at startup. Define those in `on_connect` and withdraw them in
+`on_disconnect`, so what the device publishes always matches what is actually readable.
+
+```python
+async def on_connect(self) -> None:
+    self.define_number("CCD_COOLER", [Number(name="TEMPERATURE", value=25.0)])
+
+async def on_disconnect(self) -> None:
+    self.delete_property("CCD_COOLER", "only while connected")
+```
+
+`delete_property` removes the property and tells the client it has gone, so a client
+connecting later is not offered a control that does nothing. Deleting a name that is not
+defined does nothing at all, which is why the hook above needs no guard: it is correct on
+the first disconnect and on every one after it.
+
+Defining the same property again on the next connect is the normal cycle, not a special
+case. Each `define_*` hands back a fresh handle; a handle whose property has been deleted
+is dead, and publishing through it raises rather than sending an update for something the
+client was told is gone.
+
 ## Reading the instrument on a timer
 
 Real instruments have to be asked. `@every` runs a method on a schedule:

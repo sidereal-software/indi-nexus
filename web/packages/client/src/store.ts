@@ -16,7 +16,7 @@
  * the hooks stable references between unrelated updates.
  */
 
-import type { DelProperty, IndiElement, IndiMessage, Vector } from "./types";
+import type { DelProperty, IndiElement, IndiMessage, Timestamp, Vector } from "./types";
 
 /** The kind of change {@link PropertyStore.apply} recorded. */
 export type EventType = "def" | "set" | "del";
@@ -31,6 +31,20 @@ export interface PropertyEvent {
   name: string | null;
   /** The affected (post-merge) vector, or `null` for a `del`. */
   vector: Vector | null;
+  /**
+   * The explanation a `delProperty` carried, if any.
+   *
+   * Only a `del` sets this: a `def` or `set` keeps its message on the vector,
+   * whereas a deletion has no vector to keep anything on, and the text is often
+   * the only account of *why* the property went away.
+   */
+  message?: string | null;
+  /**
+   * When a `delProperty` said the retraction happened, if it said. Carried for
+   * the same reason as `message`; `null` for a `def` or `set`, whose vector is
+   * already stamped.
+   */
+  timestamp?: Timestamp | null;
 }
 
 /** A subscription callback invoked with each matching event. */
@@ -172,26 +186,45 @@ export class PropertyStore {
     if (isNewDevice) this.refreshDeviceList();
   }
 
-  /** Remove a property or a whole device from the cache. */
+  /**
+   * Remove a property or a whole device from the cache.
+   *
+   * A named deletion removes only that property. The device stays, even when it
+   * was the last one: "this device is here and currently publishes nothing" is
+   * an ordinary state - it is what a driver that defines its properties on
+   * connect looks like while disconnected - and it is not the same thing as the
+   * device being gone, which is what an unnamed `delProperty` means. The Python
+   * store and `web/static/debug.html` draw the line in the same place, as does
+   * libindi's own `AbstractBaseClient`.
+   */
   private remove(message: DelProperty): PropertyEvent | null {
     const props = this.byDevice.get(message.device);
     if (props === undefined) return null;
+    const { message: why, timestamp } = message;
     if (message.name == null) {
       this.byDevice.delete(message.device);
       this.deviceSnapshots.delete(message.device);
       this.refreshDeviceList();
-      return { type: "del", device: message.device, name: null, vector: null };
+      return {
+        type: "del",
+        device: message.device,
+        name: null,
+        vector: null,
+        message: why,
+        timestamp,
+      };
     }
     if (!props.has(message.name)) return null;
     props.delete(message.name);
-    if (props.size === 0) {
-      this.byDevice.delete(message.device);
-      this.deviceSnapshots.delete(message.device);
-      this.refreshDeviceList();
-    } else {
-      this.refreshDeviceSnapshot(message.device);
-    }
-    return { type: "del", device: message.device, name: message.name, vector: null };
+    this.refreshDeviceSnapshot(message.device);
+    return {
+      type: "del",
+      device: message.device,
+      name: message.name,
+      vector: null,
+      message: why,
+      timestamp,
+    };
   }
 
   /** Rebuild the cached immutable snapshot for one device. */

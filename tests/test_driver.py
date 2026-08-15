@@ -1433,3 +1433,251 @@ def test_typed_getters_return_the_property() -> None:
             dev.switch("missing")
 
     asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Property deletion                                                            #
+# --------------------------------------------------------------------------- #
+class _Retractor(Device):
+    """A device whose cooler exists only while the link is up.
+
+    The canonical INDI shape, and the one the libindi driver corpus is full of:
+    hardware-dependent properties are defined in the connect hook and withdrawn
+    in the disconnect hook, once per connection, for the life of the process.
+    """
+
+    name = "Retractor"
+
+    async def setup(self) -> None:
+        """Define the connection switch; the cooler waits for the link."""
+        self.define_connection()
+
+    async def on_connect(self) -> None:
+        """Publish the cooler now that the camera is talking."""
+        self.define_number("CCD_COOLER", [Number(name="TEMPERATURE", value=25.0)])
+
+    async def on_disconnect(self) -> None:
+        """Withdraw the cooler; nothing behind it is readable any more."""
+        self.delete_property("CCD_COOLER", "only while connected")
+
+
+def test_a_deleted_property_is_not_reannounced_to_a_later_client() -> None:
+    """A withdrawn property stays withdrawn, including for a client joining later.
+
+    The bug this pins: ``delete`` announced the retraction but left the property
+    in the device, so the next ``getProperties`` - a second client connecting,
+    which is routine - was told about a property the driver had withdrawn, and
+    got a handle that raises on the first ``set``.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness()
+        dev = _Retractor()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.feed(_connection_write("Retractor", "CONNECT"))
+        harness.feed(_connection_write("Retractor", "DISCONNECT"))
+        # A second client asking what this device exposes.
+        harness.feed("<getProperties version='1.7'/>")
+        harness.eof()
+        await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert "CCD_COOLER" not in dev
+
+        messages = harness.messages()
+        deletions = [m for m in messages if isinstance(m, DelProperty)]
+        assert [m.name for m in deletions] == ["CCD_COOLER"]
+        assert deletions[0].message == "only while connected"
+
+        # Everything defined after the retraction is what the late client was
+        # told, and the cooler is not in it.
+        cut = messages.index(deletions[0])
+        later = [m.vector.name for m in messages[cut:] if isinstance(m, DefVector)]
+        assert later == ["CONNECTION"]
+
+    asyncio.run(scenario())
+
+
+def test_deleting_through_the_handle_unregisters_the_property() -> None:
+    """``self[name].delete()`` removes the property, not just announces it.
+
+    The handle form is the older API and the one existing drivers hold, so it
+    has to mean the same thing as the name form; both go through one
+    implementation precisely so they cannot drift apart.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Simple()
+        dev._bind(captured.append)
+        await dev.setup()
+
+        dev["num"].delete("withdrawn")
+
+        assert "num" not in dev
+        with pytest.raises(KeyError):
+            dev["num"]
+        (deletion,) = [m for m in captured if isinstance(m, DelProperty)]
+        assert deletion.name == "num"
+        assert deletion.message == "withdrawn"
+
+    asyncio.run(scenario())
+
+
+def test_deleting_an_unknown_property_says_nothing() -> None:
+    """An unknown name is a silent no-op: no wire traffic, no exception.
+
+    This is what lets a disconnect hook retract unconditionally, which is what
+    the whole libindi driver corpus does. ``removeProperty`` returns an error
+    there and ``deleteProperty`` never reads it.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Simple()
+        dev._bind(captured.append)
+        await dev.setup()
+        captured.clear()
+
+        dev.delete_property("NEVER_DEFINED", "gone")
+
+        assert captured == []
+
+    asyncio.run(scenario())
+
+
+def test_two_disconnects_in_a_row_are_a_silent_no_op() -> None:
+    """The second connect/disconnect cycle behaves exactly like the first.
+
+    Define-delete-define is the normal life of an INDI property, not an edge
+    case, so a driver must be able to run the cycle indefinitely: the second
+    disconnect finds nothing to retract and says nothing about it.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Retractor()
+        dev._bind(captured.append)
+        await dev.setup()
+
+        for _ in range(2):
+            await dev._dispatch_new(
+                SwitchVector(
+                    device="Retractor",
+                    name="CONNECTION",
+                    elements=[Switch(name="CONNECT", value=ISState.ON)],
+                )
+            )
+            assert "CCD_COOLER" in dev
+            await dev._dispatch_new(
+                SwitchVector(
+                    device="Retractor",
+                    name="CONNECTION",
+                    elements=[Switch(name="DISCONNECT", value=ISState.ON)],
+                )
+            )
+            assert "CCD_COOLER" not in dev
+
+        # Two cycles, two retractions - not three, and not one.
+        deletions = [m for m in captured if isinstance(m, DelProperty)]
+        assert [m.name for m in deletions] == ["CCD_COOLER", "CCD_COOLER"]
+
+        # A third disconnect with nothing defined retracts nothing at all.
+        captured.clear()
+        await dev.on_disconnect()
+        assert [m for m in captured if isinstance(m, DelProperty)] == []
+
+    asyncio.run(scenario())
+
+
+def test_a_property_defined_after_deletion_is_live_again() -> None:
+    """Redefining a withdrawn property announces it and hands back a live handle.
+
+    The re-define path has to be completely unobstructed: the retracted handle
+    is dead, but the name is free and the property that takes it is new.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Simple()
+        dev._bind(captured.append)
+        await dev.setup()
+        first = dev["num"]
+
+        dev.delete_property("num")
+        captured.clear()
+        second = dev.define_number("num", [Number(name="v", value=7.0)])
+
+        assert second is not first
+        assert dev["num"] is second
+        assert [m.vector.name for m in captured if isinstance(m, DefVector)] == ["num"]
+
+        # The new handle publishes; the old one still refuses to.
+        second.set(v=8.0)
+        assert dev.number("num")["v"].value == 8.0
+        with pytest.raises(RuntimeError, match="retracted"):
+            first.set(v=9.0)
+
+    asyncio.run(scenario())
+
+
+def test_deleting_connection_is_allowed() -> None:
+    """No property is protected, CONNECTION included - libindi guards none here.
+
+    Asserting the consequence rather than inventing a guard: the device becomes
+    one without connection semantics, which is exactly what a device with no
+    CONNECTION property already means here.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Linked()
+        dev._bind(captured.append)
+        await dev.setup()
+        captured.clear()
+
+        dev.delete_property("CONNECTION", "no longer switchable")
+
+        assert "CONNECTION" not in dev
+        (deletion,) = [m for m in captured if isinstance(m, DelProperty)]
+        assert deletion.name == "CONNECTION"
+        # No CONNECTION property means no connection semantics, so commands run.
+        assert dev.connected is True
+        assert dev.require_connected() is True
+
+    asyncio.run(scenario())
+
+
+def test_a_superseded_handle_retracts_nothing_at_all() -> None:
+    """A late delete on a redefined name touches neither the device nor the wire.
+
+    Identity decides what a handle owns, not the name it was defined under. A
+    driver that redefines a property and then retracts the handle it had been
+    holding must not take the replacement down with it - and must not send a
+    ``delProperty`` for that name either, because every client would apply it to
+    the replacement and lose a property the driver still has.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        captured: list[IndiMessage] = []
+        dev = _Simple()
+        dev._bind(captured.append)
+        await dev.setup()
+        stale = dev["num"]
+        replacement = dev.define_number("num", [Number(name="v", value=2.0)])
+        captured.clear()
+
+        stale.delete()
+
+        assert dev["num"] is replacement
+        assert [m for m in captured if isinstance(m, DelProperty)] == []
+        replacement.set(v=3.0)  # still live, and still the one clients hold
+        assert dev.number("num")["v"].value == 3.0
+
+    asyncio.run(scenario())

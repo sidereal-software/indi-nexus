@@ -275,7 +275,7 @@ class Device:
         """
         if not vector.device:
             vector.device = self._device
-        prop = BoundProperty(vector, self._send, policy=emit)
+        prop = BoundProperty(vector, self._send, policy=emit, owner=self)
         self._properties[vector.name] = prop
         prop._announce()
         return prop
@@ -542,6 +542,75 @@ class Device:
             ),
             emit=emit,
         )
+
+    def delete_property(self, name: str, message: str | None = None) -> None:
+        """Withdraw a property by name, or do nothing if there is no such property.
+
+        The counterpart to ``define_*``, and the shape a property that only
+        exists while the instrument is reachable wants::
+
+            async def on_connect(self) -> None:
+                self.define_number("CCD_COOLER", [Number(name="TEMPERATURE")])
+
+            async def on_disconnect(self) -> None:
+                self.delete_property("CCD_COOLER", "only while connected")
+
+        The property is dropped from the device *and* retracted with a
+        ``delProperty``, so a client that joins after this is not told about it;
+        defining it again on the next connect starts the cycle over with a fresh
+        handle. That is the whole life of an INDI property: defined, deleted and
+        defined again, once per connection, for as long as the driver runs.
+
+        An unknown name is deliberately silent - no message on the wire, no
+        exception. That is what makes the call above safe to run on every
+        disconnect, including the disconnect that follows a connect which never
+        got as far as defining anything, and it is what libindi's
+        ``INDI::DefaultDevice::deleteProperty`` does (``removeProperty`` fails,
+        and the error it fills in is never read).
+
+        No property is protected, ``CONNECTION`` included; libindi guards none
+        of them here either. A device that deletes its ``CONNECTION`` becomes a
+        device without connection semantics, and :attr:`connected` reports `True`
+        for it from then on.
+
+        Parameters
+        ----------
+        name : str
+            The property to withdraw.
+        message : str, optional
+            Optional explanation to include with the deletion.
+        """
+        prop = self._properties.get(name)
+        if prop is None:
+            return
+        prop.delete(message)
+
+    def _forget(self, prop: BoundProperty[Any]) -> bool:
+        """Drop one handle's property from the registry, reporting whether it did.
+
+        Called by :meth:`BoundProperty.delete` so that removal and announcement
+        stay in one place, and so the announcement can follow the removal rather
+        than assume it. Identity decides, not the name: a property redefined
+        under the same name has already replaced this handle in the registry, so
+        a late ``delete`` on the superseded handle owns nothing - it must neither
+        drop the replacement nor tell the client the name is gone, which would
+        retract the replacement in every client's cache.
+        :meth:`_roll_back_setup` distinguishes handles the same way.
+
+        Parameters
+        ----------
+        prop : BoundProperty
+            The handle being retracted.
+
+        Returns
+        -------
+        removed : bool
+            Whether this handle was the registered one and has now been dropped.
+        """
+        if self._properties.get(prop.name) is not prop:
+            return False
+        del self._properties[prop.name]
+        return True
 
     # -- property access --------------------------------------------------- #
     def property(self, name: str) -> BoundProperty[Any]:
@@ -876,20 +945,31 @@ class Device:
         first, must survive a failed attempt whether or not the attempt happened
         to redefine its name.
 
+        What rolls back is what the attempt *defined*. A property the attempt
+        **deleted** stays deleted: a retraction cannot be taken back, because the
+        handle behind it is dead and reinstating it would put a property in the
+        registry that re-announces to every later client and raises on the first
+        :meth:`BoundProperty.set`.
+
         Parameters
         ----------
         announced : dict
             The properties as they stood before the attempt began, keyed by
-            name. The device is restored to exactly this mapping.
+            name. The device is restored to those of them still live.
         exc : Exception
             The failure, quoted to the client on each retraction so the panel
             says why the property went away.
         """
-        for name, prop in self._properties.items():
+        survived = {
+            name: prop for name, prop in announced.items() if self._properties.get(name) is prop
+        }
+        # Snapshot the items: delete() unregisters the property as it retracts
+        # it, so iterating the live mapping would mutate it mid-loop.
+        for name, prop in list(self._properties.items()):
             if announced.get(name) is not prop:
                 prop.delete(message=f"{self._device} setup failed: {exc}")
-        self._properties = announced
-        for prop in announced.values():
+        self._properties = survived
+        for prop in survived.values():
             prop._announce()
 
     async def _dispatch_new(self, vector: Vector) -> None:

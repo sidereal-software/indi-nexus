@@ -100,7 +100,12 @@ describe("PropertyStore.apply", () => {
     expect(store.get("CCD", "EXPOSURE")).toBeUndefined();
   });
 
-  it("removes one named property (and the now-empty device)", () => {
+  // Deleting the last property leaves the device present and empty. That is
+  // where a driver defining its properties on connect sits while disconnected,
+  // and it is not the same as the device being gone - which is what an unnamed
+  // delProperty means, and the only thing that drops a device. The panel has to
+  // be able to tell them apart. Same rule in client/store.py and debug.html.
+  it("removes one named property and keeps the now-empty device", () => {
     const store = new PropertyStore();
     store.apply(def(numVec()));
     const del: DelProperty = { tag: "delProperty", device: "CCD", name: "EXPOSURE" };
@@ -108,7 +113,25 @@ describe("PropertyStore.apply", () => {
 
     expect(event?.type).toBe("del");
     expect(store.get("CCD", "EXPOSURE")).toBeUndefined();
-    expect(store.devices()).toEqual([]);
+    expect(store.devices()).toEqual(["CCD"]);
+    expect(store.device("CCD")).toEqual({});
+  });
+
+  it("carries a deletion's message and timestamp onto the event", () => {
+    const store = new PropertyStore();
+    store.apply(def(numVec()));
+    const event = store.apply({
+      tag: "delProperty",
+      device: "CCD",
+      name: "EXPOSURE",
+      timestamp: "2026-08-14T12:30:00",
+      message: "only while connected",
+    });
+
+    // A del has no vector to carry them on, and the text is the only account of
+    // why the property went away.
+    expect(event?.message).toBe("only while connected");
+    expect(event?.timestamp).toBe("2026-08-14T12:30:00");
   });
 
   it("removes a whole device when no name is given", () => {

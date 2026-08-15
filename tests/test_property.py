@@ -13,6 +13,7 @@ import pytest
 
 from indi_nexus.driver.property import BoundProperty
 from indi_nexus.protocol import (
+    DelProperty,
     IndiMessage,
     IPState,
     ISRule,
@@ -417,3 +418,39 @@ def test_a_retracted_handle_refuses_to_publish() -> None:
     with pytest.raises(RuntimeError, match="retracted"):
         prop.set(ra=1.0)
     assert len(emitted) == 1  # the delProperty, and nothing after it
+
+
+def test_deleting_twice_emits_one_del_property() -> None:
+    """A repeated retraction is a silent no-op, not a second announcement.
+
+    Every libindi driver retracts unconditionally in its disconnect branch, so
+    the second disconnect of a session must cost nothing. Emitting again would
+    tell the client a property it has already forgotten has gone away twice.
+    """
+    vector = NumberVector(device="Dev", name="coords", elements=[Number(name="ra")])
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append)
+
+    prop.delete("no hardware")
+    prop.delete("no hardware")
+
+    assert len(emitted) == 1
+
+
+def test_a_deletion_carries_a_timestamp() -> None:
+    """A delProperty is dated, like every other emission.
+
+    ``set`` stamps the vector and libindi's ``IDDelete`` stamps the retraction;
+    ours used to send neither a timestamp nor anything else a client could date
+    the event by.
+    """
+    vector = NumberVector(device="Dev", name="coords", elements=[Number(name="ra")])
+    emitted: list[IndiMessage] = []
+    prop = BoundProperty(vector, emitted.append)
+
+    prop.delete()
+
+    (msg,) = emitted
+    assert isinstance(msg, DelProperty)
+    assert msg.timestamp is not None
+    assert msg.timestamp.tzinfo is not None  # INDI timestamps are UTC

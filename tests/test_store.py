@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 from indi_nexus.client.store import PropertyEvent, PropertyStore
 from indi_nexus.protocol import (
     BLOB,
@@ -195,15 +197,58 @@ def test_getitem_and_iteration_expose_devices():
     assert list(iter(store)) == ["CCD"]
 
 
-def test_del_removes_one_property():
-    """Deleting a named property drops it (and the now-empty device)."""
+def test_del_removes_one_property_and_keeps_the_device():
+    """Deleting the last property leaves the device present and empty.
+
+    "This device is here and currently publishes nothing" is where a driver that
+    defines its properties on connect sits while disconnected, and it is not the
+    same as the device being gone - which is what an unnamed delProperty means,
+    and the only thing that should drop a device. A panel has to be able to tell
+    the two apart. libindi's own client keeps the device here too.
+    """
     store = PropertyStore()
     store.apply(DefVector(vector=_numvec()))
     event = store.apply(DelProperty(device="CCD", name="EXPOSURE"))
 
     assert event is not None and event.type == "del"
     assert store.get("CCD", "EXPOSURE") is None
-    assert "CCD" not in store
+    assert "CCD" in store
+    assert store.device("CCD") == {}
+    assert store.devices() == ["CCD"]
+
+
+def test_del_carries_its_message_and_timestamp_onto_the_event():
+    """A deletion's explanation survives into the event subscribers see.
+
+    The text is the only account of *why* a property went away - a driver writes
+    real content there - and a ``del`` event has no vector to carry it on, so it
+    rides on the event or it is lost before it reaches a UI.
+    """
+    store = PropertyStore()
+    store.apply(DefVector(vector=_numvec()))
+    stamped = dt.datetime(2026, 8, 14, 12, 30, tzinfo=dt.UTC)
+
+    event = store.apply(
+        DelProperty(
+            device="CCD", name="EXPOSURE", timestamp=stamped, message="only while connected"
+        )
+    )
+
+    assert event is not None
+    assert event.message == "only while connected"
+    assert event.timestamp == stamped
+
+
+def test_a_def_or_set_event_carries_no_deletion_message():
+    """Only a del sets the event message; a def or set keeps it on the vector."""
+    store = PropertyStore()
+    definition = store.apply(DefVector(vector=_numvec()))
+    update = store.apply(SetVector(vector=_numvec(2.0)))
+
+    assert definition is not None and definition.message is None
+    assert definition.timestamp is None
+    assert update is not None and update.message is None
+    assert update.timestamp is None
 
 
 def test_del_whole_device():
