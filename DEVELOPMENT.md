@@ -188,9 +188,23 @@ changed for someone using the thing.
   repository can observe.
 - **A `!` marks a breaking change** (`feat!:`), which is what bumps the major version.
   Below 1.0 it bumps the minor instead, so it still needs saying.
-- **The path decides the package.** A commit touching `web/packages/react` lands in that
-  package's changelog, not the Python one, so keep unrelated changes in separate commits
-  when you want them filed separately.
+- **The path decides the package, and only the packages that changed are released.** A
+  commit touching `web/packages/react` lands in that package's changelog, not the Python
+  one, so keep unrelated changes in separate commits when you want them filed separately.
+  The three packages version independently: a Python-only change releases `indi-nexus` and
+  leaves the npm versions where they are, which is why they will drift apart and why that
+  is the point. A version with nothing in it is worse than a gap in the numbering.
+- **`@indi-nexus/react` still follows `@indi-nexus/client`.** It depends on it, so when
+  client is released the `node-workspace` plugin gives react a patch bump and rewrites the
+  dependency range. That is not a release with nothing in it: its dependency moved, and a
+  published react whose pinned client no longer exists would be broken.
+- **A change to `web/` that alters the shipped panel needs a Python-visible commit too.**
+  `hatch_build.py` compiles the panel into the wheel, so a frontend fix changes what
+  `pip install indi-nexus` and the Docker image contain. Release Please cannot see that
+  across the language boundary: a commit touching only `web/` releases the npm packages
+  and never rebuilds the wheel or the image. Either include the Python side in the same
+  unit of work, or publish the image out of band with
+  `gh workflow run docker.yml`.
 - **Squash-merge pull requests.** The squashed subject becomes the release note, and it
   spares the changelog the "fix a bug I introduced two commits ago" entries that are true
   of the branch but meaningless on `main`.
