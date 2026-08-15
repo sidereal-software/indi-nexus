@@ -75,8 +75,10 @@ above.
 
 ## Checks before you tag
 
-`uv build` runs the frontend build, so the wheel bundles the panel. The parts worth
-confirming by eye, because each of them has been wrong at least once:
+`uv build` bundles a panel that is **already built**. When one is missing it tries pnpm,
+but that is best-effort: with pnpm unavailable it warns and ships a panel-less wheel
+rather than failing. So run `pnpm -r build` first, as the block above does, and then
+confirm by eye, because each of these has been wrong at least once:
 
 ```bash
 uvx twine check dist/*

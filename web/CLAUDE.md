@@ -16,11 +16,21 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
   and `enums.py`. Keep them in step.
 - `store.ts` is `PropertyStore` with the same `def` / `set`-merge / `del` semantics as
   `client/store.py`, except **merges are immutable** (a `set` replaces the vector and element
-  objects) so React can detect changes by reference.
+  objects) so React can detect changes by reference. A `set` that carried no `state`
+  (`SetVector.state_present`) leaves the cached one alone, so a latched Alert stays. That
+  wire rule has three implementations - here, `client/store.py` and `web/static/debug.html` -
+  so a change to it belongs in all three.
 - `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts` is
   `IndiClient` mirroring the Python surface. It tracks two connection states: `transport`
   (browser to bridge) and `upstream` (bridge to `indiserver`, from the bridge's `connection`
   control frame).
+- `readme-snippets.ts` is nothing but the code samples from this package's `README.md`, kept
+  compiling by `pnpm typecheck` - verbatim apart from the import, which reaches for
+  `./index` because a package cannot resolve its own published name from inside `src/`. So a
+  diff between the two shows drift and nothing else; keep it that way. **Change a snippet in
+  the README and change it there too**, or the npmjs.com front page silently rots (it
+  already had: it shipped `IPState.OK`, Python's spelling, and a `vector.state` that ignored
+  the `null` a `del` carries).
 
 ## `packages/react/` - `@indi-nexus/react`
 
@@ -43,6 +53,12 @@ Idle/Ok/Busy/Alert. The build emits a prebuilt `dist/styles.css`
 `src/doc-snippets.tsx` is nothing but the code samples from `docs/guides/frontend.md`, kept
 compiling by `pnpm typecheck`. **Change a snippet on that page and change it there too**, or
 the guide silently rots (it already had once, which is how the value hooks got found).
+`src/readme-snippets.tsx` is the same arrangement for this package's `README.md`, which had
+rotted the same way: it rendered `useConnection()` straight into JSX, and the hook returns
+the `{transport, upstream}` object, so the sample threw on paste. That one is the README's
+fences verbatim apart from the imports - `./index` instead of the published name, and no
+`styles.css`, which nothing in this program declares a type for - so a diff between the two
+shows drift and nothing else; keep it that way.
 
 `@indi-nexus/react/testing` (`src/testing/`) is the counterpart to `indi_nexus.testing`:
 `renderConnected(ui)` renders under a provider wired to a `FakeSocket`, and
@@ -51,10 +67,12 @@ the guide silently rots (it already had once, which is how the value hooks got f
 `@testing-library/react` gives a second registry of mounted containers, and the DOM
 accumulates between tests.
 
-**Gotcha:** the root Python `.gitignore` has a `lib/` rule (for wheel artifacts) that also
-matches `src/lib/`, the `cn` helper. `.gitignore` re-includes `!web/**/lib/` so it stays
-tracked. Keep that negation, or `src/lib/utils.ts` drops from commits and every
-`@/lib/utils` import breaks in CI.
+**Gotcha:** the root Python `.gitignore` ignores wheel artifacts with an **anchored**
+`/lib/`. Keep it anchored. Unanchored it also matches `src/lib/`, the `cn` helper, so
+`src/lib/utils.ts` drops from commits and every `@/lib/utils` import breaks in CI. Do not
+fix that by un-ignoring (`!web/**/lib/`), which is what used to be there: the negation
+re-includes every `lib/` inside `node_modules` when packaging, because git prunes an
+ignored directory and hatchling does not.
 
 ## `apps/panel/` - the reference panel
 
@@ -75,9 +93,11 @@ invalid and the whole declaration is silently dropped.
 
 ## `apps/panel/demo/` - the documentation demos
 
-`dome-sim.ts` and `weather-sim.ts` are TypeScript ports of `examples/dome_device.py` and
-`examples/openmeteo_device.py` behind a fake `WebSocketLike`, so the docs' live demos run
-with no server. Both build into `docs/` via `pnpm run docs` and are gitignored.
+`dome-sim.ts`, `weather-sim.ts` and `flat-panel-sim.ts` are TypeScript ports of
+`examples/dome_device.py`, `examples/openmeteo_device.py` and `examples/flat_panel.py`
+behind a fake `WebSocketLike`, so the docs' live demos run with no server. Each has its own
+Vite config (`vite.demo.config.ts`, `vite.weather.config.ts`, `vite.flat.config.ts`) and
+builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
 
 - **The simulators mirror real drivers.** Change a driver's properties or its safety rule and
   change its simulator too, or the demo stops being a demo of anything.

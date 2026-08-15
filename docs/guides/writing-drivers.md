@@ -96,7 +96,7 @@ if __name__ == "__main__":
    This one starts Off.
 4. `ONE_OF_MANY` means "exactly one of these is on" - a UI draws radio buttons. The other
    rules are `AT_MOST_ONE` (zero or one) and `ANY_OF_MANY` (independent checkboxes).
-5. `group` is the tab a UI files the property under.
+5. `group` is the section a UI files the property under.
 6. Numbers can declare a display `format` and a valid range, and a UI will respect both.
 7. `message()` sends a line to every client's log.
 8. `@on_new("NAME")` is called when a client asks to change that property. Nothing changes

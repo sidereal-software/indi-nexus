@@ -26,11 +26,11 @@ export function App() {
 }
 ```
 
-That is a working control panel: every property of the dome, grouped into tabs, each drawn
-with the right control for its kind - numbers with their units and limits, switches as
-radio buttons or checkboxes depending on the INDI rule, lights as coloured dots, BLOBs as
-download links. Editable properties are editable; read-only ones are not. Status badges
-update live.
+That is a working control panel: every property of the dome, under a heading for its INDI
+group, each drawn with the right control for its kind - numbers with their units and
+limits, switches as radio buttons or checkboxes depending on the INDI rule, lights as
+coloured dots, BLOBs as download links. Editable properties are editable; read-only ones
+are not. Status badges update live.
 
 Two things are happening:
 
@@ -102,10 +102,18 @@ function ShutterButtons() {
   const client = useIndiClient();
   return (
     <>
-      <button onClick={() => client.setSwitch("Dome Simulator", "DOME_SHUTTER", { SHUTTER_OPEN: "On" })}>
+      <button
+        type="button"
+        onClick={() => client.setSwitch("Dome Simulator", "DOME_SHUTTER", { SHUTTER_OPEN: "On" })}
+      >
         Open
       </button>
-      <button onClick={() => client.setNumber("Dome Simulator", "ABS_DOME_POSITION", { DOME_ABSOLUTE_POSITION: 120 })}>
+      <button
+        type="button"
+        onClick={() =>
+          client.setNumber("Dome Simulator", "ABS_DOME_POSITION", { DOME_ABSOLUTE_POSITION: 120 })
+        }
+      >
         Go to 120°
       </button>
     </>

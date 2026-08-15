@@ -19,7 +19,8 @@ The finished code is `examples/openmeteo_device.py`, and its tests are
 
 A weather device that reports:
 
-- **Conditions** - temperature, humidity, cloud cover, wind, gusts, pressure.
+- **Conditions** - temperature and what it feels like, humidity, cloud cover,
+  wind speed, direction and gusts, pressure.
 - **Status** - one light per reading, `Ok` inside its safe range and `Alert`
   outside it, so an operator can glance rather than read.
 - **Sky** - a plain-language description, and whether it is day or night.
@@ -34,7 +35,8 @@ Open-Meteo will return a wall of data if you ask for it. Ask for less:
 https://api.open-meteo.com/v1/forecast
   ?latitude=34.0522&longitude=-118.2437
   &current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,
-           wind_gusts_10m,pressure_msl,is_day,weather_code
+           wind_gusts_10m,pressure_msl,wind_direction_10m,apparent_temperature,
+           is_day,weather_code
   &daily=sunrise,sunset,moon_phase
   &forecast_days=1&timezone=GMT
 ```
@@ -47,6 +49,7 @@ The reply's interesting parts:
   "current": {
     "temperature_2m": 66.9, "relative_humidity_2m": 95, "cloud_cover": 31,
     "wind_speed_10m": 2.4, "wind_gusts_10m": 2.5, "pressure_msl": 1008.2,
+    "wind_direction_10m": 304, "apparent_temperature": 71.6,
     "is_day": 0, "weather_code": 1
   },
   "daily": {
@@ -80,14 +83,32 @@ READINGS = [
 ]
 ```
 
+Not everything you publish is something you judge. A compass bearing has no safe
+range, and apparent temperature is context for the real temperature rather than
+a limit of its own, so those two go in a second list:
+
+```python
+#: (API field, element name, label) - published, but not judged.
+CONTEXT = [
+    ("wind_direction_10m",   "WIND_DIRECTION", "Wind from"),
+    ("apparent_temperature", "FEELS_LIKE",     "Feels like"),
+]
+
+#: Everything published, judged or not.
+PUBLISHED = [
+    (field, element, label) for field, element, label, *_range in READINGS
+] + CONTEXT
+```
+
 Now the properties build themselves, and the safe ranges cannot drift out of
-step with the readings:
+step with the readings - a number for everything published, a light for each
+reading that has a range to fall outside of:
 
 ```python
 self.define_number(
     "WEATHER_PARAMETERS",                     # the standard INDI name for this
     [Number(name=element, label=label, format="%.1f")
-     for _field, element, label, *_range in READINGS],
+     for _field, element, label in PUBLISHED],
     perm=IPerm.RO,
     emit="on_change",                         # the weather is not news every tick
 )

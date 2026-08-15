@@ -3,10 +3,10 @@
 **Control astronomical instruments from Python, and put a web UI in front of them.**
 
 Telescopes, domes, cameras, focusers and weather stations at an observatory all speak a
-common language called [INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf). A small
-program called a *driver* sits between each instrument and everything else, translating.
-INDINexus is the toolkit for writing those drivers in modern Python - and for building the
-screens operators actually use.
+common language called [INDI](https://docs.indilib.org/protocol/). A small program called
+a *driver* sits between each instrument and everything else, translating. INDINexus is the
+toolkit for writing those drivers in modern Python - and for building the screens
+operators actually use.
 
 <div class="grid cards" markdown>
 

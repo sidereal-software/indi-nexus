@@ -41,12 +41,14 @@ indi-nexus/
 │   ├── protocol/            # the INDI protocol core
 │   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy (str enums)
 │   │   ├── models.py        #   typed Pydantic vectors, elements, def/set/new + enableBLOB
-│   │   └── xml.py           #   INDI XML codec + streaming pull-parser + sexagesimal
+│   │   ├── xml.py           #   INDI XML codec + streaming pull-parser + sexagesimal
+│   │   └── json.py          #   the browser codec: the same models, JSON on the wire
 │   ├── driver/              # driver SDK (stdio under indiserver)
+│   ├── testing.py           # DeviceHarness: drive a Device in a test, no indiserver
 │   ├── client/              # reconnecting async client + property cache
 │   ├── transport.py         # shared read/write byte-stream contract + TCP adapter
 │   ├── web/                 # FastAPI bridge (WS + REST) + static/debug.html
-│   └── cli.py               # Typer CLI (serve / run / monitor)
+│   └── cli.py               # Typer CLI (new / serve / run / monitor)
 ├── examples/                # runnable references: drivers and a client
 ├── tests/                   # pytest suite
 ├── docs/ + mkdocs.yml       # the documentation site
@@ -77,8 +79,13 @@ pnpm -r build                         # build the libraries + panel (into the Py
 pnpm -r test                          # run all package tests (Vitest)
 pnpm -r typecheck                     # type-check every package
 pnpm lint                             # lint + format check (Biome)
+pnpm run lint:diagrams                # parse every Mermaid diagram in the repository
 pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxies to :8000)
 ```
+
+`lint:diagrams` renders every diagram in the repository with Mermaid's own CLI, so a parse
+error fails here instead of shipping an empty box. It needs a browser to render in; if it
+cannot find one, point it at yours with `PUPPETEER_EXECUTABLE_PATH`, which is what CI does.
 
 For panel development with hot reload, run a bridge (`indi-nexus serve --device examples.demo_device:Demo`, or
 `indi-nexus serve` against a real `indiserver`) and the Vite dev server, which proxies
@@ -165,7 +172,7 @@ changelog. Cutting a release is written up in [RELEASING.md](RELEASING.md).
 
 ## Green baseline
 
-Before committing: `ruff check` + `mypy src` + `pytest` clean, and in `web/`,
-`pnpm lint` + `pnpm -r typecheck` + `pnpm -r test` + `pnpm -r build` clean. CI
+Before committing: `ruff check` + `mypy src` + `pytest` clean, and in `web/`, `pnpm lint` +
+`pnpm -r typecheck` + `pnpm -r test` + `pnpm -r build` + `pnpm run lint:diagrams` clean. CI
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of these plus a check
 that the wheel bundles the panel.

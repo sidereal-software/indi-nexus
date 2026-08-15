@@ -4,9 +4,9 @@ React hooks and [shadcn/ui](https://ui.shadcn.com/) components for building
 [INDINexus](https://indi-nexus.sidereal.software/) frontends.
 
 Observatory instruments (telescopes, domes, cameras, focusers, weather stations) speak
-[INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf). The INDINexus bridge puts that
-traffic behind a WebSocket as typed JSON, and this package turns it into a UI: point a
-provider at a bridge, name a device, and you have a working control panel.
+[INDI](https://docs.indilib.org/protocol/). The INDINexus bridge puts that traffic behind a
+WebSocket as typed JSON, and this package turns it into a UI: point a provider at a bridge,
+name a device, and you have a working control panel.
 
 It builds on [`@indi-nexus/client`](https://www.npmjs.com/package/@indi-nexus/client) and
 re-exports all of it, so this is the only package an application needs.
@@ -40,12 +40,16 @@ For your own layout, the same live state is available through hooks:
 ```tsx
 import { useNumber, useSwitch, useConnection } from "@indi-nexus/react";
 
-const Readout = () => {
-  const state = useConnection();
+export const Readout = () => {
+  const { transport } = useConnection(); // also `upstream`: the bridge's own link
   const ra = useNumber("Mount", "EQUATORIAL_EOD_COORD", "RA");
   const tracking = useSwitch("Mount", "TELESCOPE_TRACK_STATE", "TRACK_ON");
 
-  return <p>{state}: RA {ra ?? "-"} {tracking ? "(tracking)" : ""}</p>;
+  return (
+    <p>
+      {transport ? "connected" : "offline"}: RA {ra ?? "-"} {tracking ? "(tracking)" : ""}
+    </p>
+  );
 };
 ```
 

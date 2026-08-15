@@ -15,10 +15,9 @@ of them.
 ## Project overview
 
 INDINexus (`indi-nexus`) is a modern, typed Python framework for the
-[INDI protocol](http://www.clearskyinstitute.com/INDI/INDI.pdf) (astronomical instrument
-control): the driver SDK, the async client, and the web bridge, on a Pydantic v2 + FastAPI
-foundation with a TypeScript/React frontend. It does **not** reimplement the C `indiserver`
-binary.
+[INDI protocol](https://docs.indilib.org/protocol/) (astronomical instrument control): the
+driver SDK, the async client, and the web bridge, on a Pydantic v2 + FastAPI foundation
+with a TypeScript/React frontend. It does **not** reimplement the C `indiserver` binary.
 
 Docs publish to <https://indi-nexus.sidereal.software/> from `main` via
 `.github/workflows/docs.yml`.

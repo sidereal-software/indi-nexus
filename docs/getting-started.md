@@ -63,10 +63,12 @@ side by side.
 
 !!! note "Where the worked examples live"
 
-    A telescope, a dome, a camera, a flat-field lamp and a weather station are in the
-    [examples](guides/examples.md), each one runnable and covered by tests. They ship with
-    the source rather than the wheel, so `git clone` the repository if you want to run them
-    locally. Two of them also run [in your browser](index.md#see-it-working).
+    A telescope, a dome, a camera, a flat-field lamp and two weather stations (one
+    simulated, one on a live public API) are in the [examples](guides/examples.md), each
+    runnable and covered by tests. They ship with the source rather than the wheel, so
+    `git clone` the repository if you want to run them locally. Three also run
+    [in your browser](index.md#see-it-working): the dome, the lamp, and the live weather
+    station.
 
 ## 4. Running under indiserver
 

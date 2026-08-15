@@ -42,8 +42,15 @@ Number elements carry a printf-style `format`. Alongside the usual `%.2f` forms,
 defines `%m` for sexagesimal - the `hh:mm:ss` notation used for right ascension and
 declination. `%9.6m` means "nine characters wide, showing degrees, minutes and seconds".
 
-Both the Python codec and its TypeScript mirror implement this identically to libindi, so
-coordinates round-trip exactly between INDINexus and existing INDI software.
+Both the Python codec and its TypeScript mirror *write* `%m` exactly as libindi does, down
+to the field padding and the half-away-from-zero rounding, so coordinates round-trip to
+existing INDI software unchanged.
+
+Reading is where INDINexus is deliberately more permissive. libindi accepts sexagesimal on
+a `def` but reads a `set` with `std::stod`, so a value of `10:30:00` in a `setNumberVector`
+arrives there as `10.0`. INDINexus parses sexagesimal on both, which is a strict superset:
+anything libindi reads correctly, we read the same way. Do not "fix" that to match - it
+would turn a coordinate into a silently wrong number.
 
 ## Messages and BLOBs
 

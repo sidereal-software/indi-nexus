@@ -4,10 +4,10 @@ Framework-agnostic TypeScript client and typed property store for the
 [INDINexus](https://indi-nexus.sidereal.software/) web bridge.
 
 Observatory instruments (telescopes, domes, cameras, focusers, weather stations) speak
-[INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf). The INDINexus bridge puts that
-traffic behind a WebSocket as typed JSON, and this package is the browser side of it: it
-handles the socket, reconnects on its own, and mirrors everything the bridge reports into a
-property cache you can read and subscribe to.
+[INDI](https://docs.indilib.org/protocol/). The INDINexus bridge puts that traffic behind a
+WebSocket as typed JSON, and this package is the browser side of it: it handles the socket,
+reconnects on its own, and mirrors everything the bridge reports into a property cache you
+can read and subscribe to.
 
 No framework or UI dependency. If you are building with React, use
 [`@indi-nexus/react`](https://www.npmjs.com/package/@indi-nexus/react), which wraps this in
@@ -27,22 +27,22 @@ import { IndiClient, IPState } from "@indi-nexus/client";
 const client = new IndiClient({ url: "ws://localhost:8000/ws" });
 client.connect();
 
-// React to any change on one property.
-client.subscribe(
-  (event) => console.log(event.device, event.name, event.vector.state),
-  { device: "Mount", name: "EQUATORIAL_EOD_COORD" },
-);
+// React to any change on one property. `vector` is null on a del.
+client.subscribe((event) => console.log(event.device, event.name, event.vector?.state), {
+  device: "Mount",
+  name: "EQUATORIAL_EOD_COORD",
+});
 
 // Wait until a property shows up and is settled, then command the instrument.
-await client.waitFor("Mount", "CONNECTION", (v) => v.state === IPState.OK);
+await client.waitFor("Mount", "CONNECTION", (v) => v.state === IPState.Ok);
 client.setNumber("Mount", "EQUATORIAL_EOD_COORD", { RA: 5.59, DEC: -5.39 });
 ```
 
 Reading cached state directly works too, which is what the React hooks are built on:
 
 ```ts
-client.devices();                            // known device names
-client.device("Mount");                      // one device's properties
+client.devices(); // known device names
+client.device("Mount"); // one device's properties
 client.get("Mount", "EQUATORIAL_EOD_COORD"); // a single vector, or undefined
 ```
 

@@ -3,10 +3,10 @@
 **Control astronomical instruments from Python, and put a web UI in front of them.**
 
 Telescopes, domes, cameras, focusers and weather stations at an observatory all speak a
-common language called [INDI](http://www.clearskyinstitute.com/INDI/INDI.pdf). A small
-program called a *driver* sits between each instrument and everything else, translating.
-INDINexus is the toolkit for writing those drivers in modern Python - and for building the
-screens that operators actually use.
+common language called [INDI](https://docs.indilib.org/protocol/). A small program called
+a *driver* sits between each instrument and everything else, translating. INDINexus is the
+toolkit for writing those drivers in modern Python - and for building the screens that
+operators actually use.
 
 You get three things:
 
@@ -140,14 +140,16 @@ Drivers are ordinary Python objects, so you can drive one in a test and check wh
 its clients - no instrument, no `indiserver`, no sockets:
 
 ```python
+from indi_nexus.protocol import IPState
 from indi_nexus.testing import DeviceHarness
+from my_driver import MyDriver                    # the file `indi-nexus new` wrote
 
 harness = DeviceHarness(MyDriver())
-await harness.setup()                       # what indiserver sends on startup
+await harness.setup()                             # what indiserver sends on startup
 await harness.write("CONNECTION", CONNECT=True)   # what the operator clicks
-await harness.tick("poll")                  # run one iteration of the @every job
+await harness.tick("poll")                        # run one iteration of the @every job
 
-assert harness.latest("WEATHER_PARAMETERS").state is IPState.OK
+assert harness.latest("TELEMETRY").state is IPState.OK
 ```
 
 ## Building a frontend
