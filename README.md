@@ -1,25 +1,25 @@
 # INDINexus
 
-**Control astronomical instruments from Python, and put a web UI in front of them.**
+Control astronomical instruments from Python, and put a web UI in front of them.
 
 Telescopes, domes, cameras, focusers and weather stations at an observatory all speak a
 common language called [INDI](https://docs.indilib.org/protocol/). A small program called
-a *driver* sits between each instrument and everything else, translating. INDINexus is the
-toolkit for writing those drivers in modern Python - and for building the screens that
-operators actually use.
+a *driver* sits between each instrument and everything else, translating. INDINexus is a
+toolkit for writing those drivers in modern Python, and for building the screens
+operators work from.
 
-You get three things:
+It has three parts:
 
-1. **A driver SDK.** Describe what your instrument exposes, say how to read it and how to
+1. A driver SDK. Describe what your instrument exposes, say how to read it and how to
    command it, and the standard INDI machinery is handled for you.
-2. **A Python client.** Connect to an observatory, watch instruments change, send commands.
-3. **A web UI.** A ready-made control panel, plus React components to build your own.
+2. A Python client. Connect to an observatory, watch instruments change, send commands.
+3. A web UI: a ready-made control panel, plus React components for building your own.
 
-Everything is fully typed, and drivers can be tested without any hardware attached.
+Everything is fully typed, and drivers can be tested with no hardware attached.
 
-**Documentation:** <https://indi-nexus.sidereal.software/> - guides, a live in-browser
-demo, and the full API reference. Working on INDINexus itself? See
-[DEVELOPMENT.md](DEVELOPMENT.md).
+Documentation: <https://indi-nexus.sidereal.software/> has the guides, a live in-browser
+demo, and the full API reference. [DEVELOPMENT.md](DEVELOPMENT.md) covers working on
+INDINexus itself.
 
 ## How the pieces fit
 
@@ -51,17 +51,17 @@ flowchart LR
     class hub,hw,ui ext
 ```
 
-Reading left to right: your **driver** talks to the instrument and speaks INDI to
-`indiserver`, the hub every INDI system is built around. The **client** connects to that
-hub and mirrors everything it sees into a typed cache. The **bridge** puts that cache
-behind a WebSocket so a **browser** can show it.
+Reading left to right: your driver talks to the instrument and speaks INDI to
+`indiserver`, the hub every INDI system is built around. The client connects to that hub
+and mirrors everything it sees into a typed cache. The bridge puts that cache behind a
+WebSocket so a browser can show it.
 
-You do not need all three. Writing only a driver is completely normal.
+You do not need all three; writing only a driver is normal.
 
-## Try it in two minutes
+## Try it
 
 Python 3.12 or newer is the only requirement. The web panel is compiled into the package,
-so there is no Node toolchain and no `indiserver` to install for any of this.
+so none of this needs a Node toolchain or an `indiserver` install.
 
 ```bash
 pip install indi-nexus
@@ -70,16 +70,16 @@ indi-nexus new my_driver.py                 # a complete, commented driver
 indi-nexus serve --device my_driver:MyDriver   # run it, with the panel
 ```
 
-Open <http://localhost:8000/> and you have a working control panel driven by the driver
-you just made. Press Connect and its telemetry starts counting; flip the power switch and
-the message log says so.
+Open <http://localhost:8000/> for a working control panel driven by the driver you just
+made. Press Connect and its telemetry starts counting; flip the power switch and a line
+appears in the message log.
 
 `--device` runs the driver inside the web process so that trying it out needs one install
 instead of two. Real observatories run their drivers under `indiserver`, and so should
 you: `indiserver ./my_driver.py`, then `indi-nexus serve` with no `--device`. The driver
 file is the same either way.
 
-Prefer to look before installing? The [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
+To look before installing, the [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
 runs the real panel against a simulated dome inside your browser.
 
 ## Writing a driver
@@ -123,13 +123,13 @@ if __name__ == "__main__":
     Mount.run()
 ```
 
-`open_serial_link`, `read_mount` and `slew_to` are the only parts you write - they are
-whatever talks to your instrument. Everything else on that page is the framework: the
-Connect button and its lifecycle, the timer, the dispatch, the wire format, the error
-handling. For a driver that runs as written, see
-[`examples/flat_panel.py`](examples/flat_panel.py), 90 lines for a real device.
+`open_serial_link`, `read_mount` and `slew_to` are the only parts you write; they are
+whatever talks to your instrument. The Connect button and its lifecycle, the timer, the
+dispatch, the wire format and the error handling all come from the framework. For a
+driver that runs as written, see [`examples/flat_panel.py`](examples/flat_panel.py), 108
+lines for a real device.
 
-Start from a working file and see it in the panel immediately:
+Or start from a working file and open it in the panel:
 
 ```bash
 indi-nexus new my_driver.py
@@ -137,13 +137,14 @@ indi-nexus serve --device my_driver:MyDriver
 ```
 
 The [driver guide](https://indi-nexus.sidereal.software/guides/writing-drivers/) walks
-through this line by line. Coming from pyINDI? There is a
-[porting guide](https://indi-nexus.sidereal.software/guides/porting-from-pyindi/).
+through this line by line, and the
+[porting guide](https://indi-nexus.sidereal.software/guides/porting-from-pyindi/) maps the
+pyINDI API onto it.
 
 ### Testing without hardware
 
-Drivers are ordinary Python objects, so you can drive one in a test and check what it told
-its clients - no instrument, no `indiserver`, no sockets:
+Drivers are ordinary Python objects, so a test can drive one directly and check what it
+told its clients, without an instrument, an `indiserver` or a socket:
 
 ```python
 from indi_nexus.protocol import IPState
@@ -160,7 +161,7 @@ assert harness.latest("TELEMETRY").state is IPState.OK
 
 ## Building a frontend
 
-Install `@indi-nexus/react`, point it at a bridge, and name a device - that is a working
+Install `@indi-nexus/react`, point it at a bridge and name a device. That is a working
 control panel:
 
 ```tsx
@@ -175,9 +176,8 @@ export const App = () => (
 ```
 
 `DevicePanel` builds itself from whatever the device says it has, so it works for a device
-INDINexus has never seen. When you want your own layout instead, the same data is
-available through hooks - see the
-[frontend guide](https://indi-nexus.sidereal.software/guides/frontend/).
+INDINexus has never seen. For your own layout, the same data is available through hooks;
+the [frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) covers both.
 
 ## The examples
 

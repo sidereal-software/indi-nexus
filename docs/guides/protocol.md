@@ -6,16 +6,16 @@ search:
 # Protocol concepts
 
 You do not need this page to write a driver - the [driver guide](writing-drivers.md)
-covers the vocabulary you actually use. Read this when you want to know what is happening
-on the wire.
+covers the vocabulary you use. Read this when you want to know what is happening on the
+wire.
 
-## One model, two encodings
+## XML to indiserver, JSON to browsers
 
-INDINexus speaks canonical INDI 1.7 **XML** to `indiserver`, which is what every other
-INDI program expects. It speaks **JSON** to browsers, because that is what browsers want.
+INDINexus speaks canonical INDI 1.7 XML to `indiserver`, which is what every other INDI
+program expects, and JSON to browsers.
 
-Both come from the same Python model, so the two can never drift apart, and the JSON your
-frontend receives is exactly the protocol - not a summary of it.
+Both encodings come from the same Python model, so they cannot drift apart. The JSON a
+frontend receives is the protocol itself rather than a summary of it.
 
 ## def, set, new
 
@@ -30,9 +30,9 @@ Three things can be said about a property, and they share one shape:
 Because `set` and `new` carry no metadata, a client keeps the `def` and merges later `set`
 messages onto it. INDINexus does this for you on both sides.
 
-The important consequence is for driver authors: **a `new` usually names only the elements
-the client actually touched.** Clicking one radio button sends only that button. This is
-why handler code uses
+The consequence for driver authors is that a `new` usually names only the elements the
+client changed. Clicking one radio button sends only that button. Handler code therefore
+uses
 
 ```python
 vector.selected()             # which switch did they turn on?

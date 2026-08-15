@@ -1,26 +1,20 @@
 # INDINexus
 
-**If you have written an instrument driver before, this is the version where the
-plumbing is already done.** A driver is one Python class, it runs under the
-`indiserver` you already have, you can test all of it with nothing plugged in, and a
-browser control panel comes with it. (New to [INDI](guides/protocol.md)? That page is
-the vocabulary.)
+INDINexus is a Python toolkit for writing INDI instrument drivers. If you have written
+one before, what is different here is that the plumbing is already done: a driver is one
+Python class, it runs under the `indiserver` you already have, you can test all of it
+with nothing plugged in, and a browser control panel comes with it. If INDI itself is new
+to you, [the protocol page](guides/protocol.md) has the vocabulary.
 
-Rather see it running first? [Drive a simulated dome in your browser](demo-app/index.html)
-- the real panel, nothing installed. [Two more below](#three-demos-nothing-installed).
+To see it running first, [drive a simulated dome in your browser](demo-app/index.html):
+the real panel, with nothing installed. [Two more demos are below](#demos-in-your-browser).
 
 Here is a complete driver for a flat-field lamp - a switch and a brightness dial:
 
-```python title="examples/flat_panel.py, docstrings trimmed"
+```python title="examples/flat_panel.py, trimmed for this page"
 from indi_nexus.driver import Device, on_new
 from indi_nexus.protocol import (
-    IPState,
-    ISRule,
-    ISState,
-    Number,
-    NumberVector,
-    Switch,
-    SwitchVector,
+    IPState, ISRule, ISState, Number, NumberVector, Switch, SwitchVector,
 )
 
 MIN_BRIGHTNESS = 0
@@ -33,7 +27,8 @@ class FlatPanel(Device):
     name = "Flat Panel"
 
     async def setup(self) -> None:
-        """Define the lamp switch and the brightness dial."""
+        """Define the connection switch, the lamp and the dial."""
+        self.define_connection()
         self.define_switch(
             "LIGHT_CONTROL",
             [
@@ -64,9 +59,16 @@ class FlatPanel(Device):
         )
         self.message("Flat panel ready.")
 
+    async def on_disconnect(self) -> None:
+        """Turn the lamp off: a panel left lit fogs the next exposure."""
+        self["LIGHT_CONTROL"].set({"OFF": ISState.ON}, state=IPState.IDLE)
+        self.message("Lamp turned off on disconnect.")
+
     @on_new("LIGHT_CONTROL")
     async def _switch_lamp(self, vector: SwitchVector) -> None:
         """Turn the lamp on or off in response to a client write."""
+        if not self.require_connected():
+            return
         on = vector.selected() == "ON"
         self["LIGHT_CONTROL"].set(
             {"ON" if on else "OFF": ISState.ON},
@@ -77,10 +79,10 @@ class FlatPanel(Device):
     @on_new("LIGHT_BRIGHTNESS")
     async def _set_brightness(self, vector: NumberVector) -> None:
         """Clamp a requested brightness to the advertised range."""
+        if not self.require_connected():
+            return
         wanted = vector.get("BRIGHTNESS", 0.0)
-        # A client is free to ask for anything; the advertised
-        # min/max is a promise about the hardware, so hold to it
-        # rather than passing the value through.
+        # The advertised min/max is a promise about the hardware.
         clamped = max(MIN_BRIGHTNESS, min(MAX_BRIGHTNESS, wanted))
         self["LIGHT_BRIGHTNESS"].set(BRIGHTNESS=clamped, state=IPState.OK)
 
@@ -91,25 +93,25 @@ if __name__ == "__main__":
 
 That is
 [`examples/flat_panel.py`](https://github.com/sidereal-software/indi-nexus/blob/main/examples/flat_panel.py),
-shown without its module docstring and parameter docs; the file in the repository is 90
-non-blank lines. It is covered by the test suite, it is the driver the
-[driver guide](guides/writing-drivers.md) builds one property at a time, and you can
-[drive it in your browser](flat-demo/flat.html) without installing anything.
+shown without its module docstring or its parameter docs, with the import list folded and
+one comment shortened; the file in the repository is 108 non-blank lines. It is covered
+by the test suite, it is the driver the [driver guide](guides/writing-drivers.md) builds
+one property at a time, and you can [drive it in your browser](flat-demo/flat.html)
+without installing anything.
 
-## The alternative is the driver you would write yourself
+## The plumbing it replaces
 
-Not another framework. The thing this replaces is the driver you would hand-roll again:
-the read loop over stdin, the XML parser that has to survive a start tag split across
-two reads, the dispatch chain on property name, the timer whose period drifts by the
-length of each tick, and the poll that lands on top of a command that arrived while it
-was out.
+What INDINexus stands in for is the driver you would otherwise hand-roll: the read loop
+over stdin, the XML parser that has to survive a start tag split across two reads, the
+dispatch chain on property name, the timer whose period drifts by the length of each
+tick, and the poll that lands on top of a command that arrived while it was out.
 
-Those last two are the ones that cost a night. `@every` runs against a rolling deadline,
-so a job's period does not drift by the tick's own duration, and
-[ticks and client writes never overlap](guides/writing-drivers.md#timers-and-clicks-never-overlap),
+The last two are handled explicitly. `@every` runs against a rolling deadline, so a job's
+period does not drift by the tick's own duration, and
+[ticks and client writes never overlap](guides/writing-drivers.md#serialised-dispatch),
 so a slow poll cannot publish pre-write state over a button the operator just pressed.
 
-## Three commands to a working panel
+## Install and run
 
 ```bash
 pip install indi-nexus
@@ -126,10 +128,11 @@ there is no Node build, and `--device` runs the driver in-process, so there is n
 
 [Getting started, a step at a time](getting-started.md){ .md-button .md-button--primary }
 
-## Three demos, nothing installed
+## Demos in your browser
 
 Each one runs the real panel against a driver simulated inside your browser, speaking
-the same JSON the FastAPI bridge speaks. No server, no account, no download.
+the same JSON the FastAPI bridge speaks. The simulation runs in the page itself, so there
+is nothing to download and no server or account involved.
 
 <div class="grid cards" markdown>
 
@@ -144,7 +147,8 @@ the same JSON the FastAPI bridge speaks. No server, no account, no download.
 -   **The driver at the top of this page**
 
     The same flat panel: same property names, same exclusive switch rule, same clamped
-    brightness range. The behaviour above, in your tab.
+    brightness range. Press Connect, light the lamp, then disconnect and watch it go
+    out.
 
     [Open the lamp demo](flat-demo/flat.html){ .md-button }
 
@@ -158,7 +162,7 @@ the same JSON the FastAPI bridge speaks. No server, no account, no download.
 
 </div>
 
-## Test the whole driver with no hardware
+## Testing without hardware
 
 A driver is an ordinary Python object, so a test can drive it and read back what it told
 its clients:
@@ -173,29 +177,30 @@ from flat_panel import FlatPanel
 async def test_lamp_turns_on():
     harness = DeviceHarness(FlatPanel())
     await harness.setup()  # what indiserver sends at startup
+    await harness.write("CONNECTION", CONNECT=True)  # the operator presses Connect
 
-    await harness.write("LIGHT_CONTROL", ON=True)  # the operator clicks On
+    await harness.write("LIGHT_CONTROL", ON=True)  # and clicks On
 
     assert harness.latest("LIGHT_CONTROL").get("ON") is ISState.ON
     assert "turned on" in harness.messages[-1]
 ```
 
-No sockets, no subprocess, no XML, no instrument. `write()` builds the partial vector a
-real client sends and routes it through the device's real dispatch - the `@on_new` map,
-the device-name guard, the serialisation lock - so a handler that passes here works
-under `indiserver`. `tick(job)` runs one iteration of an `@every` job without waiting
-out its interval.
+Nothing in that test opens a socket, starts a subprocess, parses XML or touches an
+instrument. `write()` builds the partial vector a real client sends and routes it through
+the device's real dispatch (the `@on_new` map, the device-name guard, the serialisation
+lock), so a handler that passes here works under `indiserver`. `tick(job)` runs one
+iteration of an `@every` job without waiting out its interval.
 
-Every example in the repository is covered this way, the flat panel above included.
-[Testing without hardware](guides/writing-drivers.md#testing-without-hardware) is the
-full account.
+Every example in the repository is covered this way, the flat panel above included. The
+driver guide's [testing section](guides/writing-drivers.md#testing-without-hardware) is
+the full account.
 
 !!! note "Running that test"
 
     It is written for `pytest` with [pytest-asyncio](https://pytest-asyncio.readthedocs.io/)
     in `asyncio_mode = "auto"`. Without that, wrap the body in `asyncio.run`.
 
-## A control panel you did not have to write
+## The generated control panel
 
 Every INDI device says what it has - properties, kinds, ranges, labels - so the UI can
 be generated from the device rather than written per instrument:
@@ -215,8 +220,8 @@ export function App() {
 
 Numbers get their units and limits, switches become radio buttons or checkboxes
 according to the INDI rule, lights become coloured dots, BLOBs become download links,
-and read-only properties are not editable. When you want a purpose-built screen instead,
-the same data is on hooks - [building a frontend](guides/frontend.md) covers both.
+and read-only properties are not editable. For a purpose-built screen instead, the same
+data is on hooks. [Building a frontend](guides/frontend.md) covers both.
 
 ## How the pieces fit
 
@@ -248,30 +253,30 @@ flowchart LR
     class hub,hw,ui ext
 ```
 
-- Your **driver** talks to the instrument and speaks INDI to `indiserver`.
-- The **client** connects to that hub and mirrors everything into a typed cache you can
-  read and watch from Python.
-- The **bridge** puts that cache behind a WebSocket so a browser can show it.
+- Your driver talks to the instrument and speaks INDI to `indiserver`.
+- The client connects to that hub and mirrors everything into a typed cache you can read
+  and watch from Python.
+- The bridge puts that cache behind a WebSocket so a browser can show it.
 
-You do not need all three. Writing only a driver is what most people come here for.
+You do not need all three; writing only a driver is the common case.
 
 ## What this does not do
 
-- **It does not reimplement `indiserver`.** The C hub stays the hub and your driver runs
-  as its child, which is what keeps the rest of the INDI ecosystem working against it.
-  Only the Python and browser layers are new here.
-- **`--device` is not a hub.** It runs drivers inside the web process: one client, no
-  access control, and it stops when you stop the command. It exists so that trying this
-  out needs one install instead of two. Run anything real under `indiserver`.
-- **It does not talk to your instrument for you.** There is no vendor library in here.
-  You write the link to the hardware; `await self.off_thread(...)` keeps a blocking
-  vendor call from stalling the event loop, and that is the extent of the help.
+- It does not reimplement `indiserver`. The C hub stays the hub and your driver runs as
+  its child, which is what keeps the rest of the INDI ecosystem working against it. Only
+  the Python and browser layers are new here.
+- `--device` is not a hub. It runs drivers inside the web process: one client, no access
+  control, and it stops when you stop the command. It exists so that trying this out
+  needs one install instead of two. Run anything real under `indiserver`.
+- It does not talk to your instrument for you. There is no vendor library in here. You
+  write the link to the hardware; `await self.off_thread(...)` keeps a blocking vendor
+  call from stalling the event loop, and that is the extent of the help.
 
 ## Pick a starting point
 
 <div class="grid cards" markdown>
 
--   **From a blank file to a driver**
+-   **Writing a driver**
 
     Defining properties, polling with `@every`, handling client writes with `@on_new`,
     the connection lifecycle, and testing the result. Builds the flat panel above.
@@ -287,7 +292,7 @@ You do not need all three. Writing only a driver is what most people come here f
 
     [Port a pyINDI driver](guides/porting-from-pyindi.md)
 
--   **A driver that talks to something real**
+-   **Drivers that talk to real hardware**
 
     A blocking vendor-style client behind `off_thread`, hardware that stops answering,
     and `emit="on_change"` readbacks. `weather_device.py` is the one to copy.

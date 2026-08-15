@@ -8,7 +8,7 @@ search:
 [pyINDI](https://github.com/so-mops/pyINDI) mirrors the libindi C API in Python:
 `ISGetProperties`, the four `ISNew*` methods, `IUFind`, `IDSet`,
 `@device.repeat`. INDINexus keeps the same INDI semantics and replaces that
-vocabulary with plain Python. A port is mostly mechanical - this page is the
+vocabulary with plain Python. A port is mostly mechanical, and this page is the
 mapping.
 
 Property names, element names, labels and groups can all stay exactly as they
@@ -35,34 +35,33 @@ are, so an existing client or panel sees the same device before and after.
 
 ## What changes beyond the names
 
-**Definition is one call, not two.** `define_*` registers the property *and*
+Defining a property is one call rather than two: `define_*` registers it and
 emits its `def`. The argument order that differs per vector class in pyINDI
 (`ILightVector` has no `perm`, so everything after it shifts) becomes
 keyword-only arguments with one shape.
 
-**One handler per property, already parsed.** Instead of four `ISNew*` methods
-demultiplexing on `name`, tag one method per property with `@on_new("name")`.
-It receives the vector the client sent - no parallel `values`/`names` lists to
-zip back together.
+Client writes arrive parsed, one handler per property. Instead of four `ISNew*`
+methods demultiplexing on `name`, tag one method per property with
+`@on_new("name")`. It receives the vector the client sent, so there are no
+parallel `values`/`names` lists to zip back together.
 
-**Updates are atomic.** In pyINDI you mutate `.value` on elements and then
-remember to `IDSet(vp)`; forgetting it, or typing `==` where you meant `=`,
-silently does nothing. `set(...)` writes the elements and emits the update
-together, or not at all.
+Updates are atomic. In pyINDI you mutate `.value` on elements and then remember
+to `IDSet(vp)`; forgetting it, or typing `==` where you meant `=`, silently does
+nothing. `set(...)` writes the elements and emits the update together, or not at
+all.
 
-**Nothing runs at import.** A pyINDI driver file ends by constructing and
-starting a device at module scope, which is why it cannot be imported by a
-test. An INDINexus driver is a class; `run()` happens under
+Importing a driver module runs nothing. A pyINDI driver file ends by
+constructing and starting a device at module scope, which is why a test cannot
+import it. An INDINexus driver is a class, and `run()` happens under
 `if __name__ == "__main__"`.
 
-**Blocking hardware calls need `off_thread`.** pyINDI's callbacks are
-synchronous, so a blocking instrument call was merely slow. Here it stalls the
-event loop - see
-[Talking to real hardware](writing-drivers.md#talking-to-real-hardware).
+Blocking hardware calls need `off_thread`. pyINDI's callbacks are synchronous,
+so a blocking instrument call was merely slow; here it stalls the event loop.
+See [Talking to real hardware](writing-drivers.md#talking-to-real-hardware).
 
-**Failures are isolated.** A raising handler or poll tick is reported to the
-client and swallowed, rather than killing a task and leaving the UI frozen on
-stale values.
+Failures are isolated. A raising handler or poll tick is reported to the client
+and swallowed, rather than killing a task and leaving the UI frozen on stale
+values.
 
 ## A worked fragment
 
@@ -124,7 +123,7 @@ async def update(self) -> None:
 
 ## Then add tests
 
-The part with no pyINDI equivalent. A driver that used to need the mountain to
-exercise at all can now be run in a test in milliseconds - see
+This is the part with no pyINDI equivalent. A driver that could only be
+exercised against the instrument itself now runs in a test in milliseconds. See
 [Testing without hardware](writing-drivers.md#testing-without-hardware), and
 `tests/test_weather_example.py` for a full worked set.

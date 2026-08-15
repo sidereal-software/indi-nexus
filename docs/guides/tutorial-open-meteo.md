@@ -5,17 +5,15 @@ search:
 
 # Tutorial: a driver for real data, and a UI for it
 
-The simulators are useful for learning the shape of a driver, but they never
-surprise you. This tutorial builds a driver for something that actually exists -
-[Open-Meteo](https://open-meteo.com), a free weather API with no account and no
-key - and then a custom screen for it.
+The simulators show the shape of a driver, but their readings are invented. This
+tutorial builds a driver against [Open-Meteo](https://open-meteo.com), a free
+weather API that needs no account or key, and then a custom screen for it. At the
+end you will have real sky conditions for your own site, on a screen you laid out
+yourself.
 
-At the end you will have real sky conditions for your own site, in a panel you
-designed.
-
-**[See it running first](../weather-demo/weather.html)** - the finished driver and
-the custom screen, both in your browser, with no install. Press Connect. It calls
-the real API, falling back to a recorded reply if it cannot reach it.
+The [finished version runs in your browser](../weather-demo/weather.html), driver
+and custom screen both, with nothing to install. Press Connect and it calls the
+real API, falling back to a recorded reply if it cannot reach it.
 
 The finished code is `examples/openmeteo_device.py`, and its tests are
 `tests/test_openmeteo_example.py`.
@@ -34,7 +32,7 @@ A weather device that reports:
 
 ## 1. Ask for only what you need
 
-Open-Meteo will return a wall of data if you ask for it. Ask for less:
+Open-Meteo returns everything you ask it for, so ask for a short list:
 
 ```
 https://api.open-meteo.com/v1/forecast
@@ -66,12 +64,12 @@ The reply's interesting parts:
 
 Two things to notice, because they shape the driver:
 
-- **The API tells you its units.** `current_units` says whether you are getting
-  °F or °C. The driver uses that for its labels instead of guessing.
-- **`daily` is a list per field**, one entry per forecast day. We ask for one
-  day, so index `0` is today.
+- `current_units` says whether you are getting °F or °C, so the driver takes its
+  labels from the reply instead of guessing.
+- `daily` holds a list per field, one entry per forecast day. We ask for one day,
+  so index `0` is today.
 
-## 2. One table drives everything
+## 2. Declare the readings once
 
 Rather than repeating field names across the definitions, the readings, and the
 safety checks, put them in one place:
@@ -88,9 +86,9 @@ READINGS = [
 ]
 ```
 
-Not everything you publish is something you judge. A compass bearing has no safe
-range, and apparent temperature is context for the real temperature rather than
-a limit of its own, so those two go in a second list:
+Two of the published fields have nothing to judge them against. A compass bearing
+has no safe range, and apparent temperature is context for the real temperature
+rather than a limit of its own, so those two go in a second list:
 
 ```python
 #: (API field, element name, label) - published, but not judged.
@@ -105,9 +103,9 @@ PUBLISHED = [
 ] + CONTEXT
 ```
 
-Now the properties build themselves, and the safe ranges cannot drift out of
-step with the readings - a number for everything published, a light for each
-reading that has a range to fall outside of:
+The properties are then built from those lists, so the safe ranges cannot drift
+out of step with the readings: a number for everything published, and a light
+for each reading that has a range to fall outside of.
 
 ```python
 self.define_number(
@@ -126,8 +124,8 @@ self.define_light(
 
 ## 3. The network call is a blocking call
 
-`urllib` blocks. So does `requests`, and so does every serial library. Wrap it in
-a small client and keep it off the event loop:
+`urllib` blocks, as do `requests` and every serial library. Wrap the call in a
+small client and keep it off the event loop:
 
 ```python
 class OpenMeteoClient:
@@ -141,10 +139,10 @@ payload = await self.off_thread(self._client.fetch, self._latitude, self._longit
 
 Without `off_thread`, a slow API freezes the whole driver until it answers.
 
-## 4. Connecting means "prove you can reach it"
+## 4. Connect by proving the service answers
 
-For hardware, Connect opens a port. For a web service, it means: can I actually
-get an answer? So `on_connect` does one real fetch and publishes it:
+For hardware, Connect opens a port. For a web service the equivalent is a
+request that comes back, so `on_connect` does one real fetch and publishes it:
 
 ```python
 async def on_connect(self) -> None:
@@ -154,8 +152,8 @@ async def on_connect(self) -> None:
 ```
 
 There is no error handling here on purpose. If the fetch raises, the SDK puts
-the Connect switch back to Disconnected and shows the reason - which is exactly
-what should happen at a site whose internet is down.
+the Connect switch back to Disconnected and shows the reason, which is the right
+outcome at a site whose internet is down.
 
 ## 5. Poll slowly, and cope with silence
 
@@ -173,12 +171,12 @@ async def poll(self) -> None:
     self._publish(payload)
 ```
 
-Five minutes, not one second - it is a forecast service, and hammering a free
-public API is bad manners. `when_connected=True` means it stops on its own when
-disconnected.
+Five minutes rather than one second: it is a forecast service, and hammering a
+free public API is bad manners. `when_connected=True` stops the job while the
+device is disconnected.
 
 When the API goes quiet, the readings drop to `Idle` rather than sitting there
-looking current, and the driver says so **once**:
+looking current, and the driver reports it once instead of on every failed poll:
 
 ```python
 def _go_offline(self, exc: BaseException) -> None:
@@ -191,9 +189,9 @@ def _go_offline(self, exc: BaseException) -> None:
 
 ## 6. Turn readings into a verdict
 
-Numbers are for reading; lights are for glancing. Each reading gets its own
-light, and the vector takes the worst of them - plus one override, because if it
-is raining nothing else matters:
+Numbers are for reading and lights are for glancing. Each reading gets its own
+light and the vector takes the worst of them, with one override: rain sets the
+vector to `Alert` whatever the other readings say.
 
 ```python
 lights[element] = IPState.OK if low <= value <= high else IPState.ALERT
@@ -205,8 +203,8 @@ self["WEATHER_STATUS"].set(lights, state=worst)
 
 ## 7. Let the operator move the site
 
-Latitude and longitude are a writable property, so the device is not nailed to
-one place:
+Latitude and longitude are a writable property, so an operator can point the
+device at a different site:
 
 ```python
 @on_new("GEOGRAPHIC_COORD")
@@ -225,21 +223,21 @@ only the latitude, and the longitude must survive that.
 indi-nexus serve --device examples.openmeteo_device:OpenMeteo
 ```
 
-Open <http://localhost:8000/>, press **Connect**, and it is real weather. Edit
-the Site latitude and longitude and it follows you.
+Open <http://localhost:8000/> and press Connect: the readings are live weather.
+Edit the Site latitude and longitude and the driver follows.
 
 ## 9. A screen of your own
 
-The stock `DevicePanel` renders *anything* - it builds itself from whatever the
-device says it has. That is exactly right for commissioning, and exactly wrong
-for the screen above the control-room door.
+The stock `DevicePanel` renders anything, because it builds itself from whatever
+the device says it has. That is what you want for commissioning and the wrong
+thing for the screen above the control-room door.
 
-So the custom UI here is a **wallboard**: the display an observer glances at
-from across the room to answer one question. It is
+The custom UI here is a wallboard: the display an observer glances at from
+across the room to answer one question. It is
 `web/apps/panel/demo/sky-report.tsx` (the layout) and `sky-visuals.tsx` (the
 drawn figures), built entirely from `@indi-nexus/react`.
 
-### A wallboard is a different design problem
+### What a wallboard has to do differently
 
 | A desktop panel | A wallboard |
 |---|---|
@@ -250,7 +248,7 @@ drawn figures), built entirely from `@indi-nexus/react`.
 
 ### Reading a value and its verdict together
 
-Almost every tile wants the same two things, so that is one small hook:
+Almost every tile needs the same two values, so they come from one small hook:
 
 ```tsx
 function useReading(element: string) {
@@ -260,11 +258,11 @@ function useReading(element: string) {
 }
 ```
 
-### Say *why*, not just *what*
+### Naming the readings that caused the verdict
 
-"HOLD" is not enough from across a room - the next question is always "because
-of what?". The driver already knows: it publishes one light per reading, so the
-board just reads off the ones in Alert.
+A verdict of "HOLD" on its own leaves the reader asking which reading caused it.
+The driver publishes one light per reading, so the board can list the ones in
+Alert.
 
 ```tsx
 function useAlerting(): string[] {
@@ -278,13 +276,13 @@ function useAlerting(): string[] {
 
 The board then reads **HOLD** / *Humidity · Cloud cover*.
 
-### Blank, don't lie
+### Blanking out stale readings
 
 When Open-Meteo stops answering, the driver parks its readings at `Idle` rather
 than leaving stale numbers looking current. The board honours that: every value
 becomes `--`, the state bars go grey, and the verdict becomes **NO DATA -
-weather source is not answering**. A wallboard confidently showing last hour's
-wind speed is worse than a blank one.
+weather source is not answering**. A wallboard showing last hour's wind speed as
+though it were current is worse than a blank one.
 
 ```tsx
 const live = parameters !== undefined && parameters.state !== "Idle";
@@ -299,23 +297,23 @@ const live = parameters !== undefined && parameters.state !== "Idle";
 | Wind direction | **compass** | The one genuinely *angular* reading - the case where a dial beats a bar. |
 | Moon phase, site | **drawn figures** | See `sky-visuals.tsx`; each is a pure function of its props. |
 
-### Two rules it follows
+### Two rules the board follows
 
-- **Status is never colour alone.** In this theme Alert and Busy are ΔE 14.6
-  apart for a reader with full colour vision, and 5.7 under protanopia - across
-  a room they are the same colour. So every state is also a word: `ALERT`, `OK`,
-  in type you can read from the door.
-- **The verdict is the driver's, not the UI's.** OPEN/HOLD reads
-  `WEATHER_STATUS.state`. The safety rule lives in one place, so this board, the
-  stock panel and any script all agree.
+- Status is never colour alone. In this theme Alert and Busy are ΔE 14.6 apart
+  for a reader with full colour vision and 5.7 under protanopia, so across a
+  room they are the same colour. Every state is therefore also a word: `ALERT`,
+  `OK`, in type you can read from the door.
+- The verdict belongs to the driver rather than the UI. OPEN/HOLD reads
+  `WEATHER_STATUS.state`, so the safety rule lives in one place and this board,
+  the stock panel and any script all agree.
 
 Colour comes from theme tokens rather than hex (`bg-state-*`, `fill-chart-3`,
-`stroke-border`), so the board follows light and dark for free.
+`stroke-border`), so the board follows light and dark mode without extra work.
 
 ## 10. Test both halves
 
-The driver is tested against a **recorded real response**, so the field names
-are not guesses:
+The driver is tested against a recorded real response, so the field names are
+checked against what the service sends rather than guessed:
 
 ```python
 async def test_status_lights_flag_the_readings_that_are_out_of_range(site):
@@ -328,14 +326,14 @@ async def test_status_lights_flag_the_readings_that_are_out_of_range(site):
     assert status.state is IPState.ALERT               # the vector takes the worst
 ```
 
-The board is tested the same way, against the vectors that driver really emits,
-so the two halves are checked where they meet - see
+The board is tested the same way, against the vectors the driver really emits,
+so the two halves are checked where they meet. See
 `web/apps/panel/demo/sky-report.test.tsx`.
 
 ## Where to take it
 
-- Add a **safety switch** the dome driver can watch, so it closes itself when
-  this device goes to `Alert`.
+- Add a safety switch the dome driver can watch, so it closes itself when this
+  device goes to `Alert`.
 - Swap Open-Meteo for your own weather station: everything except
   `OpenMeteoClient.fetch` stays as it is.
 - Add the hourly forecast as a second property, so the screen can show what is

@@ -5,18 +5,15 @@ search:
 
 # Building a frontend
 
-Every instrument tells you what it has - its properties, their kinds, their ranges, their
-labels. So a UI does not have to be written per instrument: it can be *generated* from
-what the device says. That is what makes this part short.
+Every INDI device describes itself: its properties, their kinds, their ranges and their
+labels. A UI can therefore be generated from what the device reports instead of written
+per instrument.
 
-There are two ways to use it, and they mix freely:
+There are two ways to build one, and they mix freely. `DevicePanel` renders a whole
+device, including instruments INDINexus has never seen. The same live data is on hooks,
+so you can lay out exactly the screen your observatory wants.
 
-- **Take the panel.** `DevicePanel` renders a whole device, and works for instruments
-  INDINexus has never seen.
-- **Build your own.** The same live data is available through hooks, so you can lay out
-  exactly the screen your observatory wants.
-
-## A complete panel, in nine lines
+## Rendering a whole device
 
 ```tsx
 import { IndiProvider, DevicePanel } from "@indi-nexus/react";
@@ -32,16 +29,14 @@ export function App() {
 ```
 
 That is a working control panel: every property of the dome, under a heading for its INDI
-group, each drawn with the right control for its kind - numbers with their units and
-limits, switches as radio buttons or checkboxes depending on the INDI rule, lights as
-coloured dots, BLOBs as download links. Editable properties are editable; read-only ones
-are not. Status badges update live.
+group, each drawn with the right control for its kind. Numbers come with their units and
+limits, switches render as radio buttons or checkboxes depending on the INDI rule, lights
+as coloured dots, BLOBs as download links. Writable properties get editable controls and
+read-only ones do not. Status badges update live.
 
-Two things are happening:
-
-- **`IndiProvider`** opens a WebSocket to the bridge, keeps it open (reconnecting if the
-  observatory restarts), and mirrors everything it hears into a store.
-- **`DevicePanel`** subscribes to that store and re-renders the parts that changed.
+Two components do the work. `IndiProvider` opens a WebSocket to the bridge, keeps it open
+(reconnecting if the observatory restarts), and mirrors everything it hears into a store.
+`DevicePanel` subscribes to that store and re-renders the parts that changed.
 
 The stylesheet is prebuilt, so you do not need Tailwind. If you *are* running Tailwind,
 import `@indi-nexus/react/theme.css` instead - just the design tokens - and let your own
@@ -50,7 +45,7 @@ build generate the utilities.
 ## Showing several devices
 
 `useDevices()` returns every device the hub knows about, so a whole observatory is one
-`map` - and nothing in it names an instrument. Plug a new one in and it appears:
+`map` with no instrument named in it. A device plugged in later appears on its own:
 
 ```tsx
 function Observatory() {
@@ -64,8 +59,8 @@ around that, and they take no props.
 
 ## Building your own layout
 
-When you want a purpose-built screen - the three numbers a night operator actually needs,
-big enough to read across the room - use the hooks and write your own markup:
+For a purpose-built screen, such as the few numbers a night operator needs at a size
+readable across the room, use the hooks and write your own markup:
 
 ```tsx
 import { useNumber } from "@indi-nexus/react";
@@ -76,7 +71,7 @@ function DomeAzimuth() {
 }
 ```
 
-That component re-renders when *that one number* changes, and not otherwise.
+That component re-renders when that one number changes, and not otherwise.
 
 The full set:
 
@@ -95,7 +90,7 @@ The four typed hooks all return `undefined` when the property does not exist yet
 component can render before the observatory has answered.
 
 Each subscribes through `useSyncExternalStore` over an immutable store, so a component
-re-renders exactly when the data it reads changes - not on every frame that arrives.
+re-renders when the data it reads changes rather than on every frame that arrives.
 
 ## Sending commands
 
@@ -134,12 +129,11 @@ await client.waitFor("Dome Simulator", "ABS_DOME_POSITION", (v) => v.state === "
 
 for scripting a sequence.
 
-!!! note "Nothing changes until the instrument says so"
+!!! note "Commands are requests"
 
-    `setSwitch` is a *request*. The button does not move because you clicked it - it moves
-    because the driver accepted the request and published the new value. That is exactly
-    what you want from an observatory: the screen shows what the hardware is doing, never
-    what you hoped it would do.
+    `setSwitch` asks for a change. The button moves when the driver accepts the request
+    and publishes the new value, not when you click it, so the screen shows what the
+    hardware reports rather than what was asked of it.
 
 ## The components
 
@@ -151,14 +145,13 @@ for scripting a sequence.
 | `ConnectionStatus` | both connection states |
 | `MessageLog` | the rolling INDI message log |
 
-Mix them with your own markup freely - `PropertyVectorCard` on the two properties that
-matter, hand-built widgets around them.
+Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,
+hand-built widgets around them.
 
 ## Without React
 
 `@indi-nexus/client` is the layer underneath: a reconnecting WebSocket and a typed
-property store, with no UI dependency at all. Use it from Svelte, Vue, or plain
-TypeScript:
+property store, with no UI dependency. Use it from Svelte, Vue, or plain TypeScript:
 
 ```ts
 import { IndiClient } from "@indi-nexus/client";
@@ -168,7 +161,7 @@ client.subscribe((event) => console.log(event.device, event.name, event.vector?.
 client.connect();
 ```
 
-`@indi-nexus/react` re-exports all of it, so a React app only ever needs the one package.
+`@indi-nexus/react` re-exports all of it, so a React app needs only the one package.
 
 ## Full API
 
