@@ -4,6 +4,16 @@ The image runs `indiserver` and the INDINexus web bridge in one container, so a 
 with Docker installed needs nothing else: no libindi, no Python, no Node.
 
 ```bash
+docker run --rm -p 8000:8000 -p 7624:7624 ghcr.io/sidereal-software/indi-nexus
+```
+
+Released images are published to the GitHub Container Registry, one per release, tagged
+`latest`, `0.2` and `0.2.0`. They are built for `linux/amd64` and `linux/arm64`, so an
+Apple Silicon Mac and an observatory Raspberry Pi both get a native image.
+
+To build it yourself instead, from a checkout:
+
+```bash
 git clone https://github.com/sidereal-software/indi-nexus
 cd indi-nexus
 docker compose up --build
