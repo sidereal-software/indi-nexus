@@ -8,6 +8,19 @@
 
 import type { WebSocketLike } from "../connection";
 
+/** Options for {@link FakeSocket}. */
+export interface FakeSocketOptions {
+  /**
+   * Fire `onclose` from a timer rather than inside `close()`.
+   *
+   * A real WebSocket closes asynchronously, so its `onclose` can land after the
+   * owner has already opened a replacement - the case React StrictMode's
+   * mount/cleanup/mount produces. The synchronous default is what most tests
+   * want; this one is for the races it hides.
+   */
+  asyncClose?: boolean;
+}
+
 /** A fake WebSocket whose lifecycle the test triggers by hand. */
 export class FakeSocket implements WebSocketLike {
   /** Every socket the shared factory has created, newest last. */
@@ -23,8 +36,11 @@ export class FakeSocket implements WebSocketLike {
   readonly sent: string[] = [];
   readonly url: string;
 
-  constructor(url: string) {
+  private readonly asyncClose: boolean;
+
+  constructor(url: string, options: FakeSocketOptions = {}) {
     this.url = url;
+    this.asyncClose = options.asyncClose ?? false;
     FakeSocket.instances.push(this);
   }
 
@@ -33,9 +49,17 @@ export class FakeSocket implements WebSocketLike {
   }
 
   close(): void {
-    if (this.readyState === 3) return;
-    this.readyState = 3; // CLOSED
-    this.onclose?.({});
+    if (this.readyState >= 2) return;
+    if (!this.asyncClose) {
+      this.readyState = 3; // CLOSED
+      this.onclose?.({});
+      return;
+    }
+    this.readyState = 2; // CLOSING
+    setTimeout(() => {
+      this.readyState = 3; // CLOSED
+      this.onclose?.({});
+    }, 0);
   }
 
   // -- test helpers ------------------------------------------------------ //
@@ -66,4 +90,9 @@ export class FakeSocket implements WebSocketLike {
 /** A `WebSocketFactory` that produces {@link FakeSocket}s. */
 export function fakeFactory(url: string): FakeSocket {
   return new FakeSocket(url);
+}
+
+/** A `WebSocketFactory` whose sockets close on a timer, like real ones. */
+export function asyncCloseFactory(url: string): FakeSocket {
+  return new FakeSocket(url, { asyncClose: true });
 }

@@ -97,6 +97,10 @@ export class ReconnectingConnection {
       const socket = this.socket;
       this.socket = null;
       socket.close();
+      // Report the close from here rather than from `onclose`: the socket is no
+      // longer ours the moment we drop it, and a real one takes a round trip to
+      // finish closing, by which time a `start()` may already have replaced it.
+      this.handlers.onClose?.();
     }
   }
 
@@ -112,13 +116,22 @@ export class ReconnectingConnection {
   private open(): void {
     const socket = this.factory(this.url);
     this.socket = socket;
+    // A socket we have already dropped must do nothing at all. Closing is
+    // asynchronous, so under React StrictMode's mount/cleanup/mount the first
+    // socket is still alive when the second is open, and it can still deliver
+    // events: reporting its close would call a live connection down, and
+    // reconnecting from it would open a third socket that orphans the healthy
+    // one. Every handler checks it is still the current socket first.
+    const current = () => this.socket === socket;
     socket.onopen = () => {
+      if (!current()) return;
       const pending = this.outbox;
       this.outbox = [];
       for (const frame of pending) socket.send(frame);
       this.handlers.onOpen?.();
     };
     socket.onmessage = (event) => {
+      if (!current()) return;
       if (typeof event.data === "string") this.handlers.onMessage?.(event.data);
     };
     socket.onerror = () => {
@@ -126,7 +139,8 @@ export class ReconnectingConnection {
       socket.close();
     };
     socket.onclose = () => {
-      if (this.socket === socket) this.socket = null;
+      if (!current()) return;
+      this.socket = null;
       this.handlers.onClose?.();
       if (!this.closing) this.scheduleReconnect();
     };

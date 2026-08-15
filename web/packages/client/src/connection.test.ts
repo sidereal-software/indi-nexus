@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReconnectingConnection } from "./connection";
-import { FakeSocket, fakeFactory } from "./testing/fake-socket";
+import { asyncCloseFactory, FakeSocket, fakeFactory } from "./testing/fake-socket";
 
 describe("ReconnectingConnection", () => {
   beforeEach(() => {
@@ -58,6 +58,56 @@ describe("ReconnectingConnection", () => {
 
     vi.advanceTimersByTime(1000);
     expect(FakeSocket.instances).toHaveLength(2); // a fresh socket was opened
+  });
+
+  it("ignores a close from a socket it has already replaced", () => {
+    // React StrictMode mounts, cleans up and mounts again, so the first socket
+    // is still closing when the second is open. A real WebSocket fires the old
+    // socket's onclose at that point; nothing about it may reach the owner.
+    let reopened = false;
+    let lateCloses = 0;
+    const conn = new ReconnectingConnection("ws://x/ws", {
+      webSocketFactory: asyncCloseFactory,
+      reconnectDelay: 1000,
+      handlers: {
+        onClose: () => {
+          if (reopened) lateCloses++;
+        },
+      },
+    });
+
+    conn.start();
+    FakeSocket.latest().open();
+    conn.close();
+    conn.start(); // remounted before the first socket finished closing
+    FakeSocket.latest().open();
+    reopened = true;
+
+    vi.runAllTimers(); // deliver the stale onclose, and any reconnect it booked
+
+    expect(FakeSocket.instances).toHaveLength(2);
+    expect(lateCloses).toBe(0);
+    expect(conn.connected).toBe(true); // the healthy second socket is still ours
+  });
+
+  it("ignores a frame from a socket it has already replaced", () => {
+    const received: string[] = [];
+    const conn = new ReconnectingConnection("ws://x/ws", {
+      webSocketFactory: asyncCloseFactory,
+      handlers: { onMessage: (data) => received.push(data) },
+    });
+
+    conn.start();
+    const first = FakeSocket.latest();
+    first.open();
+    conn.close();
+    conn.start();
+    FakeSocket.latest().open();
+
+    first.receive("stale"); // still closing, and still delivering
+    FakeSocket.latest().receive("fresh");
+
+    expect(received).toEqual(["fresh"]);
   });
 
   it("does not reconnect after an explicit close", () => {
