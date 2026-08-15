@@ -117,11 +117,18 @@ MkDocs Material, published from `main` to <https://indi-nexus.sidereal.software/
 `.github/workflows/docs.yml`:
 
 ```bash
+brew install cairo                # macOS only, first time - see below
 uv pip install -e ".[docs]"       # docs toolchain (first time)
 cd web && pnpm run docs && cd ..  # generate the TS API reference + the live demo app
 uv run mkdocs serve               # author locally
 uv run mkdocs build --strict      # what CI runs
 ```
+
+The social-card plugin renders each page's preview image with cairosvg, which dlopens
+the system libcairo rather than shipping it. Ubuntu runners already have it, so CI needs
+nothing; macOS does not, and without it every page emits a warning and `--strict` fails.
+`CARDS=false uv run mkdocs build --strict` skips card generation if you would rather not
+install it, at the cost of not seeing what the previews look like.
 
 ## Packaging
 
