@@ -90,6 +90,17 @@ function coerceSwitch(value: SwitchInput): ISState {
   return value === true || value === "On" ? ISState.On : ISState.Off;
 }
 
+/**
+ * The map key for one remembered BLOB policy.
+ *
+ * The Python client keys these on the `(device, name)` tuple; a JS `Map` has no
+ * tuple key, and joining the pair with a separator is not injective - "A" and
+ * "B C" would collide with "A B" and "C" - so encode the pair instead.
+ */
+function blobPolicyKey(device: string, name: string | undefined): string {
+  return JSON.stringify([device, name ?? null]);
+}
+
 /** Number of bytes a base64 string decodes to (for BLOB `size`). */
 function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
@@ -275,7 +286,7 @@ export class IndiClient {
    */
   enableBlob(device: string, name?: string, policy: BLOBPolicy = "Also"): void {
     const message: EnableBlob = { tag: "enableBLOB", device, name, policy };
-    this.blobPolicies.set(`${device} ${name ?? ""}`, message);
+    this.blobPolicies.set(blobPolicyKey(device, name), message);
     this.send(message);
   }
 
@@ -362,17 +373,21 @@ export class IndiClient {
   }
 
   private handleMessage(data: string): void {
-    let parsed: IndiMessage | ConnectionFrame;
+    let parsed: unknown;
     try {
-      parsed = JSON.parse(data) as IndiMessage | ConnectionFrame;
+      parsed = JSON.parse(data);
     } catch {
       return; // drop malformed frames, matching the bridge's leniency
     }
-    if ("event" in parsed && parsed.event === "connection") {
-      this.setState({ transport: this._state.transport, upstream: parsed.connected });
+    // Valid JSON need not be an object: `null`, a bare number and a bare string
+    // all parse, and none of them is a frame (`"event" in null` would throw).
+    if (typeof parsed !== "object" || parsed === null) return;
+    const frame = parsed as IndiMessage | ConnectionFrame;
+    if ("event" in frame && frame.event === "connection") {
+      this.setState({ transport: this._state.transport, upstream: frame.connected });
       return;
     }
-    const message = parsed as IndiMessage;
+    const message = frame as IndiMessage;
     const event = this._store.apply(message);
     if (event !== null) this.dispatch(event);
     if (message.tag === "message") {

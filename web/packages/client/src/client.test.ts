@@ -75,6 +75,15 @@ describe("IndiClient inbound", () => {
     expect(() => socket.receive("not json")).not.toThrow();
     expect(client.devices()).toEqual([]);
   });
+
+  it("ignores valid JSON that is not a frame object", () => {
+    const { client, socket } = connectedClient();
+    for (const frame of ["null", "42", '"a string"', "true", "[]"]) {
+      expect(() => socket.receive(frame)).not.toThrow();
+    }
+    expect(client.devices()).toEqual([]);
+    expect(client.connectionState).toEqual({ transport: true, upstream: false });
+  });
 });
 
 describe("IndiClient sends", () => {
@@ -109,6 +118,29 @@ describe("IndiClient sends", () => {
     vi.useRealTimers();
 
     expect(reconnected.sent.some((f) => f.includes("enableBLOB"))).toBe(true);
+  });
+
+  it("keeps both policies of a pair a joined key would confuse", () => {
+    const { client, socket } = connectedClient();
+    // Joined with a space these two are the same string, "A B C", so one policy
+    // would overwrite the other and never be replayed.
+    client.enableBlob("A", "B C", "Also");
+    client.enableBlob("A B", "C", "Only");
+
+    vi.useFakeTimers();
+    socket.close();
+    vi.advanceTimersByTime(2000);
+    const reconnected = FakeSocket.latest();
+    reconnected.open();
+    vi.useRealTimers();
+
+    const replayed = reconnected.sent
+      .map((frame) => JSON.parse(frame))
+      .filter((frame) => frame.tag === "enableBLOB");
+    expect(replayed).toEqual([
+      { tag: "enableBLOB", device: "A", name: "B C", policy: "Also" },
+      { tag: "enableBLOB", device: "A B", name: "C", policy: "Only" },
+    ]);
   });
 });
 
