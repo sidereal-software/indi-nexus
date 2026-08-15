@@ -16,6 +16,7 @@
 
 import type {
   IndiMessage,
+  IPState,
   LightVector,
   NumberVector,
   TextVector,
@@ -296,7 +297,8 @@ export class WeatherSimSocket implements WebSocketLike {
     const code = current.weather_code ?? 0;
     const lights = READINGS.map(([, element, label, low, high]) => {
       const value = values[element];
-      const state = value === undefined ? "Idle" : value >= low && value <= high ? "Ok" : "Alert";
+      const state: IPState =
+        value === undefined ? "Idle" : value >= low && value <= high ? "Ok" : "Alert";
       return { kind: "light" as const, name: element, label, value: state };
     });
     const anyAlert = lights.some((light) => light.value === "Alert");
@@ -370,7 +372,14 @@ export class WeatherSimSocket implements WebSocketLike {
     }
   }
 
-  /** Drop the readings to Idle rather than leaving them looking current. */
+  /**
+   * Drop the readings to Idle rather than leaving them looking current.
+   *
+   * The three properties `on_disconnect` idles in `examples/openmeteo_device.py`,
+   * in the same way: a `set` carrying only a state keeps the last values (the
+   * store merges by element name), so the card still reads but stops claiming
+   * the reading is good.
+   */
   private parkReadings(): void {
     this.deliver({
       tag: "set",
@@ -397,6 +406,17 @@ export class WeatherSimSocket implements WebSocketLike {
           value: "Idle" as const,
         })),
       } satisfies LightVector,
+    });
+    this.deliver({
+      tag: "set",
+      vector: {
+        kind: "text",
+        device: DEVICE,
+        name: "SKY",
+        state: "Idle",
+        perm: "ro",
+        elements: [],
+      } satisfies TextVector,
     });
   }
 

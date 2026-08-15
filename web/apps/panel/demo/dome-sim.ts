@@ -42,6 +42,7 @@ export class DomeSimSocket implements WebSocketLike {
   private targetAz: number | null = null;
   private shutterOpen = false;
   private shutterTravel = 0;
+  private parked = false;
   private parking = false;
   private unparking = false;
   private domeSpeed = 5;
@@ -116,35 +117,7 @@ export class DomeSimSocket implements WebSocketLike {
           },
         ],
       },
-      {
-        kind: "number",
-        device: DEVICE,
-        name: "SPEEDS",
-        label: "Speeds",
-        group: "Main Control",
-        state: "Idle",
-        perm: "rw",
-        elements: [
-          {
-            kind: "number",
-            name: "DOME",
-            label: "Dome (deg/s)",
-            format: "%.2f",
-            min: 0.1,
-            max: 10,
-            value: this.domeSpeed,
-          },
-          {
-            kind: "number",
-            name: "SHUTTER",
-            label: "Shutter (m/s)",
-            format: "%.2f",
-            min: 0.01,
-            max: 1,
-            value: this.shutterSpeed,
-          },
-        ],
-      },
+      this.speedsVector("Idle"),
       this.shutterVector("Idle"),
       this.parkVector("Idle"),
       {
@@ -159,6 +132,38 @@ export class DomeSimSocket implements WebSocketLike {
         elements: [{ kind: "switch", name: "ABORT", label: "Abort", value: "Off" }],
       },
     ];
+  }
+
+  private speedsVector(state: string): Vector {
+    return {
+      kind: "number",
+      device: DEVICE,
+      name: "SPEEDS",
+      label: "Speeds",
+      group: "Main Control",
+      state,
+      perm: "rw",
+      elements: [
+        {
+          kind: "number",
+          name: "DOME",
+          label: "Dome (deg/s)",
+          format: "%.2f",
+          min: 0.1,
+          max: 10,
+          value: this.domeSpeed,
+        },
+        {
+          kind: "number",
+          name: "SHUTTER",
+          label: "Shutter (m/s)",
+          format: "%.2f",
+          min: 0.01,
+          max: 1,
+          value: this.shutterSpeed,
+        },
+      ],
+    } as Vector;
   }
 
   private connectionVector(state: string): Vector {
@@ -233,8 +238,14 @@ export class DomeSimSocket implements WebSocketLike {
     } as Vector;
   }
 
+  /**
+   * The park switch.
+   *
+   * Which member is On follows the request, not the dome's physical state: PARK
+   * stays On for the whole busy period, as `_park` in `dome_device.py` keeps it.
+   * Deriving it from the position would light UNPARK while the park runs.
+   */
   private parkVector(state: string): Vector {
-    const parked = !this.parking && !this.unparking && this.az === PARK_AZ && !this.shutterOpen;
     return {
       kind: "switch",
       device: DEVICE,
@@ -245,8 +256,8 @@ export class DomeSimSocket implements WebSocketLike {
       perm: "rw",
       rule: "OneOfMany",
       elements: [
-        { kind: "switch", name: "PARK", label: "Park", value: parked ? "On" : "Off" },
-        { kind: "switch", name: "UNPARK", label: "Unpark", value: parked ? "Off" : "On" },
+        { kind: "switch", name: "PARK", label: "Park", value: this.parked ? "On" : "Off" },
+        { kind: "switch", name: "UNPARK", label: "Unpark", value: this.parked ? "Off" : "On" },
       ],
     } as Vector;
   }
@@ -258,15 +269,26 @@ export class DomeSimSocket implements WebSocketLike {
     return false;
   }
 
+  /**
+   * Halt every motion and idle what it drove, as `on_disconnect` does.
+   *
+   * The tick stops with the link, so without these frames a dome disconnected
+   * mid-rotation would sit behind a Busy badge that nothing can ever clear.
+   */
+  private halt(): void {
+    this.targetAz = null;
+    this.shutterTravel = 0;
+    this.parking = this.unparking = false;
+    this.set(this.positionVector("Idle"));
+    this.set(this.shutterVector("Idle"));
+    this.set(this.parkVector("Idle"));
+  }
+
   private handle(vector: Vector): void {
     switch (vector.name) {
       case "CONNECTION": {
         this.connected = selected(vector as SwitchVector) === "CONNECT";
-        if (!this.connected) {
-          this.targetAz = null;
-          this.shutterTravel = 0;
-          this.parking = this.unparking = false;
-        }
+        if (!this.connected) this.halt();
         this.set(this.connectionVector("Ok"));
         this.sendMessage(`${DEVICE} is ${this.connected ? "connected" : "disconnected"}.`);
         break;
@@ -289,10 +311,7 @@ export class DomeSimSocket implements WebSocketLike {
           if (el.name === "DOME") this.domeSpeed = Math.min(10, Math.max(0.1, el.value));
           if (el.name === "SHUTTER") this.shutterSpeed = Math.min(1, Math.max(0.01, el.value));
         }
-        this.set({
-          ...this.defs()[3],
-          state: "Ok",
-        } as Vector);
+        this.set(this.speedsVector("Ok"));
         break;
       }
       case "DOME_SHUTTER": {
@@ -305,17 +324,25 @@ export class DomeSimSocket implements WebSocketLike {
       case "DOME_PARK": {
         if (!this.requireConnected()) return;
         if (selected(vector as SwitchVector) === "PARK") {
+          this.parked = true;
           this.parking = true;
           this.unparking = false;
-          this.moveShutter(false);
-          this.slewTo(PARK_AZ);
+          this.set(this.parkVector("Busy"));
           this.sendMessage("Parking...");
+          this.moveShutter(false);
+          if (this.slewTo(PARK_AZ)) {
+            // Already at the park azimuth, so no tick will finish the park.
+            this.parking = false;
+            this.set(this.parkVector("Ok"));
+            this.sendMessage("Dome parked.");
+          }
         } else {
+          this.parked = false;
           this.unparking = true;
           this.parking = false;
+          this.set(this.parkVector("Busy"));
           this.moveShutter(true);
         }
-        this.set(this.parkVector("Busy"));
         break;
       }
       case "DOME_ABORT_MOTION": {
@@ -334,9 +361,24 @@ export class DomeSimSocket implements WebSocketLike {
     }
   }
 
-  private slewTo(azimuth: number): void {
-    this.targetAz = range360(azimuth);
+  /**
+   * Start rotating toward `azimuth`, arriving at once if it is within one step.
+   *
+   * Returns whether the dome arrived immediately, which is how `_slew_to` in
+   * `examples/dome_device.py` tells its caller there is no rotation to wait for.
+   */
+  private slewTo(azimuth: number): boolean {
+    const target = range360(azimuth);
+    const delta = range360(target - this.az);
+    if (Math.min(delta, 360 - delta) <= this.domeSpeed) {
+      this.az = target;
+      this.targetAz = null;
+      this.set(this.positionVector("Ok"));
+      return true;
+    }
+    this.targetAz = target;
     this.set(this.positionVector("Busy"));
+    return false;
   }
 
   private moveShutter(open: boolean): void {
