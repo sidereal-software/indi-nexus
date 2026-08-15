@@ -24,7 +24,7 @@ function numVec(name: string, group?: string): NumberVector {
 describe("DevicePanel", () => {
   it("shows a placeholder while the device has no properties", () => {
     renderConnected(<DevicePanel device="CCD" />);
-    expect(screen.getByText("No properties for CCD yet.")).toBeInTheDocument();
+    expect(screen.getByText("No properties for CCD right now.")).toBeInTheDocument();
   });
 
   it("renders one card per property under sorted group headings", () => {

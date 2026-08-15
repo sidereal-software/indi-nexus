@@ -8,6 +8,7 @@ pattern from ``tests/test_client.py``), and the app is exercised through FastAPI
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import threading
 from pathlib import Path
@@ -249,6 +250,57 @@ def test_del_property_is_broadcast_to_sockets():
             frame = _drain_until_tag(ws, "delProperty")
             assert frame["device"] == "CCD"
             assert frame["name"] == "EXPOSURE"
+
+
+def test_a_device_that_retracted_everything_is_still_listed_and_empty():
+    """A device with no properties left answers with ``{}``, not a 404.
+
+    ``/api/devices`` and ``/api/devices/{device}`` have to agree: the device is
+    still there, it just publishes nothing right now, which is where a driver
+    that defines on connect sits while disconnected. A genuinely unknown device
+    is still a 404.
+    """
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        server.feed(DefVector(vector=_numvec(1.0)))
+        _wait_until(lambda: tc.get("/api/devices").json() == ["CCD"])
+
+        server.feed(DelProperty(device="CCD", name="EXPOSURE"))
+        _wait_until(lambda: tc.get("/api/devices/CCD").json() == {})
+
+        assert tc.get("/api/devices").json() == ["CCD"]
+        assert tc.get("/api/devices/CCD").status_code == 200
+        assert tc.get("/api/devices/Nope").status_code == 404
+
+
+def test_a_deletions_message_reaches_the_browser():
+    """The explanation on a delProperty survives the trip to a browser frame.
+
+    The bridge rebuilds the del frame from its cache event rather than
+    forwarding the message, so the text a driver wrote ("only while connected")
+    was being dropped one hop short of the UI that would show it. It is the only
+    account the browser gets of why a property went away.
+    """
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        server.feed(DefVector(vector=_numvec(1.0)))
+        _wait_until(lambda: tc.get("/api/devices").json() == ["CCD"])
+
+        with tc.websocket_connect("/ws") as ws:
+            _drain_until_tag(ws, "def")
+            stamped = dt.datetime(2026, 8, 14, 12, 30, tzinfo=dt.UTC)
+            server.feed(
+                DelProperty(
+                    device="CCD",
+                    name="EXPOSURE",
+                    timestamp=stamped,
+                    message="only while connected",
+                )
+            )
+
+            frame = _drain_until_tag(ws, "delProperty")
+            assert frame["message"] == "only while connected"
+            assert frame["timestamp"] is not None
 
 
 def test_broadcast_drops_a_failing_sink():

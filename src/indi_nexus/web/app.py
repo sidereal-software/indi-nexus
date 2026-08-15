@@ -84,10 +84,17 @@ def create_app(
 
     @app.get("/api/devices/{device}")
     async def device_properties(device: str) -> dict[str, Any]:
-        """Return one device's properties as JSON, keyed by property name."""
-        props = indi_client.store.device(device)
-        if not props:
+        """Return one device's properties as JSON, keyed by property name.
+
+        A known device that currently publishes nothing returns ``{}``, not a
+        404. It is a device that has retracted its properties - a driver that
+        defines them on connect, seen while disconnected - and it is still
+        listed by ``/api/devices``, so answering "unknown" here would have the
+        two endpoints contradict each other.
+        """
+        if device not in indi_client.store:
             raise HTTPException(status_code=404, detail=f"unknown device {device!r}")
+        props = indi_client.store.device(device)
         return {name: vec.model_dump(mode="json") for name, vec in props.items()}
 
     @app.get("/api/devices/{device}/{name}")

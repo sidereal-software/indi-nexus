@@ -99,6 +99,44 @@ describe("App", () => {
     expect(screen.getByText("Exposure")).toBeInTheDocument();
     expect(screen.getByLabelText("secs")).toHaveValue(1.5);
   });
+
+  // A driver that defines its properties on connect retracts them all on
+  // disconnect, which used to erase the device from the panel as though the
+  // driver had gone. It has not: it is still there with nothing to show, and
+  // the operator needs to be able to tell those two apart.
+  it("keeps a device that has retracted its last property, showing it as empty", () => {
+    const { socket } = renderApp();
+    act(() =>
+      socket.receive(
+        JSON.stringify({
+          tag: "def",
+          vector: {
+            kind: "number",
+            device: "CCD Simulator",
+            name: "EXPOSURE",
+            label: "Exposure",
+            group: "Main",
+            state: "Idle",
+            perm: "rw",
+            elements: [{ kind: "number", name: "secs", value: 1.5 }],
+          },
+        }),
+      ),
+    );
+    expect(screen.getByText("Exposure")).toBeInTheDocument();
+
+    act(() =>
+      socket.receive(
+        JSON.stringify({ tag: "delProperty", device: "CCD Simulator", name: "EXPOSURE" }),
+      ),
+    );
+
+    expect(screen.getByRole("button", { name: /CCD Simulator/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("CCD Simulator");
+    expect(screen.getByText(/No properties for CCD Simulator right now/)).toBeInTheDocument();
+    expect(screen.queryByText("No devices connected.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exposure")).not.toBeInTheDocument();
+  });
 });
 
 describe("messages panel", () => {
