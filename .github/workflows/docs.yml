@@ -39,6 +39,16 @@ jobs:
         run: pnpm run docs
 
       - uses: astral-sh/setup-uv@v9.0.0
+      # The social plugin downloads ~20 MB of webfonts and renders one PNG per page,
+      # both into .cache. It invalidates its own entries, so a rolling key that always
+      # restores the newest cache is what we want: the save key never hits, restore-keys
+      # picks up the last run. Without this every push to main re-downloads the fonts
+      # and re-renders all 265 cards.
+      - uses: actions/cache@v6
+        with:
+          path: .cache
+          key: mkdocs-social-${{ github.sha }}
+          restore-keys: mkdocs-social-
       - name: Build the site
         run: |
           uv venv --python 3.12
