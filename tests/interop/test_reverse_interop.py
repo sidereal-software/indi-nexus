@@ -47,6 +47,21 @@ def _await_value(port: int, spec: str, expected: str, timeout: float = 20.0) -> 
     return value
 
 
+def _connect(port: int, device: str) -> None:
+    """Turn a device's CONNECTION switch on, as an operator would before commanding it.
+
+    Parameters
+    ----------
+    port : int
+        The server's port.
+    device : str
+        The device name the driver publishes under.
+    """
+    assert _await_value(port, f"{device}.CONNECTION.DISCONNECT", "On") == "On"
+    setprop(port, f"{device}.CONNECTION.CONNECT=On", kind="-s")
+    assert _await_value(port, f"{device}.CONNECTION.CONNECT", "On") == "On"
+
+
 def test_libindi_client_sees_our_driver(indi_server, python_driver):
     """indi_getprop enumerates our driver's properties, labels, states and perms."""
     server = indi_server(python_driver("examples/flat_panel.py"))
@@ -55,6 +70,8 @@ def test_libindi_client_sees_our_driver(indi_server, python_driver):
     assert _await_value(server.port, "Flat Panel.LIGHT_CONTROL.OFF", "On") == "On"
 
     props = getprop(server.port, "Flat Panel.*.*")
+    # The standard CONNECTION switch, which libindi's own clients expect to find.
+    assert props["Flat Panel.CONNECTION.DISCONNECT"] == "On"
     assert "Flat Panel.LIGHT_CONTROL.ON" in props
     assert "Flat Panel.LIGHT_BRIGHTNESS.BRIGHTNESS" in props
     assert float(props["Flat Panel.LIGHT_BRIGHTNESS.BRIGHTNESS"]) == 128.0
@@ -70,6 +87,8 @@ def test_libindi_client_can_drive_our_switch(indi_server, python_driver):
     """A switch written by indi_setprop is applied and echoed back."""
     server = indi_server(python_driver("examples/flat_panel.py"))
     assert _await_value(server.port, "Flat Panel.LIGHT_CONTROL.OFF", "On") == "On"
+    # The lamp refuses commands until the link is up, so connect first.
+    _connect(server.port, "Flat Panel")
 
     setprop(server.port, "Flat Panel.LIGHT_CONTROL.ON=On", kind="-s")
 
@@ -83,6 +102,7 @@ def test_libindi_client_can_drive_our_number(indi_server, python_driver):
     """A number written by indi_setprop is clamped by the driver and echoed back."""
     server = indi_server(python_driver("examples/flat_panel.py"))
     assert _await_value(server.port, "Flat Panel.LIGHT_CONTROL.OFF", "On") == "On"
+    _connect(server.port, "Flat Panel")
 
     setprop(server.port, "Flat Panel.LIGHT_BRIGHTNESS.BRIGHTNESS=200", kind="-n")
     assert float(_await_value(server.port, "Flat Panel.LIGHT_BRIGHTNESS.BRIGHTNESS", "200")) == 200
@@ -103,10 +123,7 @@ def test_our_sexagesimal_output_is_read_back_correctly(indi_server, python_drive
     """
     server = indi_server(python_driver("examples/telescope_device.py"))
     device = "Telescope Simulator"
-    assert _await_value(server.port, f"{device}.CONNECTION.DISCONNECT", "On") == "On"
-
-    setprop(server.port, f"{device}.CONNECTION.CONNECT=On", kind="-s")
-    assert _await_value(server.port, f"{device}.CONNECTION.CONNECT", "On") == "On"
+    _connect(server.port, device)
 
     setprop(server.port, f"{device}.EQUATORIAL_EOD_COORD.RA;DEC=5.5;-10.25", kind="-n")
 

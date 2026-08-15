@@ -7,7 +7,8 @@
  * "Writing a driver" guide, so a reader can drive the driver they just read.
  *
  * Keep it in step with the Python driver: same property names, same rule, same
- * declared range, same clamping, or the demo stops demonstrating that driver.
+ * declared range, same clamping, same connection lifecycle, or the demo stops
+ * demonstrating that driver.
  */
 
 import type { IndiMessage, SwitchVector, Vector, WebSocketLike } from "@indi-nexus/client";
@@ -34,6 +35,7 @@ export class FlatPanelSimSocket implements WebSocketLike {
   onerror: ((event: unknown) => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
 
+  private connected = false;
   private lampOn = false;
   private brightness = 128;
 
@@ -80,7 +82,30 @@ export class FlatPanelSimSocket implements WebSocketLike {
 
   // -- property state ----------------------------------------------------- //
   private defs(): Vector[] {
-    return [this.lampVector("Idle"), this.brightnessVector("Idle")];
+    return [this.connectionVector("Idle"), this.lampVector("Idle"), this.brightnessVector("Idle")];
+  }
+
+  /** The standard INDI CONNECTION switch, as `define_connection()` defines it. */
+  private connectionVector(state: Vector["state"]): Vector {
+    return {
+      kind: "switch",
+      device: DEVICE,
+      name: "CONNECTION",
+      label: "Connection",
+      group: "Main Control",
+      state,
+      perm: "rw",
+      rule: "OneOfMany",
+      elements: [
+        { kind: "switch", name: "CONNECT", label: "Connect", value: this.connected ? "On" : "Off" },
+        {
+          kind: "switch",
+          name: "DISCONNECT",
+          label: "Disconnect",
+          value: this.connected ? "Off" : "On",
+        },
+      ],
+    };
   }
 
   /** The lamp switch: exactly one of On/Off, so the panel draws radio buttons. */
@@ -126,14 +151,37 @@ export class FlatPanelSimSocket implements WebSocketLike {
   }
 
   // -- inbound ------------------------------------------------------------ //
+  /** The `require_connected()` guard: refuse the command and say why. */
+  private requireConnected(): boolean {
+    if (this.connected) return true;
+    this.sendMessage(`${DEVICE} is not connected.`, "ERROR");
+    return false;
+  }
+
   private handle(vector: Vector): void {
+    if (vector.kind === "switch" && vector.name === "CONNECTION") {
+      this.connected = selected(vector) === "CONNECT";
+      // A panel left lit fogs the next exposure, so the link never goes down
+      // with the lamp on - the same reason `on_disconnect` does it in Python,
+      // and announced every time for the same reason it is there.
+      if (!this.connected) {
+        this.lampOn = false;
+        this.set(this.lampVector("Idle"));
+        this.sendMessage("Lamp turned off on disconnect.");
+      }
+      this.set(this.connectionVector("Ok"));
+      this.sendMessage(`${DEVICE} is ${this.connected ? "connected" : "disconnected"}.`);
+      return;
+    }
     if (vector.kind === "switch" && vector.name === "LIGHT_CONTROL") {
+      if (!this.requireConnected()) return;
       this.lampOn = selected(vector) === "ON";
       this.set(this.lampVector("Ok"));
       this.sendMessage(`Lamp turned ${this.lampOn ? "on" : "off"}.`);
       return;
     }
     if (vector.kind === "number" && vector.name === "LIGHT_BRIGHTNESS") {
+      if (!this.requireConnected()) return;
       const wanted = vector.elements.find((el) => el.name === "BRIGHTNESS")?.value ?? 0;
       // The declared min/max is a promise about the hardware, so hold the request
       // to it exactly as the Python driver does.

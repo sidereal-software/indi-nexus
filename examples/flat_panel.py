@@ -6,8 +6,14 @@ flat field. There are two things to say to one: turn it on or off, and set how
 bright it is - which makes it the smallest driver that still has both a switch
 and a number, and the reason the guide teaches with it.
 
-Deliberately the simplest example here: no hardware link, no ``@every`` polling,
-no failure handling. ``weather_device.py`` is the one to copy for real hardware.
+It carries the standard ``CONNECTION`` switch every INDI device has, so the lamp
+refuses commands until a client connects and turns itself off when the client
+disconnects - a panel left lit fogs the next exposure. There is no hardware
+behind it: a real driver opens its serial or network link in ``on_connect`` and
+closes it in ``on_disconnect``.
+
+Deliberately the simplest example here: no ``@every`` polling and no failure
+handling. ``weather_device.py`` is the one to copy for real hardware.
 
 Run it as a child of ``indiserver``::
 
@@ -41,7 +47,8 @@ class FlatPanel(Device):
     name = "Flat Panel"
 
     async def setup(self) -> None:
-        """Define the lamp switch and the brightness dial, then announce readiness."""
+        """Define the connection switch, the lamp and the dial, then announce readiness."""
+        self.define_connection()
         self.define_switch(
             "LIGHT_CONTROL",
             [
@@ -71,6 +78,16 @@ class FlatPanel(Device):
         )
         self.message("Flat panel ready.")
 
+    async def on_disconnect(self) -> None:
+        """Turn the lamp off as the link goes down.
+
+        Not housekeeping: a flat panel left lit goes on fogging every exposure
+        taken after the client walked away. A real driver would close its serial
+        or network link here too, once the hardware is in a safe state.
+        """
+        self["LIGHT_CONTROL"].set({"OFF": ISState.ON}, state=IPState.IDLE)
+        self.message("Lamp turned off on disconnect.")
+
     @on_new("LIGHT_CONTROL")
     async def _switch_lamp(self, vector: SwitchVector) -> None:
         """Turn the lamp on or off in response to a client write.
@@ -81,6 +98,8 @@ class FlatPanel(Device):
             The requested switch state. A client usually sends only the member it
             changed, so this reads the selection rather than a fixed element.
         """
+        if not self.require_connected():
+            return
         on = vector.selected() == "ON"
         self["LIGHT_CONTROL"].set(
             {"ON" if on else "OFF": ISState.ON},
@@ -98,6 +117,8 @@ class FlatPanel(Device):
             The requested brightness. Reading it with a default keeps the handler
             working when a client sends some other element of the vector.
         """
+        if not self.require_connected():
+            return
         wanted = vector.get("BRIGHTNESS", 0.0)
         # A client is free to ask for anything; the advertised min/max is a promise
         # about the hardware, so hold to it rather than passing the value through.
