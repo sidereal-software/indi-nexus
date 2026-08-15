@@ -144,6 +144,17 @@ export interface DefVector {
 export interface SetVector {
   tag: "set";
   vector: Vector;
+  /**
+   * Whether the wire message actually carried a `state`.
+   *
+   * `state` is `#IMPLIED` on every `set*Vector` (white paper p.7) and means "no
+   * change if absent", so a `set` without one must leave the cached state
+   * alone. The vector's own `state` is never absent - the parser fills it with
+   * the model default - which is why the fact rides on the message instead, as
+   * `SetVector.state_present` does on the Python side. Absent here (an older
+   * bridge, or a frame built by hand) means the state was carried.
+   */
+  state_present?: boolean;
 }
 
 /** A client's request to change a property's value (client -> device). */

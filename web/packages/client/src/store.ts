@@ -74,8 +74,13 @@ function mergeElement(current: IndiElement, incoming: IndiElement): IndiElement 
  *
  * Returns a new vector (immutable) so reference equality changes exactly when the
  * data changes.
+ *
+ * `statePresent` is whether the wire message carried a `state`. It is `#IMPLIED`
+ * on every `set*Vector` and means "no change if absent", so a stateless `set`
+ * leaves the cached state alone rather than resetting it to the parsed default -
+ * a property latched into Alert stays there until the device says otherwise.
  */
-function mergeVector(destination: Vector, source: Vector): Vector {
+function mergeVector(destination: Vector, source: Vector, statePresent: boolean): Vector {
   const incomingByName = new Map(source.elements.map((el) => [el.name, el]));
   const elements = destination.elements.map((current) => {
     const incoming = incomingByName.get(current.name);
@@ -84,8 +89,8 @@ function mergeVector(destination: Vector, source: Vector): Vector {
   const merged = {
     ...destination,
     elements,
-    state: source.state,
   } as Vector;
+  if (statePresent) merged.state = source.state;
   if (source.timeout != null) merged.timeout = source.timeout;
   if (source.timestamp != null) merged.timestamp = source.timestamp;
   if (source.message != null) merged.message = source.message;
@@ -141,7 +146,9 @@ export class PropertyStore {
       case "set": {
         const current = this.get(message.vector.device, message.vector.name);
         if (current === undefined) return null;
-        const merged = mergeVector(current, message.vector);
+        // A frame that omits the flag entirely carried its state, which is both
+        // the Python model's default and what a pre-flag bridge sends.
+        const merged = mergeVector(current, message.vector, message.state_present ?? true);
         this.put(merged);
         return { type: "set", device: merged.device, name: merged.name, vector: merged };
       }

@@ -17,6 +17,12 @@ function numVec(value = 1.0, state: NumberVector["state"] = "Idle"): NumberVecto
 
 const def = (vector: NumberVector): DefVector => ({ tag: "def", vector });
 const set = (vector: NumberVector): SetVector => ({ tag: "set", vector });
+/** A `set` whose wire message carried no `state`, as the XML parser reports it. */
+const statelessSet = (vector: NumberVector): SetVector => ({
+  tag: "set",
+  vector,
+  state_present: false,
+});
 
 describe("PropertyStore.apply", () => {
   it("caches the full vector on def", () => {
@@ -39,6 +45,53 @@ describe("PropertyStore.apply", () => {
     expect(cached.state).toBe("Ok");
     // Metadata from the def is preserved (a set does not carry it).
     expect(cached.elements[0]?.max).toBe(3600);
+  });
+
+  it("keeps a cached Busy when the set carried no state", () => {
+    const store = new PropertyStore();
+    store.apply(def(numVec(1.0, "Busy")));
+
+    // The parser fills the absent attribute with the model default, so the
+    // vector says Idle; `state_present` is what says not to believe it.
+    store.apply(statelessSet(numVec(7.0, "Idle")));
+
+    const cached = store.get("CCD", "EXPOSURE") as NumberVector;
+    expect(cached.state).toBe("Busy");
+    expect(cached.elements[0]?.value).toBe(7.0);
+  });
+
+  it("keeps a latched Alert when the set carried no state", () => {
+    const store = new PropertyStore();
+    store.apply(def(numVec(1.0, "Alert")));
+
+    store.apply(statelessSet(numVec(7.0, "Idle")));
+
+    const cached = store.get("CCD", "EXPOSURE") as NumberVector;
+    expect(cached.state).toBe("Alert");
+    expect(cached.elements[0]?.value).toBe(7.0);
+  });
+
+  it("still applies a state the set did carry", () => {
+    const store = new PropertyStore();
+    store.apply(def(numVec(1.0, "Alert")));
+
+    store.apply({ tag: "set", vector: numVec(7.0, "Ok"), state_present: true });
+
+    const cached = store.get("CCD", "EXPOSURE") as NumberVector;
+    expect(cached.state).toBe("Ok");
+    expect(cached.elements[0]?.value).toBe(7.0);
+  });
+
+  it("treats a set with no state_present flag as carrying its state", () => {
+    // A bridge older than the flag omits it and always sends its merged state.
+    const store = new PropertyStore();
+    store.apply(def(numVec(1.0, "Alert")));
+
+    store.apply(set(numVec(7.0, "Ok")));
+
+    const cached = store.get("CCD", "EXPOSURE") as NumberVector;
+    expect(cached.state).toBe("Ok");
+    expect(cached.elements[0]?.value).toBe(7.0);
   });
 
   it("ignores a set before its def", () => {
@@ -94,6 +147,19 @@ describe("PropertyStore immutability (for React referential stability)", () => {
     expect(store.device("CCD")).not.toBe(deviceBefore);
     // ...but reading the same state twice yields the same reference.
     expect(store.device("CCD")).toBe(store.device("CCD"));
+  });
+
+  it("replaces the vector object even when the set carried no state", () => {
+    const store = new PropertyStore();
+    store.apply(def(numVec(1.0, "Busy")));
+    const before = store.get("CCD", "EXPOSURE");
+
+    store.apply(statelessSet(numVec(7.0, "Idle")));
+
+    // Carrying the state over must not turn the merge into a mutation, or React
+    // would never see the new value.
+    expect(store.get("CCD", "EXPOSURE")).not.toBe(before);
+    expect((before as NumberVector).elements[0]?.value).toBe(1.0);
   });
 
   it("returns a stable empty snapshot for unknown devices", () => {
