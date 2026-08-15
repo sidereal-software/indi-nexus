@@ -1,0 +1,43 @@
+# INDINexus in one container: the reference panel on :8000 and indiserver on :7624.
+#
+#   docker compose up --build
+#
+# then open http://localhost:8000/. Point KStars, PHD2 or any other INDI client at
+# localhost:7624 and it drives the same hub at the same time.
+#
+# The interop suite runs from the same build with a different target:
+#
+#   docker compose --profile interop run --rm --build interop
+#
+# See docs/docker.md for the rest.
+
+services:
+  indi-nexus:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: runtime
+    # Named, so `docker run ... indi-nexus` works against what compose just built.
+    image: indi-nexus
+    ports:
+      - "8000:8000" # the panel, the REST snapshot and the WebSocket bridge
+      - "7624:7624" # indiserver, for every other INDI client
+    volumes:
+      # Anything dropped in ./drivers is launched alongside the drivers named below.
+      # Read-only: nothing in the container writes to them.
+      - ./drivers:/drivers:ro
+    environment:
+      # libindi's telescope simulator, so there is something to look at with nothing
+      # mounted. A name on PATH, a path to an executable and a path to a .py file
+      # written against the INDINexus SDK are all valid entries, space separated.
+      INDI_DRIVERS: indi_simulator_telescope
+    restart: unless-stopped
+
+  # Not started by `docker compose up`: the interop suite is a developer tool, and it
+  # exits when it is done rather than serving anything.
+  interop:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: test
+    profiles: ["interop"]

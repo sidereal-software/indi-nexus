@@ -21,17 +21,21 @@ The suite skips itself with a clear message if `indiserver` is not on the PATH.
 | Newer libindi | the [indilib PPA](https://launchpad.net/~mutlaqja/+archive/ubuntu/ppa) |
 | macOS | no package; use the container below |
 
-Nothing packages libindi for macOS, so on a Mac run them in a container:
+Nothing packages libindi for macOS, so on a Mac run them in the container, which carries
+libindi, the dev dependencies and a browser already:
 
 ```bash
-docker run --rm -v "$PWD:/repo" -w /repo ubuntu:24.04 bash -c '
-  apt-get update -qq && apt-get install -y -qq indi-bin python3-pip python3-venv
-  python3 -m venv /venv && /venv/bin/pip install -q -e ".[dev]"
-  /venv/bin/pytest tests/interop -q'
+docker compose --profile interop run --rm --build interop
 ```
 
-The browser test additionally needs Playwright (`pip install -e ".[interop]"` then
-`playwright install chromium`); it skips itself when that is missing.
+That is the `test` target of [`docker/Dockerfile`](../../docker/Dockerfile), on the same
+Ubuntu 24.04 and the same libindi 1.9.9 as the nightly job's distro leg. Pass a command
+to narrow it, e.g. `... run --rm interop pytest tests/interop/test_smoke.py -q`.
+[`docs/docker.md`](../../docs/docker.md) has the rest.
+
+Outside the container the browser test additionally needs Playwright
+(`pip install -e ".[interop]"` then `playwright install chromium`); it skips itself when
+that is missing.
 
 ## What each file is for
 

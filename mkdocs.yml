@@ -102,6 +102,7 @@ plugins:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Docker: docker.md
   - Guides:
       - Writing a driver: guides/writing-drivers.md
       - 'Tutorial: real data, custom UI': guides/tutorial-open-meteo.md

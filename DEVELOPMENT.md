@@ -50,8 +50,9 @@ indi-nexus/
 │   ├── web/                 # FastAPI bridge (WS + REST) + static/debug.html
 │   └── cli.py               # Typer CLI (new / serve / run / monitor)
 ├── examples/                # runnable references: drivers and a client
-├── tests/                   # pytest suite
+├── tests/                   # pytest suite (tests/interop needs a real libindi)
 ├── docs/ + mkdocs.yml       # the documentation site
+├── docker/ + compose.yaml   # indiserver + the bridge in one image; also runs tests/interop
 └── web/                     # pnpm workspace (TypeScript frontend)
     ├── packages/client/     #   @indi-nexus/client - framework-agnostic transport + store
     ├── packages/react/      #   @indi-nexus/react  - hooks + shadcn/ui components + theme
@@ -110,6 +111,31 @@ The bridge's HTTP surface (served by `indi-nexus serve`, with or without `--devi
 - `WS /ws` - live stream (snapshot on connect, then updates); browser frames are forwarded
   upstream. Messages are the protocol models as JSON, so the frontend contract is the
   backend model schema.
+
+## The interop suite
+
+`tests/interop/` runs against a real `indiserver` and real libindi drivers, which is the
+only thing here that can catch a deviation from the INDI spec. It is excluded from a
+normal `pytest` run and skips itself when `indiserver` is not on the PATH, and CI runs it
+nightly ([`.github/workflows/interop.yml`](.github/workflows/interop.yml)).
+
+Nothing packages libindi for macOS, so run it in a container instead. The `test` target
+of `docker/Dockerfile` carries libindi, the dev dependencies and a browser:
+
+```bash
+docker compose --profile interop run --rm --build interop
+```
+
+That is the same `pytest tests/interop` the nightly job runs, against the same distro
+libindi (1.9.9, on Ubuntu 24.04), so a test that only fails against a real hub can now be
+found before it is pushed. Pass a command to narrow it:
+
+```bash
+docker compose --profile interop run --rm interop pytest tests/interop/test_smoke.py -q
+```
+
+On a machine that does have libindi, `uv run pytest tests/interop` still works.
+[docs/docker.md](docs/docker.md) covers the runtime image, which shares the same build.
 
 ## Documentation
 

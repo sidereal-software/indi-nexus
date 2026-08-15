@@ -1,0 +1,37 @@
+# The build context for docker/Dockerfile.
+#
+# An allow-list, not a deny-list. A checked-out working tree here is around 600 MB,
+# almost all of it web/node_modules, .venv, .git and the built demo bundles under
+# docs/ - none of which the image needs, and all of which would otherwise be sent to
+# the daemon on every build. Naming what the build reads means a new directory at the
+# repository root costs nothing until someone adds it here deliberately.
+*
+
+# What the wheel is built from.
+!pyproject.toml
+!hatch_build.py
+!README.md
+!LICENSE
+!src
+
+# The TypeScript panel: built in the `web` stage, bundled into the wheel.
+!web
+
+# The `test` stage runs these against a real libindi; the runtime image also ships
+# examples/ so a driver can be tried without mounting anything.
+!examples
+!tests
+
+# The entrypoint the runtime stage installs.
+!docker
+
+# Re-excluded from inside the directories above: build output and caches that the
+# image produces for itself, and that would otherwise arrive built for macOS.
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+web/**/dist
+src/indi_nexus/web/static/panel

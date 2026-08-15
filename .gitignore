@@ -240,3 +240,8 @@ docs/demo-app/
 docs/weather-demo/
 docs/flat-demo/
 docs/reference/typescript/
+
+# The container's driver mount (compose.yaml). Whatever someone drops in there is
+# theirs, not ours; the README explaining the directory is the only tracked file.
+/drivers/*
+!/drivers/README.md

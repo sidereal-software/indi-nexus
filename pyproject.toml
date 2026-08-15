@@ -112,8 +112,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 # The interop suite needs a real libindi and is slow, so it is not part of a normal
 # run. Its conftest skips the whole package when indiserver is absent, which keeps
-# `pytest` green for a contributor who has not installed it; CI runs it nightly with
-# `--interop`. See tests/interop/README.md.
+# `pytest` green for a contributor who has not installed it. CI runs it nightly by
+# path (`pytest tests/interop`), and docker/Dockerfile's `test` target runs the same
+# command in a container with libindi in it. See tests/interop/README.md.
 addopts = "--ignore=tests/interop"
 filterwarnings = [
     # Transitional upstream warning from starlette's TestClient (httpx -> httpx2).
