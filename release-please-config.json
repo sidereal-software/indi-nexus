@@ -74,6 +74,14 @@
     }
   },
   "plugins": [
-    "node-workspace"
+    {
+      "type": "linked-versions",
+      "groupName": "indi-nexus",
+      "components": [
+        "indi-nexus",
+        "client",
+        "react"
+      ]
+    }
   ]
 }
