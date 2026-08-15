@@ -54,7 +54,12 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+      # Pinned, like ci.yml: there is no package.json at the repository root
+      # (the workspace lives in web/), so the action cannot infer a version from
+      # `packageManager` and fails with "No pnpm version is specified".
       - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -86,7 +91,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+      # Pinned for the same reason as the pypi job above.
       - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
       # Node 22.14+ and npm 11.5.1+ are required for OIDC trusted publishing.
       - uses: actions/setup-node@v7
         with:
