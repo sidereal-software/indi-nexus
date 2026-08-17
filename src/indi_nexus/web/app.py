@@ -5,7 +5,8 @@
 
 * ``GET /`` - the built reference panel if present, else the debug inspector page;
 * ``GET /debug`` - the self-contained debug inspector page;
-* ``GET /health`` - liveness, upstream connection state and the slow-sink counter;
+* ``GET /health`` - liveness, the browser contract's version, upstream connection
+  state, and counters for the slow-sink drops and the upstream parser;
 * ``GET /api/devices`` and ``/api/devices/{device}[/{name}]`` - a read-only JSON
   snapshot of the property cache;
 * ``WS /ws`` - the live bridge: a snapshot on connect, then streamed updates, with
@@ -18,8 +19,11 @@ default a real TCP client to ``indiserver`` is created.
 surface, and ``/api/devices/*`` is a full read of instrument state - site
 coordinates, hardware inventory, mount and focuser positions - so both sit behind
 the token whenever one is configured. ``/health`` stays open because the image's
-``HEALTHCHECK`` calls it unauthenticated and it exposes one boolean and a counter;
-``/``, ``/debug`` and the static panel are open-source HTML with nothing
+``HEALTHCHECK`` calls it unauthenticated and it exposes one boolean and a handful
+of counters - no addresses, no device names, and **no release version**, which
+would hand an unauthenticated caller the exact build to look up advisories
+against while telling a legitimate one nothing the ``protocol`` integer does not
+already say; ``/``, ``/debug`` and the static panel are open-source HTML with nothing
 instrument-specific in them. There is deliberately no ambient credential (no
 cookie, no session), so cross-origin JavaScript cannot authenticate to ``/api`` at
 all and there are no state-changing HTTP routes to protect; see
@@ -42,7 +46,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import HTTPConnection
 
 from indi_nexus.client import IndiClient
-from indi_nexus.web.bridge import Bridge, Subscription
+from indi_nexus.protocol import Vector
+from indi_nexus.web.bridge import _MAX_BACKLOG, _MESSAGE_HISTORY, Bridge, Subscription
+from indi_nexus.web.control_frames import BRIDGE_PROTOCOL_VERSION
 from indi_nexus.web.security import WebSecurity
 
 logger = logging.getLogger(__name__)
@@ -61,6 +67,27 @@ _WS_NORMAL_CLOSURE = 1000
 #: browser that stopped keeping up. Best effort: the close frame travels the same
 #: backed-up connection the drop was about, so it may never arrive.
 _WS_TRY_AGAIN_LATER = 1013
+
+#: Decimal places the ``/health`` durations are rounded to. Milliseconds are the
+#: last digit that means anything for a link measured in seconds, and the raw
+#: float renders as ``4211.299999999996`` in an operator's terminal.
+_SECONDS_PRECISION = 3
+
+
+def _seconds(value: float | None) -> float | None:
+    """Round a duration for ``/health``, passing `None` through.
+
+    Parameters
+    ----------
+    value : float or None
+        A duration in seconds, or `None` where the field does not apply.
+
+    Returns
+    -------
+    seconds : float or None
+        The rounded duration, or `None`.
+    """
+    return None if value is None else round(value, _SECONDS_PRECISION)
 
 
 def _bearer_token(conn: HTTPConnection) -> str | None:
@@ -114,8 +141,16 @@ def create_app(
     indi_port: int = 7624,
     token: str | None = None,
     allowed_origins: Sequence[str] = (),
+    connect_timeout: float = 10.0,
+    reconnect_delay: float = 2.0,
+    message_history: int = _MESSAGE_HISTORY,
+    max_backlog: int = _MAX_BACKLOG,
 ) -> FastAPI:
     """Build the web-bridge FastAPI application.
+
+    Nothing here reads the environment. ``indi-nexus serve`` fills the tuning
+    arguments from :class:`~indi_nexus.settings.Settings`, so the app stays
+    injectable and importing it costs no ambient configuration.
 
     Parameters
     ----------
@@ -126,6 +161,17 @@ def create_app(
         Upstream ``indiserver`` host (when ``client`` is not given).
     indi_port : int, optional
         Upstream ``indiserver`` port (when ``client`` is not given).
+    connect_timeout : float, optional
+        Seconds the created client waits per connection attempt (when ``client``
+        is not given).
+    reconnect_delay : float, optional
+        Seconds the created client waits between attempts (when ``client`` is not
+        given).
+    message_history : int, optional
+        How many recent INDI ``message`` frames the bridge replays to a newly
+        attached browser.
+    max_backlog : int, optional
+        How many live frames a browser may fall behind by before it is dropped.
     token : str, optional
         A shared secret required on ``/ws`` and ``/api``. `None` (the default)
         leaves both open, which is what a loopback-bound development server
@@ -140,8 +186,13 @@ def create_app(
     app : FastAPI
         The configured application; its lifespan starts and stops the bridge.
     """
-    indi_client = client or IndiClient(indi_host, indi_port)
-    bridge = Bridge(indi_client)
+    indi_client = client or IndiClient(
+        indi_host,
+        indi_port,
+        connect_timeout=connect_timeout,
+        reconnect_delay=reconnect_delay,
+    )
+    bridge = Bridge(indi_client, message_history=message_history, max_backlog=max_backlog)
     security = WebSecurity.build(token, allowed_origins)
 
     @asynccontextmanager
@@ -181,17 +232,51 @@ def create_app(
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        """Report liveness, the upstream connection, and dropped browsers.
+        """Report liveness, the upstream link, the parser, and dropped browsers.
 
         Open on purpose: the container's ``HEALTHCHECK`` calls it with no
         credentials. ``dropped_slow_sinks`` is here because a browser cannot tell
         an overflow drop from a network fault, so the count has to be readable
         from the outside without scraping logs.
+
+        **The body only ever grows.** ``status``, ``connected`` and
+        ``dropped_slow_sinks`` keep their names at the top level, because a
+        monitoring check somewhere is already reading them; everything since was
+        added beside them rather than by nesting or renaming those three.
+
+        ``protocol`` is the browser contract's version
+        (:data:`~indi_nexus.web.control_frames.BRIDGE_PROTOCOL_VERSION`), the
+        same integer the ``hello`` frame carries. It is here so a deployment
+        check can answer "will my pinned client understand this bridge" without
+        opening a WebSocket. The release version is deliberately **not** here;
+        see this module's docstring.
+
+        While disconnected, ``upstream.uptime_seconds`` and
+        ``last_message_age_seconds`` are ``null`` and ``reconnects`` keeps its
+        count, while the ``parser`` block reports the **last** connection's final
+        counters - stated rather than left to be discovered, because a frozen
+        ``bytes_since_last_message`` on a dead link is exactly the field an
+        operator would misread. The two ``_total`` fields are the durable ones.
         """
+        stats = indi_client.stats
         return {
             "status": "ok",
-            "connected": indi_client.connected,
+            "protocol": BRIDGE_PROTOCOL_VERSION,
+            "connected": stats.connected,
             "dropped_slow_sinks": bridge.dropped_slow_sinks,
+            "sinks_attached": bridge.sink_count(),
+            "upstream": {
+                "uptime_seconds": _seconds(stats.uptime_seconds),
+                "reconnects": stats.reconnects,
+                "last_message_age_seconds": _seconds(stats.last_message_age_seconds),
+            },
+            "parser": {
+                "dropped": stats.dropped,
+                "resets": stats.resets,
+                "bytes_since_last_message": stats.bytes_since_last_message,
+                "dropped_total": stats.dropped_total,
+                "resets_total": stats.resets_total,
+            },
         }
 
     @app.get("/api/devices", dependencies=api)
@@ -200,7 +285,7 @@ def create_app(
         return indi_client.store.devices()
 
     @app.get("/api/devices/{device}", dependencies=api)
-    async def device_properties(device: str) -> dict[str, Any]:
+    async def device_properties(device: str) -> dict[str, Vector]:
         """Return one device's properties as JSON, keyed by property name.
 
         A known device that currently publishes nothing returns ``{}``, not a
@@ -208,19 +293,25 @@ def create_app(
         defines them on connect, seen while disconnected - and it is still
         listed by ``/api/devices``, so answering "unknown" here would have the
         two endpoints contradict each other.
+
+        The annotation is the point: FastAPI serialises through it, so the
+        payload is pinned by the same ``Vector`` schema the WebSocket carries
+        and OpenAPI documents it as one instead of as a bare object. It is not
+        free - a response model re-validates on the way out, so a large cache
+        costs N validations per request - and this is the right endpoint to pay
+        it on, being a snapshot rather than the live stream.
         """
         if device not in indi_client.store:
             raise HTTPException(status_code=404, detail=f"unknown device {device!r}")
-        props = indi_client.store.device(device)
-        return {name: vec.model_dump(mode="json") for name, vec in props.items()}
+        return dict(indi_client.store.device(device))
 
     @app.get("/api/devices/{device}/{name}", dependencies=api)
-    async def one_property(device: str, name: str) -> dict[str, Any]:
+    async def one_property(device: str, name: str) -> Vector:
         """Return a single property vector as JSON."""
         vec = indi_client.store.get(device, name)
         if vec is None:
             raise HTTPException(status_code=404, detail=f"unknown property {device}.{name}")
-        return vec.model_dump(mode="json")
+        return vec
 
     async def _receive_loop(websocket: WebSocket, sub: Subscription) -> None:
         """Forward this browser's frames upstream until it disconnects.

@@ -29,6 +29,9 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.6",
+    # 2.7 is the floor for NoDecode, which INDI_NEXUS_ALLOWED_ORIGINS needs to be
+    # read as a space-separated list rather than as JSON.
+    "pydantic-settings>=2.7",
     "lxml>=5.0",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",

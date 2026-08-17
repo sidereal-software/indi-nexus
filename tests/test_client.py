@@ -14,6 +14,7 @@ import logging
 import indi_nexus.client.client as client_module
 from indi_nexus.client import IndiClient
 from indi_nexus.exceptions import NotConnectedError, SendQueueFull
+from indi_nexus.logging_config import WIRE_LOGGER
 from indi_nexus.protocol import (
     BLOBVector,
     DefVector,
@@ -843,3 +844,240 @@ def test_outbox_overflow_raises_rather_than_blocking():
             await client.aclose()
 
     asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Statistics and the per-connection parser                                     #
+# --------------------------------------------------------------------------- #
+#: A top-level element the parser will refuse, so it counts one `dropped`. The
+#: value is not a number and `Number.value` is not nullable, so the whole element
+#: goes rather than a value being invented.
+_BAD_ELEMENT = (
+    b"<setNumberVector device='CCD' name='EXPOSURE'>"
+    b"<oneNumber name='secs'>not-a-number</oneNumber></setNumberVector>"
+)
+
+
+def test_stats_before_the_first_connection():
+    """/health is reachable before a connection exists, so this must answer.
+
+    ``Bridge.start`` calls ``start(wait=False)``, so the bridge serves ``/health``
+    while the client is still trying. There is no parser yet, and every
+    parser-derived number is genuinely zero rather than unknown.
+    """
+
+    async def scenario() -> None:
+        async def refuse() -> tuple[object, object, object]:
+            """Fail every attempt, as a down indiserver would."""
+            raise OSError("connection refused")
+
+        client = IndiClient(connect=refuse, reconnect_delay=0.0)
+        await client.start(wait=False)
+        await _settle()
+        stats = client.stats
+        await client.aclose()
+
+        assert client._parser is None
+        assert stats.connected is False
+        # A bridge that has never reached indiserver reports no reconnects, which
+        # with connected=False already tells that story; counting failed attempts
+        # here would make a dead link look like a flapping one.
+        assert stats.reconnects == 0
+        assert stats.uptime_seconds is None
+        assert stats.last_message_age_seconds is None
+        assert (stats.dropped, stats.resets, stats.bytes_since_last_message) == (0, 0, 0)
+        assert (stats.dropped_total, stats.resets_total) == (0, 0)
+
+    asyncio.run(scenario())
+
+
+def test_the_parser_is_replaced_on_every_connection():
+    """A connection gets its own parser, and that is what makes the stall recover.
+
+    The reader returns on ``parser.stalled`` precisely so the reconnect hands it
+    a parser with no half-open lxml document in it. Holding the parser on ``self``
+    for ``stats`` to read must not quietly become one parser for the client's
+    life: everything else would still pass, and only a peer that had actually
+    gone mute would ever show it.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            first = client._parser
+            assert first is not None
+            server.eof()
+            await _settle()
+            assert client.connected
+            assert client._parser is not None
+            assert client._parser is not first
+
+    asyncio.run(scenario())
+
+
+def test_the_parser_counters_reset_per_connection_but_the_totals_do_not():
+    """Per-connection counters describe this peer's stream; the totals are history."""
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            server.feed(_BAD_ELEMENT)
+            await _settle()
+            assert client.stats.dropped == 1
+            assert client.stats.dropped_total == 1
+
+            server.eof()
+            await _settle()
+            assert client.connected
+            after = client.stats
+            # A new parser, so a new history...
+            assert after.dropped == 0
+            # ...but the question "has this ever happened" still answers yes.
+            assert after.dropped_total == 1
+
+    asyncio.run(scenario())
+
+
+def test_the_totals_never_fall_behind_the_connection_in_progress():
+    """``dropped_total`` includes the connection that is happening right now.
+
+    Folding a parser's counters only when the *next* connection starts left the
+    totals holding connections 1..N-1 while the per-connection fields held N, so
+    ``dropped_total < dropped`` was the ordinary case, and after ``aclose()`` the
+    last connection - the one an operator is asking about - was never counted at
+    all.
+    """
+
+    async def scenario() -> IndiClient:
+        server = _Server()
+        client = IndiClient(connect=server.connect(), reconnect_delay=0.0)
+        await client.start()
+        await _settle()
+
+        server.feed(_BAD_ELEMENT)
+        await _settle()
+        assert client.stats.dropped_total >= client.stats.dropped
+
+        # Across a reconnect, on the connection that carries the second drop.
+        server.eof()
+        await _settle()
+        server.feed(_BAD_ELEMENT)
+        await _settle()
+        assert client.stats.dropped == 1
+        assert client.stats.dropped_total == 2
+        assert client.stats.dropped_total >= client.stats.dropped
+
+        await client.aclose()
+        return client
+
+    client = asyncio.run(scenario())
+    # And after aclose, when there is no next connection to fold on.
+    assert client.stats.dropped == 1
+    assert client.stats.dropped_total == 2
+    assert client.stats.dropped_total >= client.stats.dropped
+
+
+def test_reconnects_counts_only_re_establishments():
+    """The first connection is not a reconnect; each later one is."""
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            assert client.stats.reconnects == 0
+            server.eof()
+            await _settle()
+            assert client.stats.reconnects == 1
+            server.eof()
+            await _settle()
+            assert client.stats.reconnects == 2
+
+    asyncio.run(scenario())
+
+
+def test_uptime_measures_this_connection_and_is_null_while_down():
+    """It is the link's uptime, not the process's, so a reconnect restarts it."""
+
+    async def scenario() -> None:
+        server = _Server()
+        client = IndiClient(connect=server.connect(), reconnect_delay=10.0)
+        await client.start()
+        await _settle()
+        assert client.stats.uptime_seconds is not None
+
+        # A ten-second reconnect delay keeps the client observably disconnected.
+        server.eof()
+        await _settle()
+        assert client.stats.connected is False
+        assert client.stats.uptime_seconds is None
+        await client.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_last_message_age_follows_parsed_messages_not_bytes():
+    """A peer dribbling malformed bytes must not read as healthy.
+
+    ``bytes_since_last_message`` already answers the byte question, and the two
+    have to stay distinct rather than measuring the same thing twice.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            assert client.stats.last_message_age_seconds is None
+
+            server.feed(DefVector(vector=_numvec(1.0)))
+            await _settle()
+            first = client.stats.last_message_age_seconds
+            assert first is not None
+
+            # Junk that never completes an element: bytes move, the age does not.
+            server.feed(b"<setNumberVector device='CCD' ")
+            await _settle()
+            stats = client.stats
+            assert stats.bytes_since_last_message > 0
+            assert stats.last_message_age_seconds is not None
+            assert stats.last_message_age_seconds >= first
+
+    asyncio.run(scenario())
+
+
+def test_wire_logging_reports_one_line_per_message_per_direction(caplog):
+    """``--wire`` answers "what is on the wire" without a packet capture."""
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect()) as client:
+            server.feed(DefVector(vector=_numvec(1.0)))
+            await _settle()
+            await client.set_number("CCD", "EXPOSURE", {"secs": 2.0})
+            await _settle()
+
+    with caplog.at_level(logging.DEBUG, logger=WIRE_LOGGER):
+        asyncio.run(scenario())
+
+    lines = [r.getMessage() for r in caplog.records if r.name == WIRE_LOGGER]
+    assert "<- def CCD.EXPOSURE" in lines
+    assert any(line.startswith("-> getProperties (") for line in lines)
+    assert any(line.startswith("-> new CCD.EXPOSURE (") for line in lines)
+
+
+def test_wire_logging_is_silent_below_debug(caplog):
+    """The ``isEnabledFor`` guard is what keeps the reader's hot path free."""
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect()) as client:
+            server.feed(DefVector(vector=_numvec(1.0)))
+            await _settle()
+            await client.get_properties()
+            await _settle()
+
+    with caplog.at_level(logging.INFO, logger=WIRE_LOGGER):
+        asyncio.run(scenario())
+
+    assert [r for r in caplog.records if r.name == WIRE_LOGGER] == []

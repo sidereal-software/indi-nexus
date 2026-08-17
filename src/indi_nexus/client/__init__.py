@@ -14,10 +14,11 @@ changes, and send updates::
         )
 """
 
-from indi_nexus.client.client import IndiClient
+from indi_nexus.client.client import ClientStats, IndiClient
 from indi_nexus.client.store import PropertyEvent, PropertyStore
 
 __all__ = [
+    "ClientStats",
     "IndiClient",
     "PropertyStore",
     "PropertyEvent",

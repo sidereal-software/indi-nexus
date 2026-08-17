@@ -19,6 +19,10 @@ connection raises :class:`~indi_nexus.exceptions.NotConnectedError` and the
 outbox is emptied whenever a connection ends, so nothing a caller issued while
 ``indiserver`` was away can be delivered to an instrument minutes later. See
 :meth:`IndiClient.send`.
+
+:attr:`IndiClient.stats` is the operational read of all of that - how long this
+connection has been up, how many reconnects it took to get here, and what the
+parser has made of the peer - and it is what ``/health`` reports.
 """
 
 from __future__ import annotations
@@ -27,11 +31,14 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from indi_nexus.client.store import PropertyEvent, PropertyStore, Subscriber
 from indi_nexus.exceptions import NotConnectedError, SendQueueFull
+from indi_nexus.logging_config import log_wire
 from indi_nexus.protocol import (
     BLOB,
     BLOBPolicy,
@@ -69,6 +76,67 @@ Connect = Callable[[], Awaitable[tuple[ReadFn, WriteFn, CloseFn]]]
 MessageCallback = Callable[[Message], object]
 ConnectionCallback = Callable[[bool], object]
 Predicate = Callable[[Vector], bool]
+
+
+@dataclass(frozen=True, slots=True)
+class ClientStats:
+    """A point-in-time read of one client's upstream link and its parser.
+
+    Taken as a snapshot rather than exposed as live attributes, so a caller that
+    reports several of these fields - ``/health`` does - reports them all as of
+    one instant.
+
+    Attributes
+    ----------
+    connected : bool
+        Whether there is a live connection right now.
+    uptime_seconds : float or None
+        How long the **current** connection has been up, and `None` while there
+        is none. It is deliberately not the process's uptime: a container
+        runtime already reports that, and everything else here is about the
+        upstream link. It resets on every reconnect.
+    reconnects : int
+        How many times a connection has been **successfully** re-established
+        since the client started; the first connection is not a reconnect. Failed
+        attempts are not counted, so a rising number means the link is genuinely
+        flapping, while a bridge that has never reached ``indiserver`` at all
+        reports ``0`` with ``connected`` false - which already tells that story.
+    last_message_age_seconds : float or None
+        Seconds since an INDI message was last **parsed**, and `None` if none
+        ever has been. It measures parsed messages rather than received bytes,
+        because :attr:`bytes_since_last_message` already answers the byte
+        question and the two must stay distinct: a peer dribbling malformed bytes
+        must not read as healthy here. It is not reset by a reconnect - it is the
+        age of the last thing this client understood, whichever connection
+        carried it.
+    dropped : int
+        Top-level elements this connection's parser discarded because a value
+        would not parse. Before the first connection, and while the client has
+        never had one, this is ``0``.
+    resets : int
+        Times this connection's parser had to reopen its synthetic document. A
+        framing signal, not a loss count. ``0`` before the first connection.
+    bytes_since_last_message : int
+        Bytes fed to this connection's parser since a message last came out of
+        it. ``0`` before the first connection.
+    dropped_total : int
+        :attr:`dropped` summed over every connection since the client started,
+        including the current one. This is the field that answers "has this ever
+        happened", which the per-connection counters discard on every reconnect.
+    resets_total : int
+        :attr:`resets` summed over every connection since the client started,
+        including the current one.
+    """
+
+    connected: bool
+    uptime_seconds: float | None
+    reconnects: int
+    last_message_age_seconds: float | None
+    dropped: int
+    resets: int
+    bytes_since_last_message: int
+    dropped_total: int
+    resets_total: int
 
 
 class IndiClient:
@@ -121,6 +189,22 @@ class IndiClient:
         self._closing = False
         self._connected = False
         self._ready = asyncio.Event()
+
+        # This connection's parser, `None` until the first one is established.
+        # Reassigned per connection by _new_parser(); never reused across one.
+        self._parser: XMLStreamParser | None = None
+        # Every *earlier* parser's counters, folded in as each new one is made.
+        # `self._parser`'s own counters are added at read time (see `stats`), so
+        # the totals include the connection that is happening right now and stay
+        # right after aclose(), when there is no next fold.
+        self._dropped_total = 0
+        self._resets_total = 0
+        # Connections established, so reconnects = this - 1. Counting
+        # establishments rather than reconnects keeps the increment
+        # unconditional at the one site a connection comes up.
+        self._connections = 0
+        self._connected_at: float | None = None
+        self._last_message_at: float | None = None
 
     # -- lifecycle --------------------------------------------------------- #
     async def _default_connect(self) -> tuple[ReadFn, WriteFn, CloseFn]:
@@ -180,6 +264,45 @@ class IndiClient:
         """Whether the client currently has a live connection."""
         return self._connected
 
+    @property
+    def stats(self) -> ClientStats:
+        """A snapshot of the upstream link and this connection's parser.
+
+        Cheap: it reads counters, so an endpoint may call it per request.
+
+        Returns
+        -------
+        stats : ClientStats
+            The current statistics; see that class for what each field means
+            and what it reports while disconnected.
+        """
+        now = time.monotonic()
+        parser = self._parser
+        # No parser means no connection has ever been established, so every
+        # parser-derived number is genuinely zero rather than unknown. `/health`
+        # is reachable in that state, because the bridge starts with
+        # `start(wait=False)`.
+        dropped = 0 if parser is None else parser.dropped
+        resets = 0 if parser is None else parser.resets
+        pending = 0 if parser is None else parser.bytes_since_last_message
+        return ClientStats(
+            connected=self._connected,
+            uptime_seconds=None if self._connected_at is None else now - self._connected_at,
+            reconnects=max(self._connections - 1, 0),
+            last_message_age_seconds=(
+                None if self._last_message_at is None else now - self._last_message_at
+            ),
+            dropped=dropped,
+            resets=resets,
+            bytes_since_last_message=pending,
+            # The live parser is added here rather than folded when it retires,
+            # so the totals cover the connection in progress. Folding only on
+            # retirement left `dropped_total` short of `dropped` for the whole
+            # life of every connection, and permanently short after aclose().
+            dropped_total=self._dropped_total + dropped,
+            resets_total=self._resets_total + resets,
+        )
+
     # -- connection loop --------------------------------------------------- #
     async def _connection_loop(self) -> None:
         """Connect, serve, and reconnect until :meth:`aclose` is called.
@@ -198,6 +321,8 @@ class IndiClient:
                     await asyncio.sleep(self._reconnect_delay)
                     continue
                 self._connected = True
+                self._connections += 1
+                self._connected_at = time.monotonic()
                 self._enqueue_handshake()
                 self._ready.set()
                 await self._dispatch_connection(True)
@@ -207,6 +332,7 @@ class IndiClient:
                     pass
                 finally:
                     self._connected = False
+                    self._connected_at = None
                     # Whatever is still queued was addressed to the connection
                     # that just died. Delivering it on the next one is the
                     # failure this whole guard exists to prevent - a slew or an
@@ -279,14 +405,15 @@ class IndiClient:
 
         The parser's counters describe the connection, so they go out with it:
         the warning reports what this connection saw before it went quiet, since
-        the next one starts a parser - and a history - from scratch.
+        the next one starts a parser - and a history - from scratch. The running
+        totals on :attr:`stats` are what survive.
 
         Parameters
         ----------
         read : ReadFn
             The connection's inbound-byte callable.
         """
-        parser = XMLStreamParser()
+        parser = self._new_parser()
         while True:
             data = await read()
             if not data:
@@ -305,6 +432,32 @@ class IndiClient:
                 )
                 return
 
+    def _new_parser(self) -> XMLStreamParser:
+        """Retire this connection's parser and start the next connection's.
+
+        **A fresh parser per connection is the point.** The stall path
+        (:attr:`XMLStreamParser.stalled`) ends the connection precisely so the
+        reconnect hands it a parser with no half-open document in it, so keeping
+        one for the client's lifetime would leave the stall recovering nothing -
+        silently, and only against a peer that has actually gone mute. Holding
+        it on ``self`` for :attr:`stats` to read must not quietly become that,
+        which is why the assignment lives here, at the top of every
+        :meth:`_reader_loop`, and nowhere else.
+
+        The retiring parser's counters are folded into the running totals as it
+        goes, because nothing else will ever see that object again.
+
+        Returns
+        -------
+        parser : XMLStreamParser
+            The new connection's parser, also stored as ``self._parser``.
+        """
+        if self._parser is not None:
+            self._dropped_total += self._parser.dropped
+            self._resets_total += self._parser.resets
+        self._parser = XMLStreamParser()
+        return self._parser
+
     async def _handle(self, msg: IndiMessage) -> None:
         """Fold one inbound message into the store and dispatch callbacks.
 
@@ -313,6 +466,11 @@ class IndiClient:
         msg : IndiMessage
             The parsed inbound message.
         """
+        # Stamped here, on a *parsed* message, not where bytes arrive: the
+        # parser's own bytes_since_last_message covers the byte question, and a
+        # peer sending nothing but junk must not look healthy on this one.
+        self._last_message_at = time.monotonic()
+        log_wire("<-", msg)
         event = self._store.apply(msg)
         if event is not None:
             for callback in self._store.matching(event):
@@ -331,7 +489,9 @@ class IndiClient:
         """
         while True:
             msg = await self._outbox.get()
-            await write(to_xml(msg) + b"\n")
+            data = to_xml(msg) + b"\n"
+            log_wire("->", msg, len(data))
+            await write(data)
 
     @staticmethod
     async def _invoke(callback: Callable[..., object], arg: object) -> None:
