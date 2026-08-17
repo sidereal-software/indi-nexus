@@ -1,4 +1,4 @@
-"""Run drivers inside the web process, standing in for ``indiserver``.
+"""Run drivers inside the calling process, standing in for ``indiserver``.
 
 At an observatory ``indiserver`` is the hub: it launches drivers as child processes
 and serves their combined stream on TCP. That is one more thing to install and one
@@ -10,6 +10,12 @@ single channel (each runtime write is one complete XML message, so interleaving 
 safe) and each client write is broadcast to every driver, whose device ignores
 messages addressed to another device. The client cannot tell the difference, so the
 whole web stack above it runs unchanged.
+
+Nothing here is web-specific - it is drivers, pipes and the client transport contract -
+so it sits beside them rather than inside :mod:`indi_nexus.web`. ``indi-nexus serve
+--device`` is its loudest caller, but a test or a script that wants a driver on the
+other end of an :class:`~indi_nexus.client.IndiClient` needs it without a FastAPI app
+anywhere in the process.
 
 This is a convenience for development and for trying a driver out, not a replacement
 for ``indiserver``: it serves exactly one client, has no access control, and dies

@@ -36,7 +36,6 @@ import inspect
 from typing import Any, cast
 
 from indi_nexus.driver.device import Device
-from indi_nexus.driver.property import _coerce_switch
 from indi_nexus.driver.scheduling import iter_periodic
 from indi_nexus.protocol import (
     BLOB,
@@ -57,6 +56,7 @@ from indi_nexus.protocol import (
     Text,
     TextVector,
     Vector,
+    coerce_switch,
 )
 
 
@@ -88,7 +88,7 @@ def _client_write(defined: Vector, values: dict[str, Any]) -> Vector:
     if isinstance(defined, SwitchVector):
         # No rule: a newSwitchVector does not carry one, so a handler must not
         # rely on it, and the harness should not hand it one the wire wouldn't.
-        switches = [Switch(name=key, value=_coerce_switch(val)) for key, val in values.items()]
+        switches = [Switch(name=key, value=coerce_switch(val)) for key, val in values.items()]
         return SwitchVector(device=device, name=name, elements=switches)
     if isinstance(defined, LightVector):
         lights = [Light(name=key, value=IPState(val)) for key, val in values.items()]

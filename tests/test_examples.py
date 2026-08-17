@@ -717,7 +717,7 @@ def test_hub_serves_several_drivers_on_one_client():
     """
 
     async def scenario() -> None:
-        from indi_nexus.web import InProcessHub
+        from indi_nexus.hub import InProcessHub
 
         hub = InProcessHub([DomeSimulator(), TelescopeSimulator()])
         tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
