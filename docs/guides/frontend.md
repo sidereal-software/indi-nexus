@@ -38,6 +38,28 @@ Two components do the work. `IndiProvider` opens a WebSocket to the bridge, keep
 (reconnecting if the observatory restarts), and mirrors everything it hears into a store.
 `DevicePanel` subscribes to that store and re-renders the parts that changed.
 
+## Letting your app connect
+
+Your app is served from its own origin - `http://localhost:5173` under Vite - and the
+bridge accepts its own by default, so name yours when you start it:
+
+```bash
+indi-nexus serve --allow-origin http://localhost:5173
+```
+
+Repeat the flag for more, or set `INDI_NEXUS_ALLOWED_ORIGINS`. Skipping it is not an
+option the bridge can quietly take for you: `/ws` is its whole write surface, a frame
+sent there becomes an INDI `new*` that moves hardware, and a WebSocket is exempt from
+both the same-origin policy and CORS - so without the check, any page an operator
+happens to have open can drive the instrument. The panel the bridge itself serves, and
+the Vite dev proxy in `web/apps/panel/vite.config.ts`, are same-origin and need
+nothing.
+
+If the bridge was started with `--token` (which the Docker image does by default), pass
+it as `?token=` on the URL: `ws://localhost:8000/ws?token=...`. A browser cannot put a
+token in a header on a WebSocket handshake, so the query parameter is the only form
+available.
+
 The stylesheet is prebuilt, so you do not need Tailwind. If you *are* running Tailwind,
 import `@indi-nexus/react/theme.css` instead - just the design tokens - and let your own
 build generate the utilities.
@@ -143,10 +165,22 @@ for scripting a sequence.
 | `PropertyVectorCard` | one property, with the right control for its kind |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |
 | `ConnectionStatus` | both connection states |
-| `MessageLog` | the rolling INDI message log |
+| `MessageLog` | the rolling INDI message log, **and the bridge's write rejections** |
 
 Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,
 hand-built widgets around them.
+
+!!! important "`MessageLog` is where a refused write shows up"
+
+    When the bridge will not forward a frame - the upstream `indiserver` is down, its
+    queue is full, or the frame is not one a client may send - it answers that browser
+    alone with an error frame, and the client turns it into a log line reading
+    `newNumberVector was not sent: not connected to indiserver; the write was not sent`.
+
+    Nothing retries it and no control changes appearance, because the driver never
+    published anything. So a UI that drops `MessageLog` has no surface at all for a
+    failed command, and a user is left watching a control that simply does not move. If
+    you build your own, subscribe with `client.onMessage(...)` and show it somewhere.
 
 ## Without React
 
@@ -161,7 +195,10 @@ client.subscribe((event) => console.log(event.device, event.name, event.vector?.
 client.connect();
 ```
 
-`@indi-nexus/react` re-exports all of it, so a React app needs only the one package.
+`@indi-nexus/react` re-exports all of it, so a React app needs only the one package. The
+same origin rule applies: start the bridge with `--allow-origin` naming wherever this
+code is served from. A peer that is not a browser - Node, a script, a test - sends no
+`Origin` at all and needs nothing.
 
 ## Full API
 

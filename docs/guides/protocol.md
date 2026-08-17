@@ -14,8 +14,21 @@ wire.
 INDINexus speaks canonical INDI 1.7 XML to `indiserver`, which is what every other INDI
 program expects, and JSON to browsers.
 
-Both encodings come from the same Python model, so they cannot drift apart. The JSON a
-frontend receives is the protocol itself rather than a summary of it.
+Both encodings come from the same Python model, so they cannot drift apart. The INDI
+messages a frontend receives are the protocol itself rather than a summary of it.
+
+Two frames on that WebSocket are **not** INDI, because the protocol has no message for
+either and a UI needs both. They are objects with an `event` key instead of a `tag`:
+
+| Frame | Means |
+|---|---|
+| `{"event": "connection", "connected": false}` | whether the *bridge* is connected to `indiserver`. Distinct from whether your browser is connected to the bridge. |
+| `{"event": "error", "code": ..., "message": ..., "tag": ...}` | a frame this browser sent did not go upstream - malformed, not something a client may send, or refused because the upstream was down or busy. It is sent only to the browser that sent the frame. |
+
+Write a frame reader that **skips an `event` it does not recognise** rather than treating
+it as a protocol violation, since that is where any future control frame will arrive.
+`@indi-nexus/client` already does both: it surfaces the connection state and routes the
+error into the message log, and drops anything else.
 
 ## def, set, new
 

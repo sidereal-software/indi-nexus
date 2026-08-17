@@ -37,6 +37,7 @@ flowchart LR
     hw(["Instrument"]) --- drv
     drv -- "stdio<br/>INDI 1.7 XML" --> hub["indiserver<br/>C hub, :7624"]
     hub -- "TCP<br/>INDI 1.7 XML" --> cli
+    drv -. "in-memory pipes<br/>serve --device: no hub" .-> cli
     cli --> web
     web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
 
@@ -174,6 +175,11 @@ export const App = () => (
   </IndiProvider>
 );
 ```
+
+Your app is served from its own origin, and the bridge accepts its own by default, so
+name yours when you start it: `indi-nexus serve --allow-origin http://localhost:5173`.
+A WebSocket is exempt from the same-origin policy and from CORS, so that check is the
+only thing standing between `/ws` and any page an operator happens to visit.
 
 `DevicePanel` builds itself from whatever the device says it has, so it works for a device
 INDINexus has never seen. For your own layout, the same data is available through hooks;

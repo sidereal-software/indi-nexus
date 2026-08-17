@@ -239,6 +239,7 @@ flowchart LR
     hw(["Instrument"]) --- drv
     drv -- "stdio<br/>INDI 1.7 XML" --> hub["indiserver<br/>C hub, :7624"]
     hub -- "TCP<br/>INDI 1.7 XML" --> cli
+    drv -. "in-memory pipes<br/>serve --device: no hub" .-> cli
     cli --> web
     web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
 
@@ -265,9 +266,11 @@ You do not need all three; writing only a driver is the common case.
 - It does not reimplement `indiserver`. The C hub stays the hub and your driver runs as
   its child, which is what keeps the rest of the INDI ecosystem working against it. Only
   the Python and browser layers are new here.
-- `--device` is not a hub. It runs drivers inside the web process: one client, no access
-  control, and it stops when you stop the command. It exists so that trying this out
-  needs one install instead of two. Run anything real under `indiserver`.
+- `--device` is not a hub. It runs drivers inside the web process: one client, and it
+  stops when you stop the command. It exists so that trying this out needs one install
+  instead of two. Run anything real under `indiserver`. (It is not an unguarded surface:
+  `--token` and `--allow-origin` apply the same as without `--device`, and a non-loopback
+  `--host` with no token is refused either way.)
 - It does not talk to your instrument for you. There is no vendor library in here. You
   write the link to the hardware; `await self.off_thread(...)` keeps a blocking vendor
   call from stalling the event loop, and that is the extent of the help.

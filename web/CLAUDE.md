@@ -22,11 +22,28 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
   was the last one - that is a driver defining on connect, seen while disconnected, and not
   the same as the device being gone, which only an unnamed `delProperty` means. Both wire
   rules have three implementations - here, `client/store.py` and `web/static/debug.html` -
-  so a change to either belongs in all three.
+  so a change to either belongs in all three. A **whole-device** `del` matches every
+  subscriber for that device, including the name-filtered ones: its event carries no name
+  because the deletion names no property, so filtering on it silenced the watchers with the
+  most to lose (`client/store.py` draws the same line).
+- `frames.ts` is the guard between a decoded frame and the store, the browser's half of what
+  the Python parser refuses: a missing `device`/`name` drops the frame (`""` is an invented
+  device, and it used to cache a phantom one), and so does a non-finite number, which JSON
+  writes as `null` or as the string `"NaN"`/`"Infinity"` since it has no literal for one.
+  Optional numeric metadata (`min`/`max`/`step`, `timeout`) degrades to `null` instead,
+  because it can say absent - mirroring `_optfloat`. A rejected frame is dropped exactly
+  where `client.ts` already drops non-object JSON. A frame reaches a browser without ever
+  passing the Python parser (another bridge, a test, a driver emitting JSON), which is why
+  the rule cannot live only there.
 - `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts` is
   `IndiClient` mirroring the Python surface. It tracks two connection states: `transport`
   (browser to bridge) and `upstream` (bridge to `indiserver`, from the bridge's `connection`
-  control frame).
+  control frame). The bridge's other control frame, `{"event":"error"}`, says a frame this
+  browser sent did **not** go upstream; it lands in the message log, because nothing retries
+  it and a browser that hears nothing would assume its write landed. An `event` the client
+  does not know is still dropped. The default URL carries the page's own `?token=` across to
+  `/ws`: a browser cannot put a token in a header on a WebSocket handshake, and the bridge
+  requires one whenever it was started with `--token` (which the Docker image does).
 - `readme-snippets.ts` is nothing but the code samples from this package's `README.md`, kept
   compiling by `pnpm typecheck` - verbatim apart from the import, which reaches for
   `./index` because a package cannot resolve its own published name from inside `src/`. So a

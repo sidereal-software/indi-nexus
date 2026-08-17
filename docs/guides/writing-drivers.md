@@ -213,6 +213,46 @@ never kills a driver. Ticks are scheduled against a rolling deadline rather than
 sleeping the interval after each one, so a tick that takes 300 ms does not push the next
 one out to 1.3 seconds.
 
+### When the reading is not a number
+
+The snippet above hands a sensor reading straight to `set()`, and a real sensor
+eventually hands you `nan` or an infinity: a disconnected thermocouple, a divide by a
+zero wind count, a `float()` of a field the vendor left blank.
+
+**`set()` refuses those.** Neither wire format can carry a non-finite number - JSON has no
+literal for one - so `Number.value` forbids them and `set()` raises `ProtocolError`
+naming the element:
+
+```
+ProtocolError: T.TEMP.C cannot be set to nan
+```
+
+The raise happens before anything is written, so the property keeps its previous value
+and nothing goes on the wire. In a `@every` job the runtime catches it, reports it to the
+client and runs the next tick - but the property is then silently stale, still showing a
+reading that is no longer being taken. That is the worst outcome, so handle it yourself.
+Say the instrument is unwell:
+
+```python
+@every(seconds=1, when_connected=True)
+async def poll(self) -> None:
+    reading = await self.off_thread(self._station.read_temperature)
+    if not math.isfinite(reading):
+        # Keep the last good value on screen, but stop claiming it is current.
+        self["WEATHER_PARAMETERS"].set(state=IPState.ALERT)
+        return
+    self["WEATHER_PARAMETERS"].set(TEMPERATURE=reading, state=IPState.OK)
+```
+
+That needs `import math`. Skipping the update entirely (`return` with no `set`) is the
+other reasonable choice, and it is the wrong one whenever a client could mistake a stale
+reading for a live one - which on a weather station deciding whether to open a roof is
+always. Prefer `IPState.ALERT`.
+
+The same rule applies to `min`, `max` and `step`, except that those *can* say "absent":
+a non-finite one degrades to `None` rather than raising, because the wire has a
+representation for a missing bound and none for `nan`.
+
 ## Talking to real hardware
 
 The commonest way a real driver goes wrong is a blocking call inside an `async def`.

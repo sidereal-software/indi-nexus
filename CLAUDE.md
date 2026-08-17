@@ -98,6 +98,7 @@ src/indi_nexus/
 ├── testing.py    DeviceHarness: drive a Device in a test, no indiserver
 ├── client/       reconnecting asyncio TCP client to indiserver + property cache
 ├── transport.py  shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
+├── hub.py        InProcessHub: drivers in this process, standing in for indiserver
 ├── web/          FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
 └── cli.py        Typer CLI (serve web, run driver, monitor)
 
@@ -119,6 +120,7 @@ flowchart LR
     hw(["Instrument"]) --- drv
     drv -- "stdio<br/>INDI 1.7 XML" --> hub["indiserver<br/>C hub, :7624"]
     hub -- "TCP<br/>INDI 1.7 XML" --> cli
+    drv -. "in-memory pipes<br/>serve --device: no hub" .-> cli
     cli --> web
     web -- "WebSocket<br/>typed JSON" --> ui["Browser<br/>React/TS"]
 

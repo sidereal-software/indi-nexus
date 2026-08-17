@@ -38,16 +38,20 @@ cd web && pnpm install && cd ..         # install the JS workspace deps
 indi-nexus/
 ├── pyproject.toml           # packaging, dependencies, tool config (ruff/mypy/pytest)
 ├── src/indi_nexus/
+│   ├── exceptions.py        # the error hierarchy: IndiError + a builtin base per type
 │   ├── protocol/            # the INDI protocol core
-│   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy (str enums)
+│   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy + coerce_switch
 │   │   ├── models.py        #   typed Pydantic vectors, elements, def/set/new + enableBLOB
-│   │   ├── xml.py           #   INDI XML codec + streaming pull-parser + sexagesimal
+│   │   ├── numbers.py       #   parse_number / format_number, incl. the %m sexagesimal form
+│   │   ├── xml.py           #   INDI XML codec + streaming pull-parser
 │   │   └── json.py          #   the browser codec: the same models, JSON on the wire
 │   ├── driver/              # driver SDK (stdio under indiserver)
 │   ├── testing.py           # DeviceHarness: drive a Device in a test, no indiserver
 │   ├── client/              # reconnecting async client + property cache
 │   ├── transport.py         # shared read/write byte-stream contract + TCP adapter
+│   ├── hub.py               # InProcessHub: drivers in this process, for serve --device
 │   ├── web/                 # FastAPI bridge (WS + REST) + static/debug.html
+│   │   └── security.py      #   the /ws origin allowlist + the shared token
 │   └── cli.py               # Typer CLI (new / serve / run / monitor)
 ├── examples/                # runnable references: drivers and a client
 ├── tests/                   # pytest suite (tests/interop needs a real libindi)
@@ -103,14 +107,55 @@ indi-nexus monitor                          # print live INDI updates from indis
 indi-nexus --help                           # all CLI commands and options
 ```
 
-The bridge's HTTP surface (served by `indi-nexus serve`, with or without `--device`):
+### Access control on `serve`
 
-- `GET /` - the reference panel; `GET /debug` - the raw debug inspector.
-- `GET /health` - liveness + upstream connection state.
+> **`serve` refuses to start on a non-loopback `--host` with no `--token`.** A
+> `--host 0.0.0.0` that worked before now exits with a `BadParameter`, so a systemd unit
+> or a container command carrying it fails at startup rather than quietly publishing the
+> instrument. Add `--token`, or `--allow-insecure-bind` to accept the exposure.
+
+`/ws` is the whole write surface - a frame there becomes an INDI `new*` that moves
+hardware - so a bind anything but this machine can reach has to be a decision. Three
+options on `serve` (they apply to `--device` too):
+
+| Option | Env var | Effect |
+|---|---|---|
+| `--token TEXT` | `INDI_NEXUS_TOKEN` | Shared secret required on `/ws` and `/api`. Unset leaves both open, which is what a loopback development server wants. |
+| `--allow-origin TEXT` | `INDI_NEXUS_ALLOWED_ORIGINS` | A browser origin to accept on `/ws` besides the server's own, e.g. `http://localhost:5173` for the Vite dev server. Repeatable; `*` accepts any. |
+| `--allow-insecure-bind` | `INDI_NEXUS_ALLOW_INSECURE_BIND` | Permit the non-loopback bind with no token anyway. This exposes the instrument. |
+
+`Authorization: Bearer <token>` everywhere, plus `?token=` **on `/ws` only**. A browser
+cannot set a header on a WebSocket handshake, so the query parameter is the one form it
+has there; `/api` takes the header alone, because a URL token ends up in reverse-proxy
+and CDN access logs and in browser history.
+
+### The bridge's HTTP surface
+
+Served by `indi-nexus serve`, with or without `--device`:
+
+- `GET /` - the reference panel; `GET /debug` - the raw debug inspector. Open.
+- `GET /health` - `{"status", "connected", "dropped_slow_sinks"}`. Open on purpose: the
+  Docker image's `HEALTHCHECK` calls it unauthenticated.
 - `GET /api/devices`, `GET /api/devices/{device}[/{name}]` - read-only JSON snapshot.
+  **Behind the token** when one is configured.
 - `WS /ws` - live stream (snapshot on connect, then updates); browser frames are forwarded
-  upstream. Messages are the protocol models as JSON, so the frontend contract is the
-  backend model schema.
+  upstream. **Behind the token and an `Origin` check**, both applied before `accept()`, so
+  a rejected handshake is closed with 1008. A browser sends only `new*Vector`,
+  `getProperties` and `enableBLOB`; anything else comes back to that browser alone as
+  `{"event": "error", "code": "not_permitted", ...}` with the socket left open.
+
+The `/ws` INDI frames are the protocol models dumped to JSON, so for those the frontend
+contract *is* the backend model schema. Two things on the wire are not:
+
+- The bridge's own control frames, `{"event": "connection"}` and `{"event": "error"}`,
+  which no Pydantic model backs - the protocol has no message for either.
+- `/api`, which returns **bare vectors** (`Vector.model_dump()`), not tagged messages, so
+  it has no `tag` field and is not a `IndiMessage` a client codec can parse.
+
+Attach to the bridge in Python with `Bridge.attach(sink) -> Subscription` (a bounded queue
+plus its own pump task); `Subscription.aclose()` detaches. There is no `snapshot()`,
+`add_sink()` or `remove_sink()` - seeding and registration are one synchronous step inside
+`attach` so no event can be lost between them.
 
 ## The interop suite
 

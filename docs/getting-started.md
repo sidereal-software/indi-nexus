@@ -62,9 +62,13 @@ side by side.
 
 !!! warning "`--device` is for trying things out"
 
-    It runs your drivers inside the web process: one client, no access control, and it
-    stops when you stop the command. That makes it a development convenience rather than
-    a hub, so run anything real under `indiserver`.
+    It runs your drivers inside the web process: one client, and it stops when you stop
+    the command. That makes it a development convenience rather than a hub, so run
+    anything real under `indiserver`.
+
+    Access control is the same either way, though: `--token` and `--allow-origin` work
+    with `--device`, and `serve` refuses a non-loopback `--host` that has no `--token`
+    unless you pass `--allow-insecure-bind`.
 
 !!! note "Where the worked examples live"
 

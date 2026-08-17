@@ -4,8 +4,26 @@ The image runs `indiserver` and the INDINexus web bridge in one container, so a 
 with Docker installed needs nothing else: no libindi, no Python, no Node.
 
 ```bash
-docker run --rm -p 8000:8000 -p 7624:7624 ghcr.io/sidereal-software/indi-nexus
+docker run --rm -p 8000:8000 -p 7624:7624 \
+  -e WEB_TOKEN=choose-a-secret \
+  ghcr.io/sidereal-software/indi-nexus
 ```
+
+Then open <http://localhost:8000/?token=choose-a-secret>.
+
+**The token is not optional.** The container publishes its port, so the bridge always
+starts with one; leave `WEB_TOKEN` unset and it generates a random token instead and
+prints the only URL that works to the container log:
+
+```
+indi-nexus: generated a web token. Set WEB_TOKEN to keep it stable across restarts.
+indi-nexus: panel on http://localhost:8000/?token=Xb3...
+```
+
+Plain <http://localhost:8000/> loads the panel either way, but its WebSocket handshake is
+refused with close code 1008 and no devices ever appear - so read the URL out of the log,
+or set `WEB_TOKEN` yourself as above and keep it stable across restarts. See
+[The token](#the-token) for the rest, including `WEB_ALLOW_ANONYMOUS`.
 
 Released images are published to the GitHub Container Registry, one per release, tagged
 `latest`, `0.2` and `0.2.0`. They are built for `linux/amd64` and `linux/arm64`, so an
@@ -19,8 +37,20 @@ cd indi-nexus
 docker compose up --build
 ```
 
-Open <http://localhost:8000/>. `indiserver` is on `localhost:7624` at the same time, so
-KStars, PHD2 or any other INDI client can drive the same hub while the panel is open.
+`compose.yaml` leaves `WEB_TOKEN` commented out, so the container generates one and
+prints the URL that carries it:
+
+```
+indi-nexus: panel on http://localhost:8000/?token=Xb3...
+```
+
+Open that URL. Plain <http://localhost:8000/> loads the panel but never connects. To keep
+one URL across restarts, uncomment `WEB_TOKEN` in `compose.yaml` and set it.
+
+`indiserver` is on `localhost:7624` at the same time, so KStars, PHD2 or any other INDI
+client can drive the same hub while the panel is open. Those are INDI clients rather than
+browsers, so they talk to `indiserver` directly and the bridge's token does not apply to
+them.
 
 With nothing configured the container runs libindi's telescope simulator, so there is a
 device on screen before you have written anything.
@@ -64,6 +94,35 @@ docker run --rm -p 8000:8000 -p 7624:7624 \
 | `INDI_DRIVER_DIR` | `/drivers` | A directory whose entries are appended to that list. |
 | `INDI_PORT` | `7624` | The port `indiserver` listens on. |
 | `WEB_HOST`, `WEB_PORT` | `0.0.0.0`, `8000` | Where the bridge binds. |
+| `WEB_TOKEN` | generated | The shared token `/ws` and `/api` require. Left unset, one is generated and printed with the panel's URL on startup; set it to keep that URL stable across a restart. |
+| `WEB_ALLOW_ANONYMOUS` | unset | Set to any value to serve with no token. |
+| `WEB_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept in addition to the bridge's own. |
+
+## The token
+
+The container publishes its port, so the panel and `/ws` are reachable by anything
+that can reach the host - and `/ws` is the write surface: a frame sent there becomes
+an INDI `new*` that moves hardware. So the bridge always starts with a token, and the
+startup log prints the URL that carries it:
+
+```
+indi-nexus: panel on http://localhost:8000/?token=Xb3...
+```
+
+Open that URL and the panel connects; it carries the token from its own address to
+the WebSocket, which is the only place a browser can put one and the only route that
+accepts `?token=`. `/api` takes `Authorization: Bearer <token>` and nothing else, so
+`curl` and other non-browser clients use the header there:
+
+```
+curl -H 'Authorization: Bearer Xb3...' http://localhost:8000/api/devices
+```
+
+`/health` needs no token, because the image's health check calls it.
+
+Browsers apply neither the same-origin policy nor CORS to WebSockets, so the bridge
+also checks the handshake's `Origin` against its own and refuses anything else. A
+front end served from another origin needs `WEB_ALLOWED_ORIGINS`.
 
 The container exits when either process ends, so a driver that takes the hub down with
 it is restarted by Docker rather than leaving half a stack still answering on `:8000`.

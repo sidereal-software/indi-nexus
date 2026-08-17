@@ -111,6 +111,7 @@ nav:
       - Building a frontend: guides/frontend.md
       - Protocol concepts: guides/protocol.md
   - Python API:
+      - Exceptions: reference/python/exceptions.md
       - Protocol: reference/python/protocol.md
       - Driver SDK: reference/python/driver.md
       - Testing: reference/python/testing.md
