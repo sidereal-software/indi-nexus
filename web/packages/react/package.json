@@ -49,7 +49,7 @@
     "build": "tsup && pnpm build:css && cp src/theme.css dist/theme.css",
     "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../scripts/extract-doc-snippets.mjs --only=react && tsc --noEmit",
     "test": "vitest run"
   },
   "peerDependencies": {

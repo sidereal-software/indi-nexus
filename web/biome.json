@@ -8,6 +8,7 @@
       "!**/dist",
       "!**/node_modules",
       "!**/*.gen.ts",
+      "!**/__generated__",
       "!**/*.css",
       "!**/ui",
       "!**/use-mobile.ts",

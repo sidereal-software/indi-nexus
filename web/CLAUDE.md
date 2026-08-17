@@ -2,8 +2,8 @@
 
 Detail for `web/`. The repository-wide rules are in the root `CLAUDE.md`.
 
-A `pnpm` workspace holding a reusable library plus the reference panel that ships inside the
-wheel. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
+A `pnpm` workspace holding a reusable library, the reference panel that ships inside the
+wheel, and the `scripts/` package that typechecks the documentation's code fences. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
 **Vitest** runs tests, **Biome** lints and formats (`web/biome.json`; the vendored shadcn
 `ui/` files are excluded). Run everything from `web/`: `pnpm -r build`, `pnpm -r typecheck`,
 `pnpm -r test`, `pnpm lint`, `pnpm run lint:diagrams`. All five are CI gates.
@@ -57,13 +57,10 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
   does not know is still dropped. The default URL carries the page's own `?token=` across to
   `/ws`: a browser cannot put a token in a header on a WebSocket handshake, and the bridge
   requires one whenever it was started with `--token` (which the Docker image does).
-- `readme-snippets.ts` is nothing but the code samples from this package's `README.md`, kept
-  compiling by `pnpm typecheck` - verbatim apart from the import, which reaches for
-  `./index` because a package cannot resolve its own published name from inside `src/`. So a
-  diff between the two shows drift and nothing else; keep it that way. **Change a snippet in
-  the README and change it there too**, or the npmjs.com front page silently rots (it
-  already had: it shipped `IPState.OK`, Python's spelling, and a `vector.state` that ignored
-  the `null` a `del` carries).
+- This package's `README.md` is the npmjs.com front page, and its `ts` fences are compiled
+  straight out of the markdown by `pnpm typecheck` - see `scripts/` below. That front page
+  had rotted before the check existed: it shipped `IPState.OK`, Python's spelling, and a
+  `vector.state` that ignored the `null` a `del` carries.
 
 ## `packages/react/` - `@indi-nexus/react`
 
@@ -83,15 +80,12 @@ Idle/Ok/Busy/Alert. The build emits a prebuilt `dist/styles.css`
 (`@indi-nexus/react/styles.css`, batteries-included) and copies the source `theme.css`
 (`@indi-nexus/react/theme.css`, for consumers running their own Tailwind).
 
-`src/doc-snippets.tsx` is nothing but the code samples from `docs/guides/frontend.md`, kept
-compiling by `pnpm typecheck`. **Change a snippet on that page and change it there too**, or
-the guide silently rots (it already had once, which is how the value hooks got found).
-`src/readme-snippets.tsx` is the same arrangement for this package's `README.md`, which had
-rotted the same way: it rendered `useConnection()` straight into JSX, and the hook returns
-the `{transport, upstream}` object, so the sample threw on paste. That one is the README's
-fences verbatim apart from the imports - `./index` instead of the published name, and no
-`styles.css`, which nothing in this program declares a type for - so a diff between the two
-shows drift and nothing else; keep it that way.
+The `tsx` fences in this package's `README.md`, in `docs/guides/frontend.md`, in
+`docs/index.md`, in the root `README.md` and in `docs/guides/tutorial-open-meteo.md` are
+compiled out of the markdown by `pnpm typecheck` - see `scripts/` below. Both pages had
+rotted before that existed: the guide's examples outran the API (which is how the value
+hooks got found), and the README rendered `useConnection()` straight into JSX, when the
+hook returns the `{transport, upstream}` object, so the sample threw on paste.
 
 `@indi-nexus/react/testing` (`src/testing/`) is the counterpart to `indi_nexus.testing`:
 `renderConnected(ui)` renders under a provider wired to a `FakeSocket` **that has already
@@ -108,6 +102,34 @@ accumulates between tests.
 fix that by un-ignoring (`!web/**/lib/`), which is what used to be there: the negation
 re-includes every `lib/` inside `node_modules` when packaging, because git prunes an
 ignored directory and hatchling does not.
+
+## `scripts/` - the documentation fence extractor
+
+`scripts/extract-doc-snippets.mjs` is what keeps the documented TypeScript honest. It reads
+the `ts`/`tsx` fences out of the six markdown files that carry them - the two package
+`README.md`s, the root `README.md`, `docs/index.md`, `docs/guides/frontend.md` and
+`docs/guides/tutorial-open-meteo.md` - and writes one module per fence into the owning
+package's `src/__generated__/docs/`, where that package's existing `tsc --noEmit` picks it
+up. Each package's `typecheck` script runs it first, the output is gitignored, and Biome
+skips `__generated__`. It replaced three hand-copied mirror files, which compiled but were
+tied to the markdown by nothing at all.
+
+- **Every fence is claimed by exactly one manifest entry, or the extractor fails.** Entries
+  are keyed by a distinctive substring of the fence body, never by index, so inserting a
+  fence above another does not silently re-point an entry. Add a fence and the build stops
+  until somebody says which package compiles it - that refusal is the whole feature. A
+  markdown file anywhere in the repo that grows a TypeScript fence without joining the
+  manifest fails the same way.
+- **The fence body is verbatim.** The only transforms are the ones the compiler forces:
+  `@indi-nexus/react` / `@indi-nexus/client` becomes `../../index` (a package cannot resolve
+  its own published name from inside `src/`), `import "@indi-nexus/react/styles.css"` is
+  dropped (nothing declares a type for it), and a top-level declaration the fence never uses
+  is exported past `noUnusedLocals`. A fence that is a fragment rather than a module gets
+  `imports` and a `wrap` from the manifest, so `await client.waitFor(...)` has a real
+  `IndiClient` in scope rather than an `any`.
+- `extract-doc-snippets.test.mjs` covers the parse and the manifest check - the half `tsc`
+  cannot witness. `tsc` proves the snippets compile; the test proves an unclaimed fence
+  still fails.
 
 ## `apps/panel/` - the reference panel
 

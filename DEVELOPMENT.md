@@ -304,6 +304,30 @@ uv run mkdocs serve               # author locally
 uv run mkdocs build --strict      # what CI runs
 ```
 
+### Every code fence is checked
+
+No snippet in the documentation is untested prose. Both halves read the fences **out of
+the markdown at test time**, so there is no second copy to fall out of step, and a page
+cannot rot without a build going red.
+
+- **Python** - `tests/test_docs_snippets.py`. Its `CLAIMS` table names every Python fence
+  on every page and says what is true of it: `RUNS` (executed, usually through
+  `DeviceHarness`, with the page's own claims asserted), `EXCERPT` (a trimmed quotation of
+  a real file, matched statement by statement against it), `COMPILES` (a fragment, so it
+  is compiled and its `indi_nexus` imports resolved) or `PROSE` (not our code, or code the
+  page is warning against, with the reason recorded). **A fence with no claim fails the
+  suite**, so a new snippet has to be classified rather than ignored. The same module
+  checks the `indi-nexus` commands and flags the pages tell people to type, the
+  `module:Class` driver targets they name, the Docker variables they advertise, and the
+  tutorial's quoted request and reply against `tests/data/open_meteo_response.json`.
+- **TypeScript** - `web/scripts/extract-doc-snippets.mjs`, run by each package's
+  `typecheck`. It writes one module per fence into `src/__generated__/docs/` (gitignored)
+  where `tsc --noEmit` compiles it. A fence outside its manifest, or a markdown file with
+  a TypeScript fence that no manifest covers, fails the extractor.
+
+Adding a fence to a page therefore means adding it to the claims table or the manifest.
+Neither takes a copy of the code.
+
 The social-card plugin renders each page's preview image with cairosvg, which dlopens
 the system libcairo rather than shipping it. Ubuntu runners already have it, so CI needs
 nothing; macOS does not, and without it every page emits a warning and `--strict` fails.

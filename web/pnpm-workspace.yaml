@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "apps/*"
+  - "scripts"
 allowBuilds:
   '@parcel/watcher': false
   esbuild: true

@@ -39,7 +39,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../scripts/extract-doc-snippets.mjs --only=client && tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {

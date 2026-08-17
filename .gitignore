@@ -229,6 +229,8 @@ skills-lock.json
 node_modules/
 web/**/dist/
 web/**/*.tsbuildinfo
+# Doc fences lifted into the packages by web/scripts/extract-doc-snippets.mjs
+web/**/src/__generated__/
 .turbo/
 
 # Built reference panel, emitted into the package by `pnpm --filter panel build`
