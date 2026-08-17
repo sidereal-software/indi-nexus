@@ -139,7 +139,7 @@ def test_bridge_relays_driver_to_a_browser_sink():
         try:
             await client.wait_for("Demo", "power", timeout=2)
             await _connect_device(client)
-            bridge.add_sink(sink)
+            sub = bridge.attach(sink)
 
             # A browser turns the power switch on; it flows bridge -> client ->
             # driver -> @on_new -> back to the client and out to the sink.
@@ -163,9 +163,18 @@ def test_bridge_relays_driver_to_a_browser_sink():
                 timeout=2,
             )
             assert confirmed.state == IPState.OK
-            # The fake browser saw the confirming set for the power vector.
-            assert any('"name":"power"' in f and '"tag":"set"' in f for f in frames)
+            # The fake browser saw the confirming set for the power vector. The
+            # bridge queues it and its pump task delivers it, so wait for that
+            # rather than for the reader that queued it.
+            async with asyncio.timeout(2):
+                # Yielding is the wait: the condition is the pump task making
+                # progress, and there is no event that announces it.
+                while not any(  # noqa: ASYNC110
+                    '"name":"power"' in f and '"tag":"set"' in f for f in frames
+                ):
+                    await asyncio.sleep(0)
         finally:
+            await sub.aclose()
             await bridge.aclose()
             to_driver.eof()
             await asyncio.wait_for(driver_task, timeout=2)

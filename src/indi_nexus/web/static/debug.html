@@ -105,7 +105,11 @@ const STATES = { Idle: "var(--idle)", Ok: "var(--ok)", Busy: "var(--busy)", Aler
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  // A browser cannot set headers on a WebSocket handshake, so a bridge started
+  // with a token is reached by carrying this page's own ?token= across to /ws.
+  const token = new URLSearchParams(location.search).get("token");
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  ws = new WebSocket(`${proto}://${location.host}/ws${query}`);
   ws.onopen = () => setDot("ws-dot", true);
   ws.onclose = () => { setDot("ws-dot", false); setDot("up-dot", false); setTimeout(connect, 1500); };
   ws.onmessage = (ev) => handle(ev.data);

@@ -5,7 +5,7 @@
 
 * ``GET /`` - the built reference panel if present, else the debug inspector page;
 * ``GET /debug`` - the self-contained debug inspector page;
-* ``GET /health`` - liveness and upstream connection state;
+* ``GET /health`` - liveness, upstream connection state and the slow-sink counter;
 * ``GET /api/devices`` and ``/api/devices/{device}[/{name}]`` - a read-only JSON
   snapshot of the property cache;
 * ``WS /ws`` - the live bridge: a snapshot on connect, then streamed updates, with
@@ -13,24 +13,98 @@
 
 The client is injectable so tests drive the app over an in-memory transport; by
 default a real TCP client to ``indiserver`` is created.
+
+**The auth boundary runs around ``/ws`` and ``/api``.** ``/ws`` is the write
+surface, and ``/api/devices/*`` is a full read of instrument state - site
+coordinates, hardware inventory, mount and focuser positions - so both sit behind
+the token whenever one is configured. ``/health`` stays open because the image's
+``HEALTHCHECK`` calls it unauthenticated and it exposes one boolean and a counter;
+``/``, ``/debug`` and the static panel are open-source HTML with nothing
+instrument-specific in them. There is deliberately no ambient credential (no
+cookie, no session), so cross-origin JavaScript cannot authenticate to ``/api`` at
+all and there are no state-changing HTTP routes to protect; see
+:mod:`indi_nexus.web.security` for what guards ``/ws``.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import HTTPConnection
 
 from indi_nexus.client import IndiClient
-from indi_nexus.web.bridge import Bridge
+from indi_nexus.web.bridge import Bridge, Subscription
+from indi_nexus.web.security import WebSecurity
+
+logger = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
 _PANEL = _STATIC / "panel"
+
+#: WebSocket close code for a policy violation, used for a handshake that fails
+#: the origin or token check.
+_WS_POLICY_VIOLATION = 1008
+
+#: WebSocket close code for an ordinary, expected close.
+_WS_NORMAL_CLOSURE = 1000
+
+#: WebSocket close code for "try again later", used when the bridge dropped a
+#: browser that stopped keeping up. Best effort: the close frame travels the same
+#: backed-up connection the drop was about, so it may never arrive.
+_WS_TRY_AGAIN_LATER = 1013
+
+
+def _bearer_token(conn: HTTPConnection) -> str | None:
+    """Read a token from a connection's ``Authorization: Bearer`` header.
+
+    Parameters
+    ----------
+    conn : HTTPConnection
+        The incoming ``Request`` or ``WebSocket``; both are HTTP connections.
+
+    Returns
+    -------
+    token : str or None
+        The supplied token, or `None` if none was.
+    """
+    header = conn.headers.get("authorization")
+    if header is None:
+        return None
+    scheme, _, value = header.partition(" ")
+    if scheme.lower() == "bearer" and value:
+        return value
+    return None
+
+
+def _ws_token(websocket: WebSocket) -> str | None:
+    """Read a token from a WebSocket handshake, allowing ``?token=``.
+
+    The query parameter is **only** accepted here. A WebSocket opened from a
+    browser cannot set a header, so for ``/ws`` it is the one form a browser has;
+    that argument does not reach ``/api``, which any HTTP caller can send a
+    header on, and where a token in the URL would be written into reverse-proxy
+    and CDN access logs, `Referer` headers and browser history.
+
+    Parameters
+    ----------
+    websocket : WebSocket
+        The incoming handshake.
+
+    Returns
+    -------
+    token : str or None
+        The supplied token, or `None` if none was.
+    """
+    return _bearer_token(websocket) or websocket.query_params.get("token")
 
 
 def create_app(
@@ -38,6 +112,8 @@ def create_app(
     client: IndiClient | None = None,
     indi_host: str = "localhost",
     indi_port: int = 7624,
+    token: str | None = None,
+    allowed_origins: Sequence[str] = (),
 ) -> FastAPI:
     """Build the web-bridge FastAPI application.
 
@@ -50,6 +126,14 @@ def create_app(
         Upstream ``indiserver`` host (when ``client`` is not given).
     indi_port : int, optional
         Upstream ``indiserver`` port (when ``client`` is not given).
+    token : str, optional
+        A shared secret required on ``/ws`` and ``/api``. `None` (the default)
+        leaves both open, which is what a loopback-bound development server
+        wants.
+    allowed_origins : Sequence of str, optional
+        Browser origins accepted on ``/ws`` in addition to the server's own,
+        e.g. ``http://localhost:5173`` for a Vite dev server or a separate
+        front end. ``"*"`` accepts any.
 
     Returns
     -------
@@ -58,6 +142,7 @@ def create_app(
     """
     indi_client = client or IndiClient(indi_host, indi_port)
     bridge = Bridge(indi_client)
+    security = WebSecurity.build(token, allowed_origins)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -71,18 +156,50 @@ def create_app(
     app = FastAPI(title="INDINexus web bridge", lifespan=lifespan)
     app.state.bridge = bridge
     app.state.client = indi_client
+    app.state.security = security
+
+    def require_token(request: Request) -> None:
+        """Reject a request that does not carry the configured token.
+
+        ``Authorization: Bearer`` only; see :func:`_ws_token` for why ``?token=``
+        stops at the WebSocket handshake.
+
+        Parameters
+        ----------
+        request : Request
+            The incoming request.
+
+        Raises
+        ------
+        HTTPException
+            Raised with 403 when a token is configured and not supplied.
+        """
+        if not security.token_ok(_bearer_token(request)):
+            raise HTTPException(status_code=403, detail="a valid token is required")
+
+    api = [Depends(require_token)]
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        """Report liveness and whether the upstream client is connected."""
-        return {"status": "ok", "connected": indi_client.connected}
+        """Report liveness, the upstream connection, and dropped browsers.
 
-    @app.get("/api/devices")
+        Open on purpose: the container's ``HEALTHCHECK`` calls it with no
+        credentials. ``dropped_slow_sinks`` is here because a browser cannot tell
+        an overflow drop from a network fault, so the count has to be readable
+        from the outside without scraping logs.
+        """
+        return {
+            "status": "ok",
+            "connected": indi_client.connected,
+            "dropped_slow_sinks": bridge.dropped_slow_sinks,
+        }
+
+    @app.get("/api/devices", dependencies=api)
     async def list_devices() -> list[str]:
         """Return the names of all known devices."""
         return indi_client.store.devices()
 
-    @app.get("/api/devices/{device}")
+    @app.get("/api/devices/{device}", dependencies=api)
     async def device_properties(device: str) -> dict[str, Any]:
         """Return one device's properties as JSON, keyed by property name.
 
@@ -97,7 +214,7 @@ def create_app(
         props = indi_client.store.device(device)
         return {name: vec.model_dump(mode="json") for name, vec in props.items()}
 
-    @app.get("/api/devices/{device}/{name}")
+    @app.get("/api/devices/{device}/{name}", dependencies=api)
     async def one_property(device: str, name: str) -> dict[str, Any]:
         """Return a single property vector as JSON."""
         vec = indi_client.store.get(device, name)
@@ -105,21 +222,73 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"unknown property {device}.{name}")
         return vec.model_dump(mode="json")
 
+    async def _receive_loop(websocket: WebSocket, sub: Subscription) -> None:
+        """Forward this browser's frames upstream until it disconnects.
+
+        Parameters
+        ----------
+        websocket : WebSocket
+            The browser's socket.
+        sub : Subscription
+            The browser's bridge subscription, so a rejected frame is reported
+            back to it alone.
+        """
+        with contextlib.suppress(WebSocketDisconnect):
+            while True:
+                await bridge.handle_incoming(await websocket.receive_text(), sub)
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
-        """Stream live updates to a browser and forward its frames upstream."""
+        """Stream live updates to a browser and forward its frames upstream.
+
+        The route sends nothing itself: seeding and registration are one
+        synchronous operation inside :meth:`Bridge.attach`, so no event can be
+        lost in the window between them.
+        """
+        headers = websocket.headers
+        if not security.origin_allowed(headers.get("origin"), headers.get("host")):
+            # Closing before accept() answers the handshake with an HTTP error
+            # rather than opening a socket and then dropping it.
+            await websocket.close(code=_WS_POLICY_VIOLATION)
+            return
+        if not security.token_ok(_ws_token(websocket)):
+            await websocket.close(code=_WS_POLICY_VIOLATION)
+            return
         await websocket.accept()
-        for frame in bridge.snapshot():
-            await websocket.send_text(frame)
-        await websocket.send_text(bridge.connection_frame(indi_client.connected))
-        bridge.add_sink(websocket.send_text)
+        sub = bridge.attach(websocket.send_text)
+        receiving = asyncio.create_task(_receive_loop(websocket, sub))
+        # Racing the drop matters: a browser the bridge dropped for backlog would
+        # otherwise leave this route parked in receive_text() with no pump behind
+        # it, holding a socket that will never be served again.
+        dropped = asyncio.create_task(sub.closed.wait())
         try:
-            while True:
-                await bridge.handle_incoming(await websocket.receive_text())
-        except WebSocketDisconnect:
-            pass
+            await asyncio.wait({receiving, dropped}, return_when=asyncio.FIRST_COMPLETED)
         finally:
-            bridge.remove_sink(websocket.send_text)
+            receiving.cancel()
+            dropped.cancel()
+            # Awaited one at a time rather than through gather(): a cancelled
+            # child's CancelledError comes up out of gather() even under
+            # return_exceptions, which cancelled this route mid-cleanup. Reaping
+            # them is not optional either - without it a cancellation that has
+            # not been delivered yet surfaces later as "Task was destroyed but it
+            # is pending!", and sub.aclose() only happens to give the loop enough
+            # turns.
+            for task in (receiving, dropped):
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            # Only a receive loop that already finished can have failed, and
+            # that is the one whose exception nothing else would ever report.
+            if receiving.done() and not receiving.cancelled():
+                failure = receiving.exception()
+                if failure is not None:
+                    logger.error("websocket receive loop failed", exc_info=failure)
+            await sub.aclose()
+            # The backlog flag, not `sub.closed`: every way out of the pump sets
+            # the event, so keying the code off it told an ordinary disconnect
+            # racing a stale write failure to "try again later".
+            code = _WS_TRY_AGAIN_LATER if sub.dropped_for_backlog else _WS_NORMAL_CLOSURE
+            with contextlib.suppress(RuntimeError):
+                await websocket.close(code=code)
 
     @app.get("/debug")
     async def debug_page() -> FileResponse:

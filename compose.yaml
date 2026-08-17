@@ -31,6 +31,14 @@ services:
       # mounted. A name on PATH, a path to an executable and a path to a .py file
       # written against the INDINexus SDK are all valid entries, space separated.
       INDI_DRIVERS: indi_simulator_telescope
+      # The published port is a control surface for the instrument, so the bridge
+      # always runs with a token. Left unset, one is generated and printed on
+      # startup with the panel's URL; set it to keep that URL stable across a
+      # restart. WEB_ALLOW_ANONYMOUS=1 turns it off, deliberately and knowingly.
+      # WEB_TOKEN: change-me
+      # A front end served from somewhere else needs its origin named here,
+      # space separated; the bridge's own origin is always accepted.
+      # WEB_ALLOWED_ORIGINS: http://localhost:5173
     restart: unless-stopped
 
   # Not started by `docker compose up`: the interop suite is a developer tool, and it

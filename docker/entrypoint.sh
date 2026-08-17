@@ -16,6 +16,14 @@
 #   INDI_PORT        the port indiserver listens on (7624).
 #   WEB_HOST         the address the bridge binds to (0.0.0.0).
 #   WEB_PORT         the port the bridge listens on (8000).
+#   WEB_TOKEN        the shared token /ws and /api require. Unset, one is generated
+#                    and printed; set it to keep the panel's URL stable across a
+#                    `restart: unless-stopped`.
+#   WEB_ALLOW_ANONYMOUS  set to any value to serve with no token at all. The
+#                    published port is then an unauthenticated control surface for
+#                    the instrument, for anything that can reach the host.
+#   WEB_ALLOWED_ORIGINS  space-separated browser origins to accept in addition to
+#                    the bridge's own, for a front end served from elsewhere.
 #
 # To run something else entirely - the panel against a hub in another container, say -
 # override the container command, which replaces this script.
@@ -96,8 +104,36 @@ for spec in "${specs[@]}"; do
     index=$((index + 1))
 done
 
+# The container publishes a port, so WEB_HOST is 0.0.0.0 and /ws - the whole write
+# surface, where a frame becomes an INDI new* that moves hardware - is reachable by
+# anything that can reach the host. So a token is always passed unless the operator
+# has said otherwise, and a generated one is printed rather than being a secret
+# nobody can use.
+web_args=()
+if [[ -n "${WEB_TOKEN:-}" ]]; then
+    web_args+=(--token "$WEB_TOKEN")
+elif [[ -n "${WEB_ALLOW_ANONYMOUS:-}" ]]; then
+    web_args+=(--allow-insecure-bind)
+else
+    WEB_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+    web_args+=(--token "$WEB_TOKEN")
+    echo "indi-nexus: generated a web token. Set WEB_TOKEN to keep it stable across restarts."
+fi
+
+if [[ -n "${WEB_ALLOWED_ORIGINS:-}" ]]; then
+    # Unquoted on purpose: WEB_ALLOWED_ORIGINS is a space-separated list.
+    # shellcheck disable=SC2206
+    for origin in ${WEB_ALLOWED_ORIGINS}; do
+        web_args+=(--allow-origin "$origin")
+    done
+fi
+
 echo "indi-nexus: indiserver on :$indi_port with ${specs[*]}"
-echo "indi-nexus: panel on http://$web_host:$web_port/"
+if [[ -n "${WEB_TOKEN:-}" ]]; then
+    echo "indi-nexus: panel on http://localhost:$web_port/?token=$WEB_TOKEN"
+else
+    echo "indi-nexus: panel on http://localhost:$web_port/ (no token: anyone who can reach this port can drive the instrument)"
+fi
 
 # -v gives one line per driver event, which is the only account of why a mounted
 # driver failed to start.
@@ -106,7 +142,8 @@ hub=$!
 
 indi-nexus serve \
     --host "$web_host" --port "$web_port" \
-    --indi-host 127.0.0.1 --indi-port "$indi_port" &
+    --indi-host 127.0.0.1 --indi-port "$indi_port" \
+    "${web_args[@]}" &
 bridge=$!
 
 stop() {

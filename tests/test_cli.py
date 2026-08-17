@@ -89,6 +89,29 @@ def test_serve_hands_the_app_to_uvicorn(monkeypatch):
     assert captured["app"].title == "INDINexus web bridge"
 
 
+def test_serve_refuses_a_network_bind_with_no_token(monkeypatch):
+    """A bind anything else can reach needs a token, or an explicit override.
+
+    ``/ws`` is the whole write surface: a frame there becomes an INDI ``new*``
+    that moves hardware. Binding it to the network unauthenticated is a choice,
+    not a default, so the command names the flag and stops.
+    """
+    started: list[object] = []
+    monkeypatch.setattr(uvicorn, "run", lambda application, **kw: started.append(application))
+
+    refused = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+    assert refused.exit_code != 0
+    assert "--allow-insecure-bind" in refused.output
+    assert started == []
+
+    assert runner.invoke(app, ["serve", "--host", "0.0.0.0", "--token", "x"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["serve", "--host", "0.0.0.0", "--allow-insecure-bind"]).exit_code == 0
+    )
+    assert runner.invoke(app, ["serve", "--host", "127.0.0.1"]).exit_code == 0
+    assert len(started) == 3
+
+
 class _FakeMonitorClient:
     """A stand-in IndiClient that replays two events into the subscriber."""
 

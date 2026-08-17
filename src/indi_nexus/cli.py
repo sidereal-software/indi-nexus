@@ -15,6 +15,7 @@ import asyncio
 import importlib
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated
 
@@ -172,7 +173,9 @@ def new(
     typer.echo(f"  indi-nexus serve --device {path.stem}:{class_name}")
 
 
-async def _serve_devices(host: str, port: int, specs: list[str]) -> None:
+async def _serve_devices(
+    host: str, port: int, specs: list[str], token: str, allowed_origins: Sequence[str]
+) -> None:
     """Serve the panel against drivers running in this process.
 
     Parameters
@@ -183,14 +186,21 @@ async def _serve_devices(host: str, port: int, specs: list[str]) -> None:
         The TCP port uvicorn listens on.
     specs : list of str
         Drivers to run, each as ``module:attr``.
+    token : str
+        Shared token required on ``/ws`` and ``/api``; ``""`` for none.
+    allowed_origins : Sequence of str
+        Browser origins accepted in addition to the server's own.
     """
     import uvicorn
 
     from indi_nexus.client import IndiClient
-    from indi_nexus.web import InProcessHub, create_app
+    from indi_nexus.hub import InProcessHub
+    from indi_nexus.web import create_app
 
     hub = InProcessHub([load_device(spec)() for spec in specs])
-    app_ = create_app(client=IndiClient(connect=hub.connect))
+    app_ = create_app(
+        client=IndiClient(connect=hub.connect), token=token, allowed_origins=allowed_origins
+    )
     server = uvicorn.Server(uvicorn.Config(app_, host=host, port=port, log_level="info"))
     tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
     try:
@@ -214,6 +224,25 @@ def serve(
             "indiserver, as 'module:attr'. Repeat for several devices.",
         ),
     ] = None,
+    token: str = typer.Option(
+        "",
+        envvar="INDI_NEXUS_TOKEN",
+        help="Shared token required on /ws and /api.",
+    ),
+    allow_origin: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--allow-origin",
+            envvar="INDI_NEXUS_ALLOWED_ORIGINS",
+            help="Browser origin to accept, e.g. http://localhost:5173. Repeatable; "
+            "'*' accepts any. The server's own origin is always accepted.",
+        ),
+    ] = None,
+    allow_insecure_bind: bool = typer.Option(
+        False,
+        envvar="INDI_NEXUS_ALLOW_INSECURE_BIND",
+        help="Bind a non-loopback address with no token. This exposes the instrument.",
+    ),
 ) -> None:
     """Run the web bridge, serving the panel at ``/`` and a WebSocket at ``/ws``.
 
@@ -224,16 +253,32 @@ def serve(
     ``--device`` runs the named drivers inside this process instead, so a driver can be
     seen on screen without installing ``indiserver`` first. It serves one client and
     stops with the command, so it is for development, not for an observatory.
+
+    ``/ws`` is the whole write surface - a frame there becomes an INDI ``new*`` that
+    moves hardware - so binding it where anything but this machine can reach it needs
+    either ``--token`` or an explicit ``--allow-insecure-bind``.
     """
+    from indi_nexus.web.security import is_loopback
+
+    origins = allow_origin or []
+    if not token and not is_loopback(host) and not allow_insecure_bind:
+        raise typer.BadParameter(
+            f"--host {host} exposes the instrument to the network with no authentication. "
+            "Pass --token (or INDI_NEXUS_TOKEN), or --allow-insecure-bind to accept that."
+        )
     if device:
-        asyncio.run(_serve_devices(host, port, device))
+        asyncio.run(_serve_devices(host, port, device, token, origins))
         return
 
     import uvicorn
 
     from indi_nexus.web import create_app
 
-    uvicorn.run(create_app(indi_host=indi_host, indi_port=indi_port), host=host, port=port)
+    uvicorn.run(
+        create_app(indi_host=indi_host, indi_port=indi_port, token=token, allowed_origins=origins),
+        host=host,
+        port=port,
+    )
 
 
 @app.command()
