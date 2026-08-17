@@ -399,6 +399,27 @@ def test_text_elements_coerce_non_strings() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Non-finite numbers                                                           #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_number_is_refused_at_the_call_site(value: float) -> None:
+    """Same reasoning as the text coercion: fail here, not in the writer loop.
+
+    Assigning to a model attribute skips the validation ``Number.value`` carries,
+    so a NaN from a sulking sensor would reach the wire - as a JSON ``null`` the
+    browser codec cannot read back, and as whatever an integer ``format`` makes
+    of it in XML.
+    """
+    prop, emitted = _numbers()
+
+    with pytest.raises(ValueError, match="Dev.coords.ra"):
+        prop.set(ra=value)
+
+    assert emitted == []
+    assert prop.value("ra") == 1.0
+
+
+# --------------------------------------------------------------------------- #
 # Retraction                                                                   #
 # --------------------------------------------------------------------------- #
 def test_a_retracted_handle_refuses_to_publish() -> None:

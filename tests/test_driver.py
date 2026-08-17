@@ -43,13 +43,22 @@ from indi_nexus.protocol import xml as xml_module
 
 
 class _Harness:
-    """A controllable stdin (feed/eof) and a capturing stdout."""
+    """A controllable stdin (feed/eof) and a capturing stdout.
 
-    def __init__(self) -> None:
+    Parameters
+    ----------
+    fail_write_on : int or None, optional
+        Which write raises `OSError`, counting from one - a broken stdout, the
+        way a real one breaks: part way through a working session.
+    """
+
+    def __init__(self, *, fail_write_on: int | None = None) -> None:
         """Create an empty inbox queue and output buffer."""
         # ``b""`` is the read-side EOF signal, matching a real closed pipe.
         self._inbox: asyncio.Queue[bytes] = asyncio.Queue()
         self.outputs: list[bytes] = []
+        self._fail_write_on = fail_write_on
+        self.writes = 0
 
     def feed(self, data: str | bytes) -> None:
         """Queue inbound bytes for the runtime's reader.
@@ -70,7 +79,21 @@ class _Harness:
         return await self._inbox.get()
 
     async def write(self, data: bytes) -> None:
-        """Capture one outbound chunk from the runtime's writer."""
+        """Capture one outbound chunk from the runtime's writer.
+
+        Parameters
+        ----------
+        data : bytes
+            The serialised message.
+
+        Raises
+        ------
+        OSError
+            Raised on the write named by ``fail_write_on``.
+        """
+        self.writes += 1
+        if self.writes == self._fail_write_on:
+            raise OSError("broken pipe")
         self.outputs.append(data)
 
     def messages(self) -> list[IndiMessage]:
@@ -733,6 +756,90 @@ def test_a_muted_parser_is_resynced_in_place_and_keeps_its_counters(monkeypatch,
     (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.driver.runtime"]
     assert "resyncing the parser" in warning
     assert "1 dropped" in warning  # the malformed element, remembered across the rebuild
+
+
+# --------------------------------------------------------------------------- #
+# The writer loop's two failures                                               #
+# --------------------------------------------------------------------------- #
+def test_a_failed_write_stops_the_driver() -> None:
+    """A broken stdout ends the session instead of leaving a mute driver running.
+
+    The writer task used to die on its own with nobody watching: the reader kept
+    accepting work, the ``@every`` jobs kept filling an explicitly unbounded
+    outbox, and ``indiserver`` saw a driver that was still connected and had
+    simply stopped saying anything. Note that no EOF is ever fed here - stdin
+    stays open, as a real one would - so ``serve`` returning at all is the point.
+    """
+
+    async def scenario() -> None:
+        """Run the async body of this test on the event loop."""
+        harness = _Harness(fail_write_on=2)  # the first write works
+        dev = _Poller()  # emits on every tick, forever
+        harness.feed("<getProperties/>")  # opens the gate the periodic jobs wait on
+
+        # The timeout sits outside, so a hang fails as a hang rather than being
+        # swallowed by pytest.raises: TimeoutError is itself an OSError.
+        async with asyncio.timeout(5):
+            with pytest.raises(OSError, match="broken pipe"):
+                await DriverRuntime(dev, harness.read, harness.write).serve()
+
+        assert len(harness.outputs) == 1
+        ticks = dev.count
+        await asyncio.sleep(0.05)
+        assert dev.count == ticks  # the periodic jobs stopped with the driver
+
+    asyncio.run(scenario())
+
+
+def test_a_message_that_will_not_serialise_costs_only_that_message() -> None:
+    """A codec failure is one bad message, isolated like a raising handler.
+
+    Killing the writer over it would silence a working instrument because one
+    value went strange - the opposite trade from the transport failure above,
+    where there is nothing left to say it on.
+    """
+
+    class _BadPayload(Device):
+        """A device whose BLOB payload is set past the handle's coercion."""
+
+        name = "BadPayload"
+
+        async def setup(self) -> None:
+            """Define the BLOB the test then corrupts."""
+            self.define_blob("img", [BLOB(name="frame")])
+
+    async def scenario() -> None:
+        """Emit an unserialisable message, then a good one."""
+        harness = _Harness()
+        dev = _BadPayload()
+        harness.feed("<getProperties/>")
+        serve = asyncio.create_task(DriverRuntime(dev, harness.read, harness.write).serve())
+        await asyncio.sleep(0.05)
+
+        # Straight onto the model: ``BoundProperty.set`` coerces the payload to
+        # bytes, so this is a driver reaching past the handle - and base64
+        # encoding a str raises inside ``to_xml``, in the writer task.
+        blob = dev.blob("img").vector.elements[0]
+        blob.data = "not bytes"  # type: ignore[assignment]
+        dev["img"].set(state=IPState.BUSY)
+        await asyncio.sleep(0.05)
+
+        blob.data = b"fine now"
+        dev["img"].set(state=IPState.OK)
+        await asyncio.sleep(0.05)
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        msgs = harness.messages()
+        errors = [m for m in msgs if isinstance(m, Message)]
+        assert any("could not serialise" in str(m.message) for m in errors)
+        assert any("BadPayload.img" in str(m.message) for m in errors)
+        # The good emission after it still went out: the driver kept serving.
+        sets = [m for m in msgs if isinstance(m, SetVector)]
+        assert [m.vector.state for m in sets] == [IPState.OK]
+
+    asyncio.run(scenario())
 
 
 # --------------------------------------------------------------------------- #

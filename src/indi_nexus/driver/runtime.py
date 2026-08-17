@@ -28,9 +28,11 @@ from typing import Any
 from indi_nexus.driver.device import Device
 from indi_nexus.driver.scheduling import PeriodicSpec, iter_periodic
 from indi_nexus.protocol import (
+    DefVector,
     GetProperties,
     IndiMessage,
     NewVector,
+    SetVector,
     XMLStreamParser,
     to_xml,
 )
@@ -71,25 +73,40 @@ class DriverRuntime:
         self._outbox.put_nowait(msg)
 
     async def serve(self) -> None:
-        """Run until stdin reaches EOF (or the caller cancels this coroutine).
+        """Run until stdin reaches EOF, or the writer fails, or this is cancelled.
 
         On EOF the periodic jobs are cancelled and the writer is allowed to drain
         any still-queued messages before returning, so a driver that emits and
         then immediately sees EOF still gets its final messages out.
+
+        The reader runs as a task rather than inline because it is no longer the
+        only end that can finish. A writer that dies takes the driver with it:
+        left running, the reader would keep accepting work and the ``@every``
+        jobs would keep filling an outbox nothing drains, and the driver would
+        look perfectly alive to ``indiserver`` while answering nothing.
         """
         writer = asyncio.create_task(self._writer_loop())
+        reader = asyncio.create_task(self._reader_loop())
         periodic = [
             asyncio.create_task(self._run_periodic(spec, method))
             for spec, method in iter_periodic(self._device)
         ]
         try:
-            await self._reader_loop()
+            await asyncio.wait({reader, writer}, return_when=asyncio.FIRST_COMPLETED)
         finally:
             for task in periodic:
                 task.cancel()
-            await asyncio.gather(*periodic, return_exceptions=True)
+            reader.cancel()  # a no-op on the EOF path, where it has already returned
+            await asyncio.gather(*periodic, reader, return_exceptions=True)
             self._outbox.put_nowait(None)  # let the writer drain, then stop
-            await writer
+            await asyncio.wait({writer})
+        # Surface whichever end failed. The reader comes first: when a reader
+        # failure is what stopped the driver, a writer failure behind it is the
+        # symptom rather than the cause.
+        for task in (reader, writer):
+            failure = None if task.cancelled() else task.exception()
+            if failure is not None:
+                raise failure
 
     async def _reader_loop(self) -> None:
         """Read, frame, and dispatch inbound messages until EOF.
@@ -139,12 +156,32 @@ class DriverRuntime:
             self._device.log_error(f"handler for {message_name(msg)!r} failed: {exc}")
 
     async def _writer_loop(self) -> None:
-        """Drain the outbox to the transport until the shutdown sentinel."""
+        """Drain the outbox to the transport until the shutdown sentinel.
+
+        The two ways this can fail are not the same failure, and the split is
+        deliberate:
+
+        * **Serialisation** is per message. A model the codec cannot render is
+          one bad message - the same class of fault as a raising ``@on_new``
+          handler - so it is reported to the client and dropped, and the driver
+          keeps publishing everything else. Dying here would silence a working
+          instrument over one malformed value.
+        * **The write** is not recoverable. stdout is the only way out, so there
+          is nothing left to report the failure *on*, and the next message would
+          hit the same broken pipe. It propagates, and :meth:`serve` stops the
+          driver rather than spinning against a transport that is gone while the
+          unbounded outbox fills behind it.
+        """
         while True:
             msg = await self._outbox.get()
             if msg is None:
                 return
-            await self._write(to_xml(msg) + b"\n")
+            try:
+                data = to_xml(msg) + b"\n"
+            except Exception as exc:  # noqa: BLE001 - deliberate per-message isolation
+                self._device.log_error(f"could not serialise {message_name(msg)!r}: {exc}")
+                continue
+            await self._write(data)
 
     async def _run_periodic(self, spec: PeriodicSpec, method: Callable[[], Any]) -> None:
         """Run one ``@every`` job forever, one tick per interval.
@@ -197,7 +234,10 @@ class DriverRuntime:
 
 
 def message_name(msg: IndiMessage) -> str:
-    """Return a readable identifier for an inbound message, for log messages.
+    """Return a readable identifier for a message, for log messages.
+
+    Used in both directions: an inbound write being dispatched, and an outbound
+    message the writer could not serialise.
 
     Parameters
     ----------
@@ -207,9 +247,10 @@ def message_name(msg: IndiMessage) -> str:
     Returns
     -------
     name : str
-        ``device.property`` for a property write, else the message tag.
+        ``device.property`` for any message carrying a vector, else the message
+        tag.
     """
-    if isinstance(msg, NewVector):
+    if isinstance(msg, (DefVector, SetVector, NewVector)):
         return f"{msg.vector.device}.{msg.vector.name}"
     return type(msg).__name__
 

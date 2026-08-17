@@ -23,9 +23,16 @@ A driver never constructs this directly; ``Device.define_*`` returns one.
 from __future__ import annotations
 
 import datetime as dt
+import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
+from indi_nexus.exceptions import (
+    PropertyNotFound,
+    PropertyRetracted,
+    ProtocolError,
+    WrongPropertyKind,
+)
 from indi_nexus.protocol import (
     BLOB,
     DefVector,
@@ -43,9 +50,10 @@ from indi_nexus.protocol import (
     Text,
     Vector,
     as_utc,
+    coerce_switch,
+    format_number,
     indi_now,
 )
-from indi_nexus.protocol.xml import format_number
 
 if TYPE_CHECKING:
     from indi_nexus.driver.device import Device
@@ -67,27 +75,6 @@ _UNSELECTED: dict[type, Any] = {
     LightVector: IPState.IDLE,
     SwitchVector: ISState.OFF,
 }
-
-
-def _coerce_switch(value: Any) -> ISState:
-    """Coerce a user-supplied switch value into an :class:`ISState`.
-
-    Parameters
-    ----------
-    value : ISState or bool or str
-        An `~indi_nexus.protocol.ISState`, a `bool` (`True` -> On), or a wire
-        string (``"On"`` / ``"Off"``).
-
-    Returns
-    -------
-    state : ISState
-        The corresponding switch state.
-    """
-    if isinstance(value, ISState):
-        return value
-    if isinstance(value, bool):
-        return ISState.ON if value else ISState.OFF
-    return ISState(value)
 
 
 class BoundProperty[VectorT: Vector]:
@@ -141,7 +128,7 @@ class BoundProperty[VectorT: Vector]:
         return self._vector.state
 
     def __getitem__(self, name: str) -> Element:
-        """Return element ``name`` (raises :class:`KeyError` if absent)."""
+        """Return element ``name`` (raises :class:`PropertyNotFound` if absent)."""
         return self._vector.element(name)
 
     def __contains__(self, name: str) -> bool:
@@ -216,13 +203,18 @@ class BoundProperty[VectorT: Vector]:
 
         Raises
         ------
-        KeyError
-            Raised if a named element is not part of this vector.
-        RuntimeError
+        PropertyNotFound
+            Raised if a named element is not part of this vector. Also a
+            KeyError.
+        ProtocolError
+            Raised if a number element is given a non-finite value, which
+            neither wire format can carry. Also a ValueError.
+        PropertyRetracted
             Raised if the property has been retracted (see :meth:`delete`).
+            Also a RuntimeError.
         """
         if self._retracted:
-            raise RuntimeError(
+            raise PropertyRetracted(
                 f"{self._vector.device}.{self._vector.name} was retracted with a delProperty; "
                 "this handle is dead. Define the property again and use the handle that returns."
             )
@@ -317,18 +309,19 @@ class BoundProperty[VectorT: Vector]:
 
         Raises
         ------
-        KeyError
-            Raised if ``name`` is not an element of this vector.
-        TypeError
+        PropertyNotFound
+            Raised if ``name`` is not an element of this vector. Also a
+            KeyError.
+        WrongPropertyKind
             Raised for a vector kind with no natural "unselected" value, unless
-            ``others`` says what it is.
+            ``others`` says what it is. Also a TypeError.
         """
         if name not in self:
-            raise KeyError(f"{name!r} not in {self._vector.device}.{self._vector.name}")
+            raise PropertyNotFound(f"{name!r} not in {self._vector.device}.{self._vector.name}")
         if others is None:
             others = _UNSELECTED.get(type(self._vector))
             if others is None:
-                raise TypeError(
+                raise WrongPropertyKind(
                     f"select() needs others= for a {type(self._vector).__name__}; "
                     "only light and switch vectors have a natural unselected value"
                 )
@@ -365,8 +358,9 @@ class BoundProperty[VectorT: Vector]:
 
         A driver that reaches its properties by name wants
         `~indi_nexus.driver.device.Device.delete_property` instead:
-        ``self["CCD_COOLER"]`` raises :class:`KeyError` once the property is
-        gone, so the name-based call is the one that can be repeated.
+        ``self["CCD_COOLER"]`` raises :class:`PropertyNotFound` once the
+        property is gone, so the name-based call is the one that can be
+        repeated.
 
         Parameters
         ----------
@@ -416,21 +410,16 @@ class BoundProperty[VectorT: Vector]:
         the ubiquitous "go Busy, move, report Ok" pair emitted two frames that
         both said ``Ok``, and the Busy transient reached no client at all.
 
-        Only the elements list needs copying alongside the vector itself. Every
-        other field a ``set`` can touch - the state, the message, the timestamp -
-        is an immutable scalar rebound on assignment, and so is every field of an
-        element, including a BLOB's ``bytes`` payload. That makes this about two
-        and a half times cheaper than ``model_copy(deep=True)`` (9.1 us against
-        22.9 us for an eight-element number vector, beside 18.3 us to serialise
-        the same message) and exactly as detached.
+        The copy itself is `~indi_nexus.protocol.models.Vector.detached`, shared
+        with the client, which hands the same kind of copy to a resolved
+        ``wait_for`` for the same reason.
 
         Returns
         -------
         vector : Vector
             A copy of the vector, sharing nothing mutable with this handle.
         """
-        elements = [el.model_copy() for el in self._vector.elements]
-        return self._vector.model_copy(update={"elements": elements})
+        return self._vector.detached()
 
     def _snapshot(self) -> tuple[dict[str, Any], IPState, str | None]:
         """Return everything a ``set`` would tell the client, minus the timestamp.
@@ -468,13 +457,17 @@ class BoundProperty[VectorT: Vector]:
 
         Raises
         ------
-        KeyError
-            Raised if ``name`` is not an element of this vector.
+        PropertyNotFound
+            Raised if ``name`` is not an element of this vector. Also a
+            KeyError.
+        ProtocolError
+            Raised if a number element is given a non-finite value. Also a
+            ValueError.
         """
         vec = self._vector
-        el = vec.element(name)  # raises KeyError if the element is unknown
+        el = vec.element(name)  # raises PropertyNotFound if the element is unknown
         if isinstance(el, Switch):
-            state = _coerce_switch(val)
+            state = coerce_switch(val)
             # Turning one Off needs no sibling bookkeeping under any rule:
             # AtMostOne allows zero On, and OneOfMany expects the client to name
             # the new member rather than deselect the old one.
@@ -500,4 +493,11 @@ class BoundProperty[VectorT: Vector]:
             # inside the writer loop, a long way from the call that caused it.
             el.value = val if isinstance(val, str) else str(val)
             return
+        if isinstance(el, Number) and isinstance(val, float) and not math.isfinite(val):
+            # Same reasoning as the Text coercion above, and the same reason
+            # Number.value forbids it on the model: assigning to a model
+            # attribute skips validation, so a NaN read off a sulking sensor
+            # would sail through here and only fail in the writer loop - or,
+            # worse, reach a browser as a JSON `null` that cannot be read back.
+            raise ProtocolError(f"{vec.device}.{vec.name}.{name} cannot be set to {val!r}")
         el.value = val  # Number(float) | Light(IPState)

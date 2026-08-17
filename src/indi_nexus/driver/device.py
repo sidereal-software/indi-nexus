@@ -24,6 +24,7 @@ from typing import Any, cast
 
 from indi_nexus.driver.dispatch import iter_new_handlers, on_new
 from indi_nexus.driver.property import BoundProperty, EmitPolicy
+from indi_nexus.exceptions import DeviceNotServing, PropertyNotFound, WrongPropertyKind
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -634,14 +635,41 @@ class Device:
 
         Raises
         ------
-        KeyError
-            Raised if no property with that name has been defined.
+        PropertyNotFound
+            Raised if no property with that name has been defined. Also a
+            KeyError, so mapping-style handling still applies.
         """
-        return self._properties[name]
+        return self._lookup(name)
 
     def __getitem__(self, name: str) -> BoundProperty[Any]:
         """Return the handle for property ``name`` (see :meth:`property`)."""
-        return self._properties[name]
+        return self._lookup(name)
+
+    def _lookup(self, name: str) -> BoundProperty[Any]:
+        """Return the handle registered under ``name``.
+
+        The one place a property name is resolved, so "no such property" reads
+        the same however it was asked for.
+
+        Parameters
+        ----------
+        name : str
+            The property name.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The registered handle.
+
+        Raises
+        ------
+        PropertyNotFound
+            Raised if no property with that name has been defined.
+        """
+        prop = self._properties.get(name)
+        if prop is None:
+            raise PropertyNotFound(f"{self._device} has no property {name!r}")
+        return prop
 
     def __contains__(self, name: str) -> bool:
         """Return whether a property named ``name`` has been defined."""
@@ -664,14 +692,16 @@ class Device:
 
         Raises
         ------
-        KeyError
-            Raised if no property with that name has been defined.
-        TypeError
-            Raised if the property is of a different vector kind.
+        PropertyNotFound
+            Raised if no property with that name has been defined. Also a
+            KeyError.
+        WrongPropertyKind
+            Raised if the property is of a different vector kind. Also a
+            TypeError.
         """
-        prop = self._properties[name]
+        prop = self._lookup(name)
         if not isinstance(prop.vector, kind):
-            raise TypeError(
+            raise WrongPropertyKind(
                 f"{self._device}.{name} is a {type(prop.vector).__name__}, not a {kind.__name__}"
             )
         return cast("BoundProperty[VectorT]", prop)
@@ -858,11 +888,12 @@ class Device:
 
         Raises
         ------
-        RuntimeError
-            Raised if the device is not attached to a runtime.
+        DeviceNotServing
+            Raised if the device is not attached to a runtime. Also a
+            RuntimeError.
         """
         if self._emit is None:
-            raise RuntimeError(
+            raise DeviceNotServing(
                 "Device is not attached to a runtime; define/send only works while serving"
             )
         self._emit(msg)
