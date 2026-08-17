@@ -8,10 +8,13 @@ into typed models and forwarded upstream. A newly-attached browser is first seed
 with the current cache so it starts with full state.
 
 Server -> browser frames are either an INDI message (``{"tag": ...}``, mirroring
-the protocol models) or a small bridge **control** frame (``{"event": ...}``) for
-things the INDI protocol has no message for: upstream connection state, and the
-rejection of a frame the browser sent. Browser -> server frames are always INDI
-messages, and only the three a client is allowed to send.
+the protocol models) or a small bridge **control** frame (``{"event": ...}``,
+modelled in :mod:`indi_nexus.web.control_frames`) for things the INDI protocol
+has no message for: the version of the browser contract, upstream connection
+state, and the rejection of a frame the browser sent. The first frame on every
+socket is the ``hello``, ahead of the seeded properties, so a browser knows what
+it is talking to before it has to interpret anything. Browser -> server frames
+are always INDI messages, and only the three a client is allowed to send.
 
 **A browser is a subscriber, never something the upstream reader awaits.** Every
 broadcast originates in :class:`IndiClient`'s single connection task - property
@@ -34,12 +37,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from indi_nexus import __version__
 from indi_nexus.client import IndiClient, PropertyEvent
 from indi_nexus.exceptions import NotConnectedError, SendQueueFull
 from indi_nexus.protocol import (
@@ -54,20 +57,30 @@ from indi_nexus.protocol import (
     from_json,
     to_json,
 )
+from indi_nexus.web.control_frames import (
+    ConnectionFrame,
+    ErrorFrame,
+    HelloFrame,
+    dump_frame,
+)
 
 logger = logging.getLogger(__name__)
 
 #: An outbound sink: something that sends one text frame to a browser.
 Sink = Callable[[str], Awaitable[None]]
 
-#: How many recent ``message`` frames are kept for replay to new browsers.
+#: How many recent ``message`` frames are kept for replay to new browsers. The
+#: default for ``Bridge(message_history=...)``, which ``indi-nexus serve`` fills
+#: from ``INDI_NEXUS_MESSAGE_HISTORY``.
 _MESSAGE_HISTORY = 100
 
 #: How many live frames a browser may fall behind by before it is dropped. The
 #: seed is excluded and drained first, so this measures lateness rather than cache
 #: size. Coalescing means a fast instrument spamming one property costs one slot,
 #: so reaching this means falling behind on that many *distinct* properties and
-#: messages - a wedged socket, not a slow one.
+#: messages - a wedged socket, not a slow one. The default for
+#: ``Bridge(max_backlog=...)``, which ``indi-nexus serve`` fills from
+#: ``INDI_NEXUS_MAX_BACKLOG``.
 _MAX_BACKLOG = 512
 
 #: The only messages a browser may send upstream. A ``def``/``set``/``message``
@@ -113,6 +126,10 @@ class Subscription:
     seed_frames : tuple of str
         The retained ``message`` frames plus the connection frame, sent after
         the seeded properties.
+    preamble : tuple of str
+        Frames sent **before** the seeded properties: the ``hello``, which has
+        to be the first thing on the socket because it says which contract
+        everything after it is written in.
     queue : deque of _Slot
         Live frames queued since the attach, drained after the seed.
     coalescible : dict
@@ -138,6 +155,7 @@ class Subscription:
     sink: Sink
     seed_vectors: tuple[Vector, ...]
     seed_frames: tuple[str, ...]
+    preamble: tuple[str, ...]
     queue: deque[_Slot] = field(default_factory=deque)
     coalescible: dict[tuple[str, str], _Slot] = field(default_factory=dict)
     ready: asyncio.Event = field(default_factory=asyncio.Event)
@@ -234,15 +252,35 @@ class Bridge:
     ----------
     client : IndiClient
         The shared upstream client the bridge relays.
+    server : str, optional
+        The server version stamped into every socket's ``hello`` frame; defaults
+        to :data:`indi_nexus.__version__`. A parameter rather than a lookup at
+        the send site so a test can pin it, and defaulted rather than required
+        because every caller in and out of this repository wants the real one.
+    message_history : int, optional
+        How many recent INDI ``message`` frames to replay to a newly attached
+        browser; defaults to :data:`_MESSAGE_HISTORY`.
+    max_backlog : int, optional
+        How many live frames a browser may fall behind by before it is dropped;
+        defaults to :data:`_MAX_BACKLOG`.
     """
 
-    def __init__(self, client: IndiClient) -> None:
+    def __init__(
+        self,
+        client: IndiClient,
+        server: str = __version__,
+        *,
+        message_history: int = _MESSAGE_HISTORY,
+        max_backlog: int = _MAX_BACKLOG,
+    ) -> None:
         self._client = client
+        self._hello = dump_frame(HelloFrame(server=server))
         self._subs: set[Subscription] = set()
         self._dropped_slow_sinks = 0
+        self._max_backlog = max_backlog
         # INDI messages are transient (not part of the property cache), so keep a
         # bounded history to prime a newly-attached browser's log.
-        self._messages: deque[str] = deque(maxlen=_MESSAGE_HISTORY)
+        self._messages: deque[str] = deque(maxlen=message_history)
 
     @property
     def client(self) -> IndiClient:
@@ -309,6 +347,10 @@ class Bridge:
         arrives as its definition followed by the queued ``delProperty``, in that
         order.
 
+        The ``hello`` frame leads, ahead of the seeded properties: it names the
+        contract version everything after it is written in, so it cannot follow
+        the frames a browser would need it to interpret.
+
         Parameters
         ----------
         sink : Sink
@@ -328,6 +370,7 @@ class Bridge:
                 vector for device in store.devices() for vector in store.device(device).values()
             ),
             seed_frames=(*self._messages, self.connection_frame(self._client.connected)),
+            preamble=(self._hello,),
         )
         self._subs.add(sub)
         sub.task = asyncio.create_task(self._pump(sub), name=f"bridge-sink-{id(sub):x}")
@@ -357,10 +400,22 @@ class Bridge:
         frame : str
             A JSON control frame (``{"event": "connection", ...}``).
         """
-        return json.dumps({"event": "connection", "connected": connected})
+        return dump_frame(ConnectionFrame(connected=connected))
+
+    @property
+    def hello_frame(self) -> str:
+        """The ``hello`` frame this bridge leads every socket with.
+
+        Built once at construction: it is the same text for every browser, and
+        the version it carries cannot change while the process runs.
+        """
+        return self._hello
 
     async def _pump(self, sub: Subscription) -> None:
-        """Drain one browser's seed and then its queue until it ends.
+        """Drain one browser's preamble and seed, then its queue until it ends.
+
+        The order is the contract: ``hello``, then the cached properties, then
+        the retained messages and the connection frame, then live traffic.
 
         This is where a failing socket is noticed. :meth:`_broadcast` no longer
         touches a socket and therefore cannot observe a failure, so the
@@ -372,6 +427,8 @@ class Bridge:
             The browser to serve.
         """
         try:
+            for frame in sub.preamble:
+                await sub.sink(frame)
             for vector in sub.seed_vectors:
                 await sub.sink(to_json(DefVector(vector=vector)))
             for frame in sub.seed_frames:
@@ -416,7 +473,7 @@ class Bridge:
             # a deque nobody reads and drop it a second time on the next frame.
             return
         sub.enqueue(frame, key)
-        if len(sub.queue) > _MAX_BACKLOG:
+        if len(sub.queue) > self._max_backlog:
             self._drop(sub)
 
     def _drop(self, sub: Subscription) -> None:
@@ -433,7 +490,7 @@ class Bridge:
             "dropping browser sink %#x: %d frames queued past a backlog of %d (%d attached)",
             id(sub),
             len(sub.queue),
-            _MAX_BACKLOG,
+            self._max_backlog,
             len(self._subs),
         )
         # Deregister here rather than leaving it to the pump's `finally`: a pump
@@ -513,9 +570,7 @@ class Bridge:
         if sub is None:
             logger.info("rejected a browser frame with no subscription: %s (%s)", code, message)
             return
-        sub.send_control(
-            json.dumps({"event": "error", "code": code, "message": message, "tag": tag})
-        )
+        sub.send_control(dump_frame(ErrorFrame(code=code, message=message, tag=tag)))
 
     # -- outbound (upstream -> browsers) ------------------------------------ #
     async def _on_event(self, event: PropertyEvent) -> None:

@@ -7,7 +7,13 @@
  * powers the live demo embedded in the documentation site.
  */
 
-import type { IndiMessage, SwitchVector, Vector, WebSocketLike } from "@indi-nexus/client";
+import {
+  CLIENT_PROTOCOL_VERSION,
+  type IndiMessage,
+  type SwitchVector,
+  type Vector,
+  type WebSocketLike,
+} from "@indi-nexus/client";
 
 const DEVICE = "Dome Simulator";
 const PARK_AZ = 90;
@@ -55,6 +61,10 @@ export class DomeSimSocket implements WebSocketLike {
     setTimeout(() => {
       this.readyState = 1;
       this.onopen?.({});
+      // The hello leads, exactly as the real bridge's does: without it the
+      // client logs "the bridge sent no hello frame" into the demo's own
+      // message panel, where a visitor would read it as a fault.
+      this.deliver({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "demo" });
       this.deliver({ event: "connection", connected: true });
       for (const vector of this.defs()) this.deliver({ tag: "def", vector });
       this.sendMessage("Dome simulator ready. (This demo runs entirely in your browser.)");

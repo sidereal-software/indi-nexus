@@ -207,7 +207,35 @@ export type IndiMessage =
   | EnableBlob;
 
 /**
- * The one non-INDI frame the bridge emits: upstream connection state.
+ * The version of the browser JSON contract this build is written against.
+ *
+ * Compared with the `protocol` a {@link HelloFrame} announces. It versions the
+ * bridge<->browser contract only, and has nothing to do with INDI's own frozen
+ * 1.7 `version` attribute. Bumped **only** on a breaking change - a field
+ * removed, renamed, or given a new meaning - because a client that ignores an
+ * unknown key is already handling an additive change correctly. Mirrors
+ * `BRIDGE_PROTOCOL_VERSION` in `indi_nexus/web/control_frames.py`.
+ */
+export const CLIENT_PROTOCOL_VERSION = 1;
+
+/**
+ * The first frame on every bridge socket: what this browser is talking to.
+ *
+ * Sent ahead of the seeded property definitions, so the contract version is
+ * known before anything written in that contract has to be interpreted. A
+ * client that never sees one is talking to a bridge older than the frame, which
+ * is not an error: see `ConnectionState.protocol`.
+ */
+export interface HelloFrame {
+  event: "hello";
+  /** The bridge's contract version; compare with {@link CLIENT_PROTOCOL_VERSION}. */
+  protocol: number;
+  /** The INDINexus version serving this socket, for display and bug reports. */
+  server: string;
+}
+
+/**
+ * The non-INDI frame the bridge emits for upstream connection state.
  *
  * The INDI protocol has no message for "the hub connected/disconnected", but the
  * UI needs it, so the bridge sends this small control frame (see
@@ -236,6 +264,15 @@ export interface ErrorFrame {
   /** The rejected message's INDI tag, or `null` if it did not parse. */
   tag?: string | null;
 }
+
+/**
+ * Any bridge control frame, discriminated on `event`.
+ *
+ * The mirror of `BridgeFrame` in `indi_nexus/web/control_frames.py`. An `event`
+ * this build does not know is dropped rather than coerced, which is what makes
+ * the bridge free to add one without breaking an older browser.
+ */
+export type BridgeFrame = HelloFrame | ConnectionFrame | ErrorFrame;
 
 /** Return the element with a given name, or `undefined`. */
 export function elementByName(vector: Vector, name: string): IndiElement | undefined {

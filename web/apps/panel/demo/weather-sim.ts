@@ -14,14 +14,15 @@
  * `examples/openmeteo_device.py`; the point of the page is that they match.
  */
 
-import type {
-  IndiMessage,
-  IPState,
-  LightVector,
-  NumberVector,
-  TextVector,
-  Vector,
-  WebSocketLike,
+import {
+  CLIENT_PROTOCOL_VERSION,
+  type IndiMessage,
+  type IPState,
+  type LightVector,
+  type NumberVector,
+  type TextVector,
+  type Vector,
+  type WebSocketLike,
 } from "@indi-nexus/client";
 
 const DEVICE = "Open-Meteo";
@@ -166,6 +167,10 @@ export class WeatherSimSocket implements WebSocketLike {
     setTimeout(() => {
       this.readyState = 1;
       this.onopen?.({});
+      // The hello leads, exactly as the real bridge's does: without it the
+      // client logs "the bridge sent no hello frame" into the demo's own
+      // message panel, where a visitor would read it as a fault.
+      this.deliver({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "demo" });
       this.deliver({ event: "connection", connected: true });
       for (const vector of this.defs()) this.deliver({ tag: "def", vector });
       this.sendMessage("Open-Meteo driver ready. Press Connect to fetch.");

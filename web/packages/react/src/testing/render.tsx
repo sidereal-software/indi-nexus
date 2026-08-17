@@ -2,11 +2,12 @@
  * Shared component-test harness.
  *
  * `renderConnected` renders UI under an `IndiProvider` whose client is wired to
- * an already-open {@link FakeSocket}, so a test can feed the client inbound JSON
- * frames with `receive` and read what it sent from `socket.sent`.
+ * an already-open {@link FakeSocket} that has already sent its `hello`, exactly
+ * as the bridge does, so a test can feed the client inbound JSON frames with
+ * `receive` and read what it sent from `socket.sent`.
  */
 
-import { IndiClient } from "@indi-nexus/client";
+import { CLIENT_PROTOCOL_VERSION, IndiClient } from "@indi-nexus/client";
 import { act, type RenderResult, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { IndiProvider } from "../context";
@@ -33,6 +34,10 @@ export function renderConnected(ui: ReactNode): ConnectedRender {
   const socket = sockets[0];
   if (!socket) throw new Error("client did not open a socket");
   act(() => socket.open());
+  // The bridge leads every socket with its `hello`, and a harness that skipped
+  // it would put a "no hello frame" entry at the head of every message log a
+  // consumer asserts on.
+  receive(socket, { event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "test" });
   return { client, socket, ...result };
 }
 

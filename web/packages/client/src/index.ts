@@ -42,12 +42,14 @@ export { PropertyStore } from "./store";
 export type {
   BlobElement,
   BlobVector,
+  BridgeFrame,
   ConnectionFrame,
   DefVector,
   DelProperty,
   EnableBlob,
   ErrorFrame,
   GetProperties,
+  HelloFrame,
   IndiElement,
   IndiMessage,
   LightElement,
@@ -66,4 +68,4 @@ export type {
   VectorKind,
 } from "./types";
 // Wire types.
-export { elementByName } from "./types";
+export { CLIENT_PROTOCOL_VERSION, elementByName } from "./types";

@@ -3,7 +3,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IndiClient } from "./client";
 import { FakeSocket, fakeFactory } from "./testing/fake-socket";
-import type { DefVector, NumberVector, SetVector } from "./types";
+import {
+  CLIENT_PROTOCOL_VERSION,
+  type DefVector,
+  type NumberVector,
+  type SetVector,
+} from "./types";
 
 function numVec(value = 1.0, state: NumberVector["state"] = "Idle"): NumberVector {
   return {
@@ -25,8 +30,32 @@ function rawFrame(frame: unknown): string {
   return JSON.stringify(frame);
 }
 
-/** Build a started client wired to a fresh open FakeSocket. */
+/** The client's whole message log as one string, for a substring assertion. */
+function logged(client: IndiClient): string {
+  return client
+    .messages()
+    .map((message) => message.message)
+    .join("\n");
+}
+
+/**
+ * Build a started client wired to a fresh open FakeSocket.
+ *
+ * The `hello` is delivered because a real bridge always sends it first, and a
+ * socket that skips it puts every later test one message-log entry off. The
+ * tests for the version handshake itself use {@link openedClient}, which stops
+ * at the open.
+ */
 function connectedClient() {
+  const { client, socket } = openedClient();
+  socket.receive(
+    JSON.stringify({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "0" }),
+  );
+  return { client, socket };
+}
+
+/** Build a started client on an open socket that has received nothing yet. */
+function openedClient() {
   FakeSocket.reset();
   const client = new IndiClient({ url: "ws://x/ws", webSocketFactory: fakeFactory });
   client.connect();
@@ -69,6 +98,9 @@ describe("IndiClient inbound", () => {
     expect(client.connected).toBe(true);
     expect(client.upstreamConnected).toBe(false);
 
+    FakeSocket.latest().receive(
+      JSON.stringify({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "0.2.0" }),
+    );
     FakeSocket.latest().receive(JSON.stringify({ event: "connection", connected: true }));
     expect(client.upstreamConnected).toBe(true);
 
@@ -76,7 +108,10 @@ describe("IndiClient inbound", () => {
     expect(client.connected).toBe(false);
     expect(client.upstreamConnected).toBe(false);
 
-    expect(states).toEqual(["true/false", "true/true", "false/false"]);
+    // The hello does not move either link, so it adds no entry here: the
+    // notification it does cause carries the same two booleans as the one
+    // before it, and `setState` compares the whole state.
+    expect(states).toEqual(["true/false", "true/false", "true/true", "false/false"]);
   });
 
   it("surfaces a bridge error frame in the message log without touching the store", () => {
@@ -103,6 +138,103 @@ describe("IndiClient inbound", () => {
     expect(client.devices()).toEqual([]);
   });
 
+  it("records the bridge's protocol version and notifies a connection subscriber", () => {
+    const { client, socket } = openedClient();
+    const states: (number | null)[] = [];
+    client.onConnection((state) => states.push(state.protocol));
+
+    socket.receive(
+      JSON.stringify({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "9.9.9" }),
+    );
+
+    expect(client.connectionState.protocol).toBe(CLIENT_PROTOCOL_VERSION);
+    // Notified, not merely assigned. `setState` returns early on an unchanged
+    // state, so a comparison that looked only at the two links would have set
+    // the field and told nobody - which no typecheck can see.
+    expect(states).toEqual([CLIENT_PROTOCOL_VERSION]);
+    expect(client.messages()).toEqual([]);
+  });
+
+  it("keeps running when the bridge announces a newer protocol, and says so", () => {
+    const { client, socket } = openedClient();
+    socket.receive(
+      JSON.stringify({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION + 1, server: "9.9.9" }),
+    );
+
+    expect(client.connectionState.protocol).toBe(CLIENT_PROTOCOL_VERSION + 1);
+    expect(client.messages()).toHaveLength(1);
+    expect(logged(client)).toContain(`${CLIENT_PROTOCOL_VERSION + 1}`);
+
+    // Non-fatal in the loud direction too: the socket still carries traffic.
+    socket.receive(JSON.stringify({ tag: "def", vector: numVec() }));
+    expect(client.devices()).toEqual(["CCD"]);
+  });
+
+  it("keeps running when the bridge announces an older protocol, naming both", () => {
+    const { client, socket } = openedClient();
+    socket.receive(JSON.stringify({ event: "hello", protocol: 0, server: "0.0.1" }));
+
+    expect(client.connectionState.protocol).toBe(0);
+    expect(logged(client)).toContain("0");
+    expect(logged(client)).toContain(`${CLIENT_PROTOCOL_VERSION}`);
+  });
+
+  it("settles on protocol 0 when the first frame is not a hello", () => {
+    const { client, socket } = openedClient();
+    socket.receive(JSON.stringify({ event: "connection", connected: true }));
+
+    // The case that made the latch "first frame" rather than "no hello before
+    // the first def": with the upstream down and the cache empty, a bridge's
+    // first frame is the connection frame and no def ever arrives.
+    expect(client.connectionState.protocol).toBe(0);
+    expect(client.upstreamConnected).toBe(true);
+    expect(client.messages()).toHaveLength(1);
+  });
+
+  it("trips the version latch on a first frame the frame guard rejects", () => {
+    const { client, socket } = openedClient();
+    // A def with no device never reaches the store. It is still a frame, and it
+    // is still not a hello, so leaving `protocol` at null here would strand a
+    // legacy bridge as "unknown" for the life of the socket.
+    socket.receive(rawFrame({ tag: "def", vector: { ...numVec(), device: "" } }));
+
+    expect(client.connectionState.protocol).toBe(0);
+    expect(client.devices()).toEqual([]);
+  });
+
+  it("forgets the protocol version on close, latch included", () => {
+    vi.useFakeTimers();
+    try {
+      FakeSocket.reset();
+      const client = new IndiClient({
+        url: "ws://x/ws",
+        webSocketFactory: fakeFactory,
+        reconnectDelay: 1000,
+      });
+      client.connect();
+      const socket = FakeSocket.latest();
+      socket.open();
+      socket.receive(
+        JSON.stringify({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "0.2.0" }),
+      );
+      expect(client.connectionState.protocol).toBe(CLIENT_PROTOCOL_VERSION);
+
+      socket.close();
+      expect(client.connectionState.protocol).toBeNull();
+
+      // The next socket may reach an entirely different bridge. Without
+      // resetting the latch alongside the version, a reconnect onto one older
+      // than the hello would sit at null for ever instead of settling on 0.
+      vi.advanceTimersByTime(1000);
+      const next = FakeSocket.latest();
+      next.open();
+      next.receive(JSON.stringify({ event: "connection", connected: false }));
+      expect(client.connectionState.protocol).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores a control frame it does not know", () => {
     const { client, socket } = connectedClient();
     expect(() => socket.receive(JSON.stringify({ event: "from-the-future" }))).not.toThrow();
@@ -122,7 +254,11 @@ describe("IndiClient inbound", () => {
       expect(() => socket.receive(frame)).not.toThrow();
     }
     expect(client.devices()).toEqual([]);
-    expect(client.connectionState).toEqual({ transport: true, upstream: false });
+    expect(client.connectionState).toEqual({
+      transport: true,
+      upstream: false,
+      protocol: CLIENT_PROTOCOL_VERSION,
+    });
   });
 });
 
@@ -413,7 +549,7 @@ describe("IndiClient reads and lifecycle", () => {
     expect(socket.readyState).toBe(3);
     expect(client.connected).toBe(false);
     expect(client.upstreamConnected).toBe(false);
-    expect(client.connectionState).toEqual({ transport: false, upstream: false });
+    expect(client.connectionState).toEqual({ transport: false, upstream: false, protocol: null });
   });
 });
 

@@ -1,0 +1,2110 @@
+{
+  "BridgeFrame": {
+    "$defs": {
+      "ConnectionFrame": {
+        "description": "The upstream ``indiserver`` link went up or down.\n\nAttributes\n----------\nevent : str\n    Always ``\"connection\"``.\nconnected : bool\n    Whether the bridge currently has a live upstream connection.",
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "event": {
+            "const": "connection",
+            "default": "connection",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connected"
+        ],
+        "title": "ConnectionFrame",
+        "type": "object"
+      },
+      "ErrorFrame": {
+        "description": "A frame this browser sent did not go upstream.\n\nSent to that browser alone, never for something the bridge accepted, and the\nsocket stays open. Silence would be worse: a refused write is not retried\nanywhere, so a browser that hears nothing has no reason not to believe it\nlanded.\n\nAttributes\n----------\nevent : str\n    Always ``\"error\"``.\ncode : str\n    A stable machine-readable reason, e.g. ``\"not_connected\"``.\nmessage : str\n    Human-readable detail, suitable for a UI log.\ntag : str or None\n    The rejected message's INDI tag, or `None` if it never parsed.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "event": {
+            "const": "error",
+            "default": "error",
+            "title": "Event",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tag"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorFrame",
+        "type": "object"
+      },
+      "HelloFrame": {
+        "description": "The first frame on every ``/ws`` socket: what the browser is talking to.\n\nAttributes\n----------\nevent : str\n    Always ``\"hello\"``.\nprotocol : int\n    The browser contract's version; see :data:`BRIDGE_PROTOCOL_VERSION`.\nserver : str\n    The INDINexus version serving this socket, for a UI to display and for a\n    bug report to quote. It has **no model default on purpose**: a default\n    lands in ``model_json_schema()``, so pinning ``indi_nexus.__version__``\n    here would break the golden wire schema on every release. The bridge\n    supplies it at construction instead.",
+        "properties": {
+          "event": {
+            "const": "hello",
+            "default": "hello",
+            "title": "Event",
+            "type": "string"
+          },
+          "protocol": {
+            "default": 1,
+            "title": "Protocol",
+            "type": "integer"
+          },
+          "server": {
+            "title": "Server",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server"
+        ],
+        "title": "HelloFrame",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "connection": "#/$defs/ConnectionFrame",
+        "error": "#/$defs/ErrorFrame",
+        "hello": "#/$defs/HelloFrame"
+      },
+      "propertyName": "event"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/HelloFrame"
+      },
+      {
+        "$ref": "#/$defs/ConnectionFrame"
+      },
+      {
+        "$ref": "#/$defs/ErrorFrame"
+      }
+    ]
+  },
+  "IndiMessage": {
+    "$defs": {
+      "BLOB": {
+        "description": "A single BLOB element (``defBLOB`` / ``oneBLOB``).\n\n``data`` holds the decoded binary payload; the base64/size framing lives in\nthe codec, not the model.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "format": "base64url",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Data"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "kind": {
+            "const": "blob",
+            "default": "blob",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Size"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BLOB",
+        "type": "object"
+      },
+      "BLOBPolicy": {
+        "description": "How ``indiserver`` should deliver BLOBs to a client.\n\nA client must send an ``enableBLOB`` with one of these policies before\n``indiserver`` will forward any BLOB; the default on the wire is ``Never``.",
+        "enum": [
+          "Never",
+          "Also",
+          "Only"
+        ],
+        "title": "BLOBPolicy",
+        "type": "string"
+      },
+      "BLOBVector": {
+        "description": "A vector of BLOB elements (binary payloads).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/BLOB"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "blob",
+            "default": "blob",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "BLOBVector",
+        "type": "object"
+      },
+      "DefVector": {
+        "description": "A property definition (device -> client).",
+        "properties": {
+          "tag": {
+            "const": "def",
+            "default": "def",
+            "title": "Tag",
+            "type": "string"
+          },
+          "vector": {
+            "discriminator": {
+              "mapping": {
+                "blob": "#/$defs/BLOBVector",
+                "light": "#/$defs/LightVector",
+                "number": "#/$defs/NumberVector",
+                "switch": "#/$defs/SwitchVector",
+                "text": "#/$defs/TextVector"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/NumberVector"
+              },
+              {
+                "$ref": "#/$defs/TextVector"
+              },
+              {
+                "$ref": "#/$defs/SwitchVector"
+              },
+              {
+                "$ref": "#/$defs/LightVector"
+              },
+              {
+                "$ref": "#/$defs/BLOBVector"
+              }
+            ],
+            "title": "Vector"
+          }
+        },
+        "required": [
+          "vector"
+        ],
+        "title": "DefVector",
+        "type": "object"
+      },
+      "DelProperty": {
+        "description": "Notification that a property (or a whole device) has gone away.",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "tag": {
+            "const": "delProperty",
+            "default": "delProperty",
+            "title": "Tag",
+            "type": "string"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "title": "DelProperty",
+        "type": "object"
+      },
+      "EnableBLOB": {
+        "description": "Client -> server request controlling BLOB delivery.\n\n``indiserver`` withholds BLOBs from a client until it sends this; the policy\napplies to one device (and optionally one property when ``name`` is set).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "policy": {
+            "$ref": "#/$defs/BLOBPolicy",
+            "default": "Also"
+          },
+          "tag": {
+            "const": "enableBLOB",
+            "default": "enableBLOB",
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "title": "EnableBLOB",
+        "type": "object"
+      },
+      "GetProperties": {
+        "description": "Client -> device/server request to enumerate properties.",
+        "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Device"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
+          "tag": {
+            "const": "getProperties",
+            "default": "getProperties",
+            "title": "Tag",
+            "type": "string"
+          },
+          "version": {
+            "default": "1.7",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "GetProperties",
+        "type": "object"
+      },
+      "IPState": {
+        "description": "State of a vector property (the coloured status light in a GUI).",
+        "enum": [
+          "Idle",
+          "Ok",
+          "Busy",
+          "Alert"
+        ],
+        "title": "IPState",
+        "type": "string"
+      },
+      "IPerm": {
+        "description": "Client access permission for a vector property.",
+        "enum": [
+          "ro",
+          "wo",
+          "rw"
+        ],
+        "title": "IPerm",
+        "type": "string"
+      },
+      "ISRule": {
+        "description": "Constraint on how many switches in a switch vector may be On.",
+        "enum": [
+          "OneOfMany",
+          "AtMostOne",
+          "AnyOfMany"
+        ],
+        "title": "ISRule",
+        "type": "string"
+      },
+      "ISState": {
+        "description": "On/Off state of a single switch.",
+        "enum": [
+          "Off",
+          "On"
+        ],
+        "title": "ISState",
+        "type": "string"
+      },
+      "Light": {
+        "description": "A single light element (``defLight`` / ``oneLight``). Read-only status.",
+        "properties": {
+          "kind": {
+            "const": "light",
+            "default": "light",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Light",
+        "type": "object"
+      },
+      "LightVector": {
+        "description": "A vector of read-only light elements (no ``perm``; lights are always RO).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Light"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "light",
+            "default": "light",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "LightVector",
+        "type": "object"
+      },
+      "Message": {
+        "description": "A free-form log/notification message.",
+        "properties": {
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Device"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "tag": {
+            "const": "message",
+            "default": "message",
+            "title": "Tag",
+            "type": "string"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "title": "Message",
+        "type": "object"
+      },
+      "NewVector": {
+        "description": "A client's request to change a property's value (client -> device).",
+        "properties": {
+          "tag": {
+            "const": "new",
+            "default": "new",
+            "title": "Tag",
+            "type": "string"
+          },
+          "vector": {
+            "discriminator": {
+              "mapping": {
+                "blob": "#/$defs/BLOBVector",
+                "light": "#/$defs/LightVector",
+                "number": "#/$defs/NumberVector",
+                "switch": "#/$defs/SwitchVector",
+                "text": "#/$defs/TextVector"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/NumberVector"
+              },
+              {
+                "$ref": "#/$defs/TextVector"
+              },
+              {
+                "$ref": "#/$defs/SwitchVector"
+              },
+              {
+                "$ref": "#/$defs/LightVector"
+              },
+              {
+                "$ref": "#/$defs/BLOBVector"
+              }
+            ],
+            "title": "Vector"
+          }
+        },
+        "required": [
+          "vector"
+        ],
+        "title": "NewVector",
+        "type": "object"
+      },
+      "Number": {
+        "description": "A single numeric element (``defNumber`` / ``oneNumber``).\n\n``value`` refuses NaN and the infinities. It is the one non-nullable float\non the wire, and JSON has no way to write a non-finite number: the codec\nwould emit ``null`` for it and :func:`~indi_nexus.protocol.json.from_json`\nwould then reject its own output, because ``value`` is required. Refusing it\nhere is what keeps the two codecs symmetric - the XML parser drops the\nelement instead (a value it cannot represent, exactly like a junk one) and a\ndriver publishing one fails at the call site. The optional metadata\n(``min``/``max``/``step``) needs no such rule: it can say \"absent\", and the\nXML parser degrades a non-finite one to `None`.",
+        "properties": {
+          "format": {
+            "default": "%g",
+            "title": "Format",
+            "type": "string"
+          },
+          "kind": {
+            "const": "number",
+            "default": "number",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Step"
+          },
+          "value": {
+            "default": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Number",
+        "type": "object"
+      },
+      "NumberVector": {
+        "description": "A vector of numeric elements (``defNumberVector`` / ``setNumberVector``).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Number"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "number",
+            "default": "number",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "NumberVector",
+        "type": "object"
+      },
+      "SetVector": {
+        "description": "A value update to an already-defined property (device -> client).\n\nAttributes\n----------\nstate_present : bool\n    Whether the wire message actually carried a ``state``. It is\n    ``#IMPLIED`` on every ``set*Vector`` (white paper p.7) and means \"no\n    change if absent\", where on a ``def*Vector`` it is ``#REQUIRED``. The\n    absence has to survive the parse or it cannot be honoured later, and it\n    rides here rather than on the vector because a vector's ``state`` is\n    never absent in memory - a cached property is always in some state, and\n    making the field nullable would push a `None` into every consumer of a\n    cached vector to no purpose.",
+        "properties": {
+          "state_present": {
+            "default": true,
+            "title": "State Present",
+            "type": "boolean"
+          },
+          "tag": {
+            "const": "set",
+            "default": "set",
+            "title": "Tag",
+            "type": "string"
+          },
+          "vector": {
+            "discriminator": {
+              "mapping": {
+                "blob": "#/$defs/BLOBVector",
+                "light": "#/$defs/LightVector",
+                "number": "#/$defs/NumberVector",
+                "switch": "#/$defs/SwitchVector",
+                "text": "#/$defs/TextVector"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/NumberVector"
+              },
+              {
+                "$ref": "#/$defs/TextVector"
+              },
+              {
+                "$ref": "#/$defs/SwitchVector"
+              },
+              {
+                "$ref": "#/$defs/LightVector"
+              },
+              {
+                "$ref": "#/$defs/BLOBVector"
+              }
+            ],
+            "title": "Vector"
+          }
+        },
+        "required": [
+          "vector"
+        ],
+        "title": "SetVector",
+        "type": "object"
+      },
+      "Switch": {
+        "description": "A single switch element (``defSwitch`` / ``oneSwitch``).",
+        "properties": {
+          "kind": {
+            "const": "switch",
+            "default": "switch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ISState",
+            "default": "Off"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Switch",
+        "type": "object"
+      },
+      "SwitchVector": {
+        "description": "A vector of switch elements with a selection ``rule``.",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Switch"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "switch",
+            "default": "switch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "rule": {
+            "$ref": "#/$defs/ISRule",
+            "default": "AnyOfMany"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "SwitchVector",
+        "type": "object"
+      },
+      "Text": {
+        "description": "A single text element (``defText`` / ``oneText``).",
+        "properties": {
+          "kind": {
+            "const": "text",
+            "default": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Text",
+        "type": "object"
+      },
+      "TextVector": {
+        "description": "A vector of text elements (``defTextVector`` / ``setTextVector``).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Text"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "text",
+            "default": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "TextVector",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "def": "#/$defs/DefVector",
+        "delProperty": "#/$defs/DelProperty",
+        "enableBLOB": "#/$defs/EnableBLOB",
+        "getProperties": "#/$defs/GetProperties",
+        "message": "#/$defs/Message",
+        "new": "#/$defs/NewVector",
+        "set": "#/$defs/SetVector"
+      },
+      "propertyName": "tag"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/DefVector"
+      },
+      {
+        "$ref": "#/$defs/SetVector"
+      },
+      {
+        "$ref": "#/$defs/NewVector"
+      },
+      {
+        "$ref": "#/$defs/GetProperties"
+      },
+      {
+        "$ref": "#/$defs/DelProperty"
+      },
+      {
+        "$ref": "#/$defs/Message"
+      },
+      {
+        "$ref": "#/$defs/EnableBLOB"
+      }
+    ]
+  },
+  "Vector": {
+    "$defs": {
+      "BLOB": {
+        "description": "A single BLOB element (``defBLOB`` / ``oneBLOB``).\n\n``data`` holds the decoded binary payload; the base64/size framing lives in\nthe codec, not the model.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "format": "base64url",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Data"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Format"
+          },
+          "kind": {
+            "const": "blob",
+            "default": "blob",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Size"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BLOB",
+        "type": "object"
+      },
+      "BLOBVector": {
+        "description": "A vector of BLOB elements (binary payloads).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/BLOB"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "blob",
+            "default": "blob",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "BLOBVector",
+        "type": "object"
+      },
+      "IPState": {
+        "description": "State of a vector property (the coloured status light in a GUI).",
+        "enum": [
+          "Idle",
+          "Ok",
+          "Busy",
+          "Alert"
+        ],
+        "title": "IPState",
+        "type": "string"
+      },
+      "IPerm": {
+        "description": "Client access permission for a vector property.",
+        "enum": [
+          "ro",
+          "wo",
+          "rw"
+        ],
+        "title": "IPerm",
+        "type": "string"
+      },
+      "ISRule": {
+        "description": "Constraint on how many switches in a switch vector may be On.",
+        "enum": [
+          "OneOfMany",
+          "AtMostOne",
+          "AnyOfMany"
+        ],
+        "title": "ISRule",
+        "type": "string"
+      },
+      "ISState": {
+        "description": "On/Off state of a single switch.",
+        "enum": [
+          "Off",
+          "On"
+        ],
+        "title": "ISState",
+        "type": "string"
+      },
+      "Light": {
+        "description": "A single light element (``defLight`` / ``oneLight``). Read-only status.",
+        "properties": {
+          "kind": {
+            "const": "light",
+            "default": "light",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Light",
+        "type": "object"
+      },
+      "LightVector": {
+        "description": "A vector of read-only light elements (no ``perm``; lights are always RO).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Light"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "light",
+            "default": "light",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "LightVector",
+        "type": "object"
+      },
+      "Number": {
+        "description": "A single numeric element (``defNumber`` / ``oneNumber``).\n\n``value`` refuses NaN and the infinities. It is the one non-nullable float\non the wire, and JSON has no way to write a non-finite number: the codec\nwould emit ``null`` for it and :func:`~indi_nexus.protocol.json.from_json`\nwould then reject its own output, because ``value`` is required. Refusing it\nhere is what keeps the two codecs symmetric - the XML parser drops the\nelement instead (a value it cannot represent, exactly like a junk one) and a\ndriver publishing one fails at the call site. The optional metadata\n(``min``/``max``/``step``) needs no such rule: it can say \"absent\", and the\nXML parser degrades a non-finite one to `None`.",
+        "properties": {
+          "format": {
+            "default": "%g",
+            "title": "Format",
+            "type": "string"
+          },
+          "kind": {
+            "const": "number",
+            "default": "number",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Min"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Step"
+          },
+          "value": {
+            "default": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Number",
+        "type": "object"
+      },
+      "NumberVector": {
+        "description": "A vector of numeric elements (``defNumberVector`` / ``setNumberVector``).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Number"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "number",
+            "default": "number",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "NumberVector",
+        "type": "object"
+      },
+      "Switch": {
+        "description": "A single switch element (``defSwitch`` / ``oneSwitch``).",
+        "properties": {
+          "kind": {
+            "const": "switch",
+            "default": "switch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/$defs/ISState",
+            "default": "Off"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Switch",
+        "type": "object"
+      },
+      "SwitchVector": {
+        "description": "A vector of switch elements with a selection ``rule``.",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Switch"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "switch",
+            "default": "switch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "rule": {
+            "$ref": "#/$defs/ISRule",
+            "default": "AnyOfMany"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "SwitchVector",
+        "type": "object"
+      },
+      "Text": {
+        "description": "A single text element (``defText`` / ``oneText``).",
+        "properties": {
+          "kind": {
+            "const": "text",
+            "default": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Text",
+        "type": "object"
+      },
+      "TextVector": {
+        "description": "A vector of text elements (``defTextVector`` / ``setTextVector``).",
+        "properties": {
+          "device": {
+            "title": "Device",
+            "type": "string"
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/$defs/Text"
+            },
+            "title": "Elements",
+            "type": "array"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "const": "text",
+            "default": "text",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "perm": {
+            "$ref": "#/$defs/IPerm",
+            "default": "rw"
+          },
+          "state": {
+            "$ref": "#/$defs/IPState",
+            "default": "Idle"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timeout"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "device",
+          "name"
+        ],
+        "title": "TextVector",
+        "type": "object"
+      }
+    },
+    "discriminator": {
+      "mapping": {
+        "blob": "#/$defs/BLOBVector",
+        "light": "#/$defs/LightVector",
+        "number": "#/$defs/NumberVector",
+        "switch": "#/$defs/SwitchVector",
+        "text": "#/$defs/TextVector"
+      },
+      "propertyName": "kind"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/$defs/NumberVector"
+      },
+      {
+        "$ref": "#/$defs/TextVector"
+      },
+      {
+        "$ref": "#/$defs/SwitchVector"
+      },
+      {
+        "$ref": "#/$defs/LightVector"
+      },
+      {
+        "$ref": "#/$defs/BLOBVector"
+      }
+    ]
+  }
+}

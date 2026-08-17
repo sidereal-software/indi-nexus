@@ -121,7 +121,10 @@ function handle(text) {
   let msg;
   try { msg = JSON.parse(text); } catch { return; }
   if (msg.event === "connection") { setDot("up-dot", msg.connected); logLine("event", text); return; }
-  logLine(msg.tag || "?", text);
+  // A bridge control frame carries `event`, not `tag`, and the hello and error
+  // frames were both landing in the raw feed labelled "?" as though they were
+  // malformed INDI. Anything genuinely unrecognised still is.
+  logLine(msg.tag || (msg.event ? "event" : "?"), text);
   if (msg.tag === "def" || msg.tag === "set") applyVector(msg);
   else if (msg.tag === "delProperty") applyDelete(msg);
   // message frames only go to the log

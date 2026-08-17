@@ -19,6 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+import indi_nexus
 import indi_nexus.web.app as app_module
 from indi_nexus.client import IndiClient
 from indi_nexus.exceptions import SendQueueFull
@@ -35,6 +36,7 @@ from indi_nexus.protocol import (
 )
 from indi_nexus.web import create_app
 from indi_nexus.web.bridge import _MAX_BACKLOG, Bridge
+from indi_nexus.web.control_frames import BRIDGE_PROTOCOL_VERSION
 
 
 class _Server:
@@ -46,8 +48,8 @@ class _Server:
         self.written: list[bytes] = []
 
     def feed(self, msg: object) -> None:
-        """Queue a message model as inbound bytes for the client."""
-        self._inbox.put_nowait(to_xml(msg))  # type: ignore[arg-type]
+        """Queue a message model - or raw bytes - as inbound data for the client."""
+        self._inbox.put_nowait(msg if isinstance(msg, bytes) else to_xml(msg))  # type: ignore[arg-type]
 
     async def read(self) -> bytes:
         """Return the next queued inbound chunk."""
@@ -168,6 +170,47 @@ def test_rest_snapshot_reflects_cache():
         assert tc.get("/api/devices/CCD/Nope").status_code == 404
 
 
+def test_the_rest_payload_is_unchanged_by_the_response_models():
+    """``/api`` still returns bare vectors, keyed by property name.
+
+    The routes are annotated with ``dict[str, Vector]`` and ``Vector`` so
+    FastAPI serialises through a real schema instead of a ``dict[str, Any]``
+    that documents nothing. That is a schema change, not a payload change: a
+    REST resource here is the property, not a wire event, so it stays bare
+    rather than gaining the ``{"tag": "def", ...}`` wrapper ``/ws`` carries.
+    """
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        vector = _numvec(1.5, IPState.OK)
+        server.feed(DefVector(vector=vector))
+        _wait_until(lambda: tc.get("/api/devices").json() == ["CCD"])
+
+        expected = vector.model_dump(mode="json")
+        assert tc.get("/api/devices/CCD").json() == {"EXPOSURE": expected}
+        assert tc.get("/api/devices/CCD/EXPOSURE").json() == expected
+
+
+def test_the_openapi_document_names_the_vector_schema():
+    """``/api`` is documented as ``Vector``, not as an untyped object.
+
+    With ``dict[str, Any]`` the generated document said "object" and a consumer
+    generating a client off it got nothing usable, while the payload was a
+    fully modelled vector all along.
+    """
+    app, _ = _app_and_server()
+    with TestClient(app):
+        schema = app.openapi()["paths"]["/api/devices/{device}/{name}"]["get"]
+        body = schema["responses"]["200"]["content"]["application/json"]["schema"]
+        assert body["discriminator"]["propertyName"] == "kind"
+        assert {ref["$ref"].rsplit("/", 1)[-1] for ref in body["oneOf"]} == {
+            "NumberVector",
+            "TextVector",
+            "SwitchVector",
+            "LightVector",
+            "BLOBVector",
+        }
+
+
 def test_debug_page_served():
     """GET /debug serves the self-contained debug inspector page."""
     app, _ = _app_and_server()
@@ -202,6 +245,52 @@ def test_ws_sends_snapshot_and_live_updates():
             server.feed(SetVector(vector=_numvec(2.5, IPState.OK)))
             update = _drain_until_tag(ws, "set")
             assert update["vector"]["elements"][0]["value"] == 2.5
+
+
+def test_the_first_frame_a_client_reads_is_the_hello():
+    """The version announcement leads, ahead of the seeded properties.
+
+    Phrased as "the first frame a client reads" rather than "every subscription
+    emits a hello" on purpose: :meth:`Bridge._drop` can cancel a pump before its
+    first step, so a browser that overran its backlog inside the turn it
+    attached in legitimately emits nothing at all.
+
+    Ordering is the whole point. The hello says which contract every later frame
+    is written in, so a browser that met a ``def`` first would have had to
+    interpret it before being told how.
+    """
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        server.feed(DefVector(vector=_numvec(1.0, IPState.OK)))
+        _wait_until(lambda: tc.get("/api/devices").json() == ["CCD"])
+
+        with tc.websocket_connect("/ws") as ws:
+            hello = json.loads(ws.receive_text())
+            assert hello["event"] == "hello"
+            assert hello["protocol"] == BRIDGE_PROTOCOL_VERSION
+            assert hello["server"] == indi_nexus.__version__
+            # The cache is non-empty, so a def is waiting behind it.
+            assert json.loads(ws.receive_text())["tag"] == "def"
+
+
+def test_a_browser_attaching_while_the_upstream_is_down_still_gets_the_hello():
+    """With nothing cached, the hello still precedes the connection frame.
+
+    This is the case the "first non-hello frame" rule in the TypeScript client
+    is written against: with the upstream down and the cache empty there is no
+    ``def`` at all, so the frame a browser would otherwise judge the bridge by
+    is the connection frame.
+    """
+
+    async def _refuse() -> tuple[object, object, object]:
+        """Fail every connection attempt, as a down indiserver would."""
+        raise OSError("connection refused")
+
+    app = create_app(client=IndiClient(connect=_refuse, reconnect_delay=0.05))
+    with TestClient(app) as tc, tc.websocket_connect("/ws") as ws:
+        assert json.loads(ws.receive_text())["event"] == "hello"
+        connection = json.loads(ws.receive_text())
+        assert connection == {"event": "connection", "connected": False}
 
 
 def test_ws_forwards_browser_writes_upstream():
@@ -809,7 +898,7 @@ def test_ws_accepts_the_same_origin():
         TestClient(app) as tc,
         tc.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws,
     ):
-        assert json.loads(ws.receive_text())["event"] == "connection"
+        assert _drain_until_event(ws, "connection")["event"] == "connection"
 
 
 def test_ws_accepts_a_missing_origin():
@@ -821,7 +910,7 @@ def test_ws_accepts_a_missing_origin():
     """
     app, _ = _app_and_server()
     with TestClient(app) as tc, tc.websocket_connect("/ws") as ws:
-        assert json.loads(ws.receive_text())["event"] == "connection"
+        assert _drain_until_event(ws, "connection")["event"] == "connection"
 
 
 def test_ws_accepts_a_configured_origin():
@@ -831,7 +920,7 @@ def test_ws_accepts_a_configured_origin():
         TestClient(app) as tc,
         tc.websocket_connect("/ws", headers={"origin": "http://localhost:5173"}) as ws,
     ):
-        assert json.loads(ws.receive_text())["event"] == "connection"
+        assert _drain_until_event(ws, "connection")["event"] == "connection"
 
 
 def test_ws_and_api_require_a_configured_token():
@@ -845,7 +934,7 @@ def test_ws_and_api_require_a_configured_token():
         with pytest.raises(WebSocketDisconnect), tc.websocket_connect("/ws") as ws:
             ws.receive_text()
         with tc.websocket_connect("/ws?token=s3cret") as ws:
-            assert json.loads(ws.receive_text())["event"] == "connection"
+            assert _drain_until_event(ws, "connection")["event"] == "connection"
 
 
 def test_api_does_not_accept_a_query_token():
@@ -870,3 +959,119 @@ def test_health_is_reachable_without_a_token():
         body = tc.get("/health").json()
         assert body["status"] == "ok"
         assert body["dropped_slow_sinks"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# /health                                                                      #
+# --------------------------------------------------------------------------- #
+def test_health_keeps_its_original_three_keys_at_the_top_level():
+    """The body grows; it never renames or nests what a check already reads.
+
+    ``status``, ``connected`` and ``dropped_slow_sinks`` are a 1.0 contract - an
+    operator has them in a monitoring check - so everything added since sits
+    beside them.
+    """
+    app, _ = _app_and_server()
+    with TestClient(app) as tc:
+        body = tc.get("/health").json()
+        assert body["status"] == "ok"
+        assert isinstance(body["connected"], bool)
+        assert body["dropped_slow_sinks"] == 0
+        assert body["protocol"] == BRIDGE_PROTOCOL_VERSION
+
+
+def test_health_carries_no_release_version_and_no_addresses():
+    """It is unauthenticated, so it says nothing an attacker can shop with.
+
+    The release string would hand a caller the exact build to look up advisories
+    against, and ``protocol`` already answers the only compatibility question a
+    legitimate caller has. Upstream host and port are omitted for the same
+    reason, and device names never appear here at all.
+    """
+    app, _ = _app_and_server()
+    with TestClient(app) as tc:
+        raw = tc.get("/health").text
+        body = tc.get("/health").json()
+    assert "version" not in body
+    assert indi_nexus.__version__ not in raw
+    assert "localhost" not in raw and "7624" not in raw
+
+
+def test_health_reports_the_attached_browsers():
+    """``sinks_attached`` is the count of live WebSocket subscriptions."""
+    app, _ = _app_and_server()
+    with TestClient(app) as tc:
+        assert tc.get("/health").json()["sinks_attached"] == 0
+        with tc.websocket_connect("/ws"):
+            _wait_until(lambda: tc.get("/health").json()["sinks_attached"] == 1)
+        _wait_until(lambda: tc.get("/health").json()["sinks_attached"] == 0)
+
+
+def test_health_reports_parser_damage_from_the_upstream():
+    """A malformed upstream element is countable without scraping logs."""
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        _wait_connected(tc)
+        server.feed(
+            b"<setNumberVector device='CCD' name='EXPOSURE'>"
+            b"<oneNumber name='secs'>not-a-number</oneNumber></setNumberVector>"
+        )
+        _wait_until(lambda: tc.get("/health").json()["parser"]["dropped"] == 1)
+        parser = tc.get("/health").json()["parser"]
+        # The total covers the connection in progress, so it is never behind the
+        # per-connection number an operator is reading beside it.
+        assert parser["dropped_total"] >= parser["dropped"]
+
+
+def test_health_counts_reconnects_and_nulls_uptime_while_down():
+    """The upstream block is about the link, not about the process."""
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        _wait_connected(tc)
+        assert tc.get("/health").json()["upstream"]["reconnects"] == 0
+        assert tc.get("/health").json()["upstream"]["uptime_seconds"] is not None
+
+        server.disconnect()
+        _wait_until(lambda: tc.get("/health").json()["upstream"]["reconnects"] == 1)
+        body = tc.get("/health").json()
+        # It reconnected immediately (reconnect_delay=0.0), so uptime is the new
+        # connection's rather than the dead one's; what matters is that it is a
+        # link measurement, and that the parser block still answers.
+        assert body["connected"] is True
+        assert isinstance(body["parser"]["bytes_since_last_message"], int)
+
+
+def test_health_answers_before_the_first_connection():
+    """It is served while the upstream is down, so every field must be real."""
+
+    async def _refuse() -> tuple[object, object, object]:
+        """Fail every connection attempt, as a down indiserver would."""
+        raise OSError("connection refused")
+
+    app = create_app(client=IndiClient(connect=_refuse, reconnect_delay=0.05))
+    with TestClient(app) as tc:
+        body = tc.get("/health").json()
+    assert body["connected"] is False
+    assert body["upstream"] == {
+        "uptime_seconds": None,
+        "reconnects": 0,
+        "last_message_age_seconds": None,
+    }
+    assert body["parser"] == {
+        "dropped": 0,
+        "resets": 0,
+        "bytes_since_last_message": 0,
+        "dropped_total": 0,
+        "resets_total": 0,
+    }
+
+
+def test_the_bridge_backlog_and_history_are_configurable():
+    """``INDI_NEXUS_MAX_BACKLOG`` and friends reach the bridge as arguments.
+
+    Nothing here reads the environment; ``indi-nexus serve`` passes the values
+    down, which is what keeps ``create_app(client=...)`` injectable.
+    """
+    bridge = Bridge(IndiClient(connect=_Server().connect()), message_history=2, max_backlog=3)
+    assert bridge._max_backlog == 3
+    assert bridge._messages.maxlen == 2

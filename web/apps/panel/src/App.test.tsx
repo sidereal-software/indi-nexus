@@ -7,6 +7,7 @@
  * and device panel - through real JSON frames.
  */
 
+import { CLIENT_PROTOCOL_VERSION } from "@indi-nexus/client";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -53,13 +54,24 @@ afterEach(() => {
   localStorage.clear();
 });
 
-/** Render the app, open its socket, and return the socket for driving frames. */
+/**
+ * Render the app, open its socket, and return the socket for driving frames.
+ *
+ * The `hello` goes out first because the bridge sends it first; without it the
+ * client logs a "no hello frame" entry and every message-count assertion below
+ * is one out.
+ */
 function renderApp() {
   vi.stubGlobal("WebSocket", FakeWebSocket);
   const result = render(<App />);
   const socket = FakeWebSocket.instances[0];
   if (!socket) throw new Error("the app did not open a WebSocket");
   act(() => socket.open());
+  act(() =>
+    socket.receive(
+      JSON.stringify({ event: "hello", protocol: CLIENT_PROTOCOL_VERSION, server: "test" }),
+    ),
+  );
   return { socket, ...result };
 }
 

@@ -10,7 +10,8 @@
  * Two connection states are tracked, because the browser sits one hop further out
  * than the Python client: `transport` (this browser <-> the bridge WebSocket) and
  * `upstream` (the bridge <-> `indiserver`, learned from the bridge's `connection`
- * control frame). {@link IndiClient.onConnection} reports both.
+ * control frame). {@link IndiClient.onConnection} reports both, alongside the
+ * bridge's announced contract version from its `hello` frame.
  */
 
 import {
@@ -26,15 +27,16 @@ import {
   type Subscriber,
   type SubscriptionFilter,
 } from "./store";
-import type {
-  ConnectionFrame,
-  EnableBlob,
-  ErrorFrame,
-  GetProperties,
-  IndiMessage,
-  Message,
-  NewVector,
-  Vector,
+import {
+  type BridgeFrame,
+  CLIENT_PROTOCOL_VERSION,
+  type EnableBlob,
+  type GetProperties,
+  type HelloFrame,
+  type IndiMessage,
+  type Message,
+  type NewVector,
+  type Vector,
 } from "./types";
 
 /** Combined connection state: browser<->bridge and bridge<->indiserver. */
@@ -43,6 +45,15 @@ export interface ConnectionState {
   transport: boolean;
   /** Whether the bridge reports a live `indiserver` connection. */
   upstream: boolean;
+  /**
+   * The bridge's contract version, from its `hello` frame.
+   *
+   * `null` before any frame has arrived on the current socket, and `0` once a
+   * frame that was not a `hello` has arrived first - which means a bridge older
+   * than the frame, not an unknown one. Compare with
+   * {@link CLIENT_PROTOCOL_VERSION}; a mismatch is never fatal.
+   */
+  protocol: number | null;
 }
 
 /** A callback for inbound `message` notifications. */
@@ -131,7 +142,17 @@ export class IndiClient {
 
   private readonly autoGetProperties: boolean;
   private readonly messageLogLimit: number;
-  private _state: ConnectionState = { transport: false, upstream: false };
+  private _state: ConnectionState = { transport: false, upstream: false, protocol: null };
+
+  /**
+   * Whether any frame has arrived on the current socket.
+   *
+   * The version latch: the first frame decides whether this bridge speaks the
+   * `hello`. Reset on every close alongside `protocol`, or a reconnect onto an
+   * older bridge would leave `protocol` at `null` for ever instead of settling
+   * on `0`.
+   */
+  private sawFrame = false;
 
   /**
    * Rolling log of inbound `message` notifications, oldest first. Kept on the
@@ -375,12 +396,19 @@ export class IndiClient {
   private handleOpen(): void {
     if (this.autoGetProperties) this.getProperties();
     for (const policy of this.blobPolicies.values()) this.send(policy);
-    this.setState({ transport: true, upstream: this._state.upstream });
+    this.setState({
+      transport: true,
+      upstream: this._state.upstream,
+      protocol: this._state.protocol,
+    });
   }
 
   private handleClose(): void {
     // With the socket down we cannot know the upstream state; report both down.
-    this.setState({ transport: false, upstream: false });
+    // The version goes with them: the next socket may reach a different bridge,
+    // and a stale version number is worse than no number at all.
+    this.sawFrame = false;
+    this.setState({ transport: false, upstream: false, protocol: null });
   }
 
   private handleMessage(data: string): void {
@@ -393,12 +421,27 @@ export class IndiClient {
     // Valid JSON need not be an object: `null`, a bare number and a bare string
     // all parse, and none of them is a frame (`"event" in null` would throw).
     if (typeof parsed !== "object" || parsed === null) return;
-    const frame = parsed as IndiMessage | ConnectionFrame | ErrorFrame;
+    const frame = parsed as IndiMessage | BridgeFrame;
+    // The version latch is evaluated here: ahead of the control-frame branch,
+    // and ahead of `acceptFrame` below. A first frame the frame guard rejects
+    // is still a frame that was not a `hello`, so a bridge that sends no hello
+    // and whose first `def` happens to be malformed must not leave `protocol`
+    // stuck at `null` for the life of the socket.
+    if (!this.sawFrame) {
+      this.sawFrame = true;
+      if (!("event" in frame) || frame.event !== "hello") this.assumeLegacyBridge();
+    }
     // A bridge control frame is not an INDI message and never reaches the store.
     // An `event` this version does not know is dropped, as it always was.
     if ("event" in frame) {
-      if (frame.event === "connection") {
-        this.setState({ transport: this._state.transport, upstream: frame.connected });
+      if (frame.event === "hello") {
+        this.acceptHello(frame);
+      } else if (frame.event === "connection") {
+        this.setState({
+          transport: this._state.transport,
+          upstream: frame.connected,
+          protocol: this._state.protocol,
+        });
       } else if (frame.event === "error") {
         this.recordMessage({
           tag: "message",
@@ -417,6 +460,49 @@ export class IndiClient {
     if (message.tag === "message") this.recordMessage(message);
   }
 
+  /**
+   * Record the bridge's announced contract version, warning on a skew.
+   *
+   * Never fatal, in either direction. Version bumps are breaking-only and every
+   * additive change leaves both sides working - the client already drops an
+   * `event` and an object key it does not know - so refusing the socket would
+   * turn a cosmetic skew into a dark panel mid-session.
+   */
+  private acceptHello(frame: HelloFrame): void {
+    this.setState({
+      transport: this._state.transport,
+      upstream: this._state.upstream,
+      protocol: frame.protocol,
+    });
+    if (frame.protocol !== CLIENT_PROTOCOL_VERSION) {
+      this.recordMessage({
+        tag: "message",
+        message:
+          `bridge protocol ${frame.protocol} (server ${frame.server}) does not match this ` +
+          `client's ${CLIENT_PROTOCOL_VERSION}; continuing, but some frames may not be understood`,
+      });
+    }
+  }
+
+  /**
+   * Record that this bridge predates the `hello` frame.
+   *
+   * `0` rather than `null`: the question has been answered, and the answer is
+   * "older than the version announcement". Leaving it `null` would be
+   * indistinguishable from a socket that has not received anything yet.
+   */
+  private assumeLegacyBridge(): void {
+    this.setState({
+      transport: this._state.transport,
+      upstream: this._state.upstream,
+      protocol: 0,
+    });
+    this.recordMessage({
+      tag: "message",
+      message: "the bridge sent no hello frame; assuming a version older than protocol 1",
+    });
+  }
+
   /** Append to the rolling log and notify `onMessage` subscribers. */
   private recordMessage(message: Message): void {
     const next = [...this._messages, message];
@@ -430,7 +516,14 @@ export class IndiClient {
   }
 
   private setState(next: ConnectionState): void {
-    if (next.transport === this._state.transport && next.upstream === this._state.upstream) {
+    // Every field of the state, not only the two links: a comparison that
+    // missed one would assign the field and never notify a subscriber, and no
+    // typecheck catches that.
+    if (
+      next.transport === this._state.transport &&
+      next.upstream === this._state.upstream &&
+      next.protocol === this._state.protocol
+    ) {
       return;
     }
     this._state = next;
