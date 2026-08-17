@@ -10,6 +10,7 @@ from examples.ccd_device import AMBIENT_C, CCDSimulator
 from examples.demo_device import Demo
 from examples.dome_device import PARK_AZ, DomeSimulator
 from examples.flat_panel import MAX_BRIGHTNESS, MIN_BRIGHTNESS, FlatPanel
+from examples.guided_camera import MAIN_SIZE, CameraLink, GuideChip, MainChip
 from examples.monitor_client import format_event, monitor
 from examples.telescope_device import TelescopeSimulator
 from indi_nexus.client import IndiClient
@@ -27,6 +28,7 @@ from indi_nexus.protocol import (
     SwitchVector,
     to_xml,
 )
+from indi_nexus.testing import DeviceHarness
 
 
 class _Server:
@@ -1098,5 +1100,117 @@ def test_flat_panel_turns_the_lamp_off_when_the_client_disconnects():
         assert panel["LIGHT_CONTROL"]["OFF"].value is ISState.ON
         assert panel["LIGHT_CONTROL"].vector.state is IPState.IDLE
         assert _has_message(captured, "Lamp turned off on disconnect.")
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# guided_camera.py - two devices, one driver process                           #
+# --------------------------------------------------------------------------- #
+async def _chips() -> tuple[DeviceHarness, DeviceHarness, CameraLink]:
+    """Set up both chips on one shared link and connect them.
+
+    Returns
+    -------
+    main : DeviceHarness
+        The imaging chip's harness, already connected.
+    guide : DeviceHarness
+        The guide chip's harness, already connected.
+    link : CameraLink
+        The link the two of them share.
+    """
+    link = CameraLink()
+    main, guide = DeviceHarness(MainChip(link)), DeviceHarness(GuideChip(link))
+    for harness in (main, guide):
+        await harness.setup()
+        await harness.write("CONNECTION", CONNECT=True)
+    return main, guide, link
+
+
+def test_guided_camera_chips_share_one_link():
+    """Both chips claim the same link, and only the last one to go closes it."""
+
+    async def scenario() -> None:
+        main, guide, link = await _chips()
+        assert link.open
+
+        await guide.write("CONNECTION", DISCONNECT=True)
+        assert link.open  # the camera is still exposing through it
+
+        await main.write("CONNECTION", DISCONNECT=True)
+        assert not link.open
+
+    asyncio.run(scenario())
+
+
+def test_guided_camera_exposure_delivers_a_frame():
+    """An exposure counts down over its ticks and ends with the image BLOB."""
+
+    async def scenario() -> None:
+        main, _, _ = await _chips()
+        await main.write("CCD_EXPOSURE", CCD_EXPOSURE_VALUE=2)
+
+        await main.tick("_countdown")
+        assert main.latest("CCD_EXPOSURE").get("CCD_EXPOSURE_VALUE") == 1
+        assert main.latest("CCD_EXPOSURE").state is IPState.BUSY
+
+        await main.tick("_countdown")
+        assert main.latest("CCD_EXPOSURE").state is IPState.OK
+        assert len(main.latest("CCD1").get("CCD1")) == MAIN_SIZE[0] * MAIN_SIZE[1]
+
+    asyncio.run(scenario())
+
+
+def test_guided_camera_guider_keeps_reporting_during_an_exposure():
+    """A guider tick publishes while the camera is mid-exposure, and neither disturbs the other.
+
+    The runtime side of this - that the two jobs really are separate tasks - is
+    pinned in ``tests/test_driver.py``; what is checked here is that the example
+    keeps no state that makes one chip's work depend on the other's.
+    """
+
+    async def scenario() -> None:
+        main, guide, _ = await _chips()
+        await main.write("CCD_EXPOSURE", CCD_EXPOSURE_VALUE=10)
+
+        await guide.tick("_guide")
+
+        star = guide.latest("GUIDE_STAR")
+        assert star.state is IPState.OK
+        assert star.get("FLUX") > 0
+        assert main.latest("CCD_EXPOSURE").state is IPState.BUSY  # still exposing
+
+    asyncio.run(scenario())
+
+
+def test_guided_camera_refuses_an_exposure_while_disconnected():
+    """The four-part connection rule holds per device, not per process."""
+
+    async def scenario() -> None:
+        link = CameraLink()
+        main = DeviceHarness(MainChip(link))
+        await main.setup()
+
+        await main.write("CCD_EXPOSURE", CCD_EXPOSURE_VALUE=7)
+
+        assert main.latest("CCD_EXPOSURE").get("CCD_EXPOSURE_VALUE") == 1  # unchanged def value
+        assert main.latest("CCD_EXPOSURE").state is IPState.IDLE
+        assert any("not connected" in text for text in main.messages)
+
+    asyncio.run(scenario())
+
+
+def test_guided_camera_disconnect_drops_a_running_exposure():
+    """Nothing is left Busy behind a link the operator has dropped."""
+
+    async def scenario() -> None:
+        main, _, _ = await _chips()
+        await main.write("CCD_EXPOSURE", CCD_EXPOSURE_VALUE=30)
+        assert main.latest("CCD_EXPOSURE").state is IPState.BUSY
+
+        await main.write("CONNECTION", DISCONNECT=True)
+
+        assert main.latest("CCD_EXPOSURE").state is IPState.IDLE
+        assert main.latest("CCD_EXPOSURE").get("CCD_EXPOSURE_VALUE") == 0
 
     asyncio.run(scenario())

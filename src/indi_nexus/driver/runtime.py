@@ -4,16 +4,28 @@ The runtime does three things:
 
 * **read** the INDI XML stream from ``indiserver`` (stdin), frame it with the M1
   :class:`~indi_nexus.protocol.xml.XMLStreamParser`, and dispatch each message to
-  the device (``getProperties`` -> ``setup``; ``newXxxVector`` -> ``@on_new``);
-* **write** every message the device emits back out (stdout), serialised by the
+  every device it serves (``getProperties`` -> ``setup``; ``newXxxVector`` ->
+  ``@on_new``);
+* **write** every message those devices emit back out (stdout), serialised by the
   M1 codec;
-* **supervise** the device's ``@every`` periodic jobs.
+* **supervise** each device's ``@every`` periodic jobs.
+
+One runtime serves **one or more** devices, which is the shape libindi drivers
+have always had: one executable, one stdio pipe, several devices announcing
+themselves on the first ``getProperties``. There is one stream, so there is one
+parser, one outbox and one writer; the devices differ only in which of them a
+message is addressed to.
 
 Concurrency is plain :mod:`asyncio`: an outbox :class:`asyncio.Queue`, a writer
 task draining it, one task per periodic job, and the reader driving the whole
 thing until stdin reaches EOF. The class takes plain ``read``/``write`` callables
 so it can be exercised by in-memory streams in tests; :func:`run` wires it to the
 real stdin/stdout.
+
+Both ends log one line per message on the shared ``indi_nexus.wire`` logger when
+it is turned up (``INDI_NEXUS_WIRE_LOG=1``, or ``indi-nexus --wire``), which
+:func:`run` reads from the environment. Logging goes to **stderr**: stdout here
+is the INDI wire itself.
 """
 
 from __future__ import annotations
@@ -22,20 +34,24 @@ import asyncio
 import inspect
 import logging
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from indi_nexus.driver.device import Device
 from indi_nexus.driver.scheduling import PeriodicSpec, iter_periodic
+from indi_nexus.logging_config import configure_logging, log_wire
 from indi_nexus.protocol import (
     DefVector,
     GetProperties,
     IndiMessage,
+    Message,
     NewVector,
     SetVector,
     XMLStreamParser,
+    indi_now,
     to_xml,
 )
+from indi_nexus.settings import settings
 from indi_nexus.transport import ReadFn, WriteFn
 
 # A driver's stderr is relayed into indiserver's own log, so a warning logged
@@ -46,31 +62,93 @@ _READ_CHUNK = 65536
 
 
 class DriverRuntime:
-    """Serve one :class:`~indi_nexus.driver.device.Device` over a byte stream.
+    """Serve one or more :class:`~indi_nexus.driver.device.Device` over a byte stream.
+
+    **Inbound dispatch is sequential across co-located devices.** The reader
+    awaits each dispatch inline, so while one device's ``@on_new`` handler or
+    ``setup()`` is running, the *next* inbound message waits - whichever device
+    it is addressed to. That is head-of-line blocking in the reader, not lock
+    contention: a message naming device A never reaches device B's guard at all,
+    because :meth:`~indi_nexus.driver.device.Device._dispatch_get_properties`
+    and :meth:`~indi_nexus.driver.device.Device._dispatch_new` return on the
+    device-name check before entering it. Two things follow, and both are the
+    opposite of the obvious guess:
+
+    * ``off_thread`` does not help here. It moves the blocking call off the
+      loop, but the handler still awaits it, so the reader stays parked for its
+      whole duration.
+    * ``serialize_dispatch = False`` does not help either. It drops a device's
+      own guard, and the guard was never what B was waiting behind.
+
+    What is **not** affected: outbound traffic, because every device shares one
+    outbox drained by a separate writer task; and ``@every`` jobs, which are one
+    task per job taking only their own device's guard, so B keeps polling and
+    publishing throughout A's handler. That is the whole concurrency story of a
+    multi-device driver, and it matches libindi, whose one process dispatches
+    ``ISNew*`` inline for exactly the same reason.
+
+    When two devices must never delay each other's inbound writes, run them as
+    two drivers. ``indiserver`` launches both.
 
     Parameters
     ----------
-    device : Device
-        The device to serve.
+    devices : Device or Sequence of Device
+        The device, or devices, to serve on this stream.
     read : Callable
         Awaitable returning the next chunk of inbound bytes, or ``b""`` at EOF.
     write : Callable
         Awaitable that writes one serialised message to the transport.
+
+    Raises
+    ------
+    ValueError
+        Raised if ``devices`` is empty, or if two of them resolve to the same
+        INDI device name. Two devices answering to one name on one stream is not
+        resolvable by any client, and both would answer every message addressed
+        to it.
     """
 
-    def __init__(self, device: Device, read: ReadFn, write: WriteFn) -> None:
-        """Bind the device to its transport and its outbound-message callback."""
-        self._device = device
+    def __init__(self, devices: Device | Sequence[Device], read: ReadFn, write: WriteFn) -> None:
+        """Bind the devices to their shared transport and outbound-message callback."""
+        self._devices = (devices,) if isinstance(devices, Device) else tuple(devices)
+        if not self._devices:
+            raise ValueError("a DriverRuntime needs at least one device to serve")
+        names = [device.device for device in self._devices]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate device name(s) on one stream: {', '.join(duplicates)}")
         self._read = read
         self._write = write
-        # Unbounded outbox; ``None`` is the writer's shutdown sentinel. The queue
-        # is unbounded so the device's synchronous emit never blocks.
+        # Unbounded outbox, shared by every device; ``None`` is the writer's
+        # shutdown sentinel. The queue is unbounded so a device's synchronous
+        # emit never blocks.
         self._outbox: asyncio.Queue[IndiMessage | None] = asyncio.Queue()
-        device._bind(self._emit)
+        for device in self._devices:
+            device._bind(self._emit)
 
     def _emit(self, msg: IndiMessage) -> None:
-        """Queue one outbound message on the (unbounded) outbox."""
+        """Queue one outbound message on the (unbounded) shared outbox."""
         self._outbox.put_nowait(msg)
+
+    def _report(self, device: str | None, text: str) -> None:
+        """Queue an ERROR-level ``message`` on the outbox, attributed if known.
+
+        This goes straight to the outbox rather than through
+        :meth:`~indi_nexus.driver.device.Device.log_error` so the writer can
+        report a failure for a message whose owner it cannot name. The
+        ``[ERROR] `` prefix is what ``Device.message`` would have written, and
+        the panel's log format depends on it.
+
+        Parameters
+        ----------
+        device : str or None
+            The INDI device the failure belongs to, or `None` if unknown.
+        text : str
+            The error text.
+        """
+        self._outbox.put_nowait(
+            Message(device=device, timestamp=indi_now(), message=f"[ERROR] {text}")
+        )
 
     async def serve(self) -> None:
         """Run until stdin reaches EOF, or the writer fails, or this is cancelled.
@@ -88,8 +166,9 @@ class DriverRuntime:
         writer = asyncio.create_task(self._writer_loop())
         reader = asyncio.create_task(self._reader_loop())
         periodic = [
-            asyncio.create_task(self._run_periodic(spec, method))
-            for spec, method in iter_periodic(self._device)
+            asyncio.create_task(self._run_periodic(device, spec, method))
+            for device in self._devices
+            for spec, method in iter_periodic(device)
         ]
         try:
             await asyncio.wait({reader, writer}, return_when=asyncio.FIRST_COMPLETED)
@@ -111,6 +190,10 @@ class DriverRuntime:
     async def _reader_loop(self) -> None:
         """Read, frame, and dispatch inbound messages until EOF.
 
+        There is one parser for the stream, not one per device: framing is a
+        property of the stdin the hub writes to, and duplicating it would
+        multiply the stall-detection state by the device count for nothing.
+
         A driver cannot reconnect its way out of trouble - stdin is the only
         input it will ever have - so a parser that has gone mute is resynced in
         place and the stream picks up at the next well-formed element. The
@@ -130,7 +213,7 @@ class DriverRuntime:
                 logger.warning(
                     "%s: no message parsed in %d bytes of input; resyncing the parser "
                     "(%d dropped, %d resets so far on this stream)",
-                    self._device.device,
+                    ", ".join(device.device for device in self._devices),
                     parser.bytes_since_last_message,
                     parser.dropped,
                     parser.resets,
@@ -138,22 +221,32 @@ class DriverRuntime:
                 parser.resync()
 
     async def _handle(self, msg: IndiMessage) -> None:
-        """Route one inbound message to the device, isolating handler failures.
+        """Offer one inbound message to every device, isolating handler failures.
+
+        Each device applies its own device-name guard, so offering the message
+        to all of them is how one addressed to a single device reaches only that
+        one and a ``getProperties`` naming none reaches them all.
 
         A raising handler (an ``@on_new`` hitting a malformed client write, or a
         failing ``setup()``) is logged to the client and swallowed, mirroring the
         per-tick isolation of ``@every`` jobs - one bad message must never kill
-        the driver. ``asyncio.CancelledError`` is a ``BaseException``, so shutdown
+        the driver, and must not stop the message reaching the devices behind
+        the one that raised. It is reported through the device that was
+        dispatched to, so attribution needs no guessing - which matters most for
+        a failing ``setup()``, whose ``getProperties`` usually names no device
+        at all. ``asyncio.CancelledError`` is a ``BaseException``, so shutdown
         cancellation still propagates.
         """
-        try:
-            if isinstance(msg, GetProperties):
-                await self._device._dispatch_get_properties(msg)
-            elif isinstance(msg, NewVector):
-                await self._device._dispatch_new(msg.vector)
-            # def/set/message flowing the "wrong" way into a driver are ignored.
-        except Exception as exc:  # noqa: BLE001 - deliberate per-message isolation
-            self._device.log_error(f"handler for {message_name(msg)!r} failed: {exc}")
+        log_wire("<-", msg)
+        for device in self._devices:
+            try:
+                if isinstance(msg, GetProperties):
+                    await device._dispatch_get_properties(msg)
+                elif isinstance(msg, NewVector):
+                    await device._dispatch_new(msg.vector)
+                # def/set/message flowing the "wrong" way into a driver are ignored.
+            except Exception as exc:  # noqa: BLE001 - deliberate per-message isolation
+                device.log_error(f"handler for {message_name(msg)!r} failed: {exc}")
 
     async def _writer_loop(self) -> None:
         """Drain the outbox to the transport until the shutdown sentinel.
@@ -164,8 +257,11 @@ class DriverRuntime:
         * **Serialisation** is per message. A model the codec cannot render is
           one bad message - the same class of fault as a raising ``@on_new``
           handler - so it is reported to the client and dropped, and the driver
-          keeps publishing everything else. Dying here would silence a working
-          instrument over one malformed value.
+          keeps publishing everything else, for every device. Dying here would
+          silence a working instrument over one malformed value. The writer
+          holds only the message, so :func:`_owner` is what attributes the
+          report; the outbox is shared and nothing else here knows whose
+          message it was.
         * **The write** is not recoverable. stdout is the only way out, so there
           is nothing left to report the failure *on*, and the next message would
           hit the same broken pipe. It propagates, and :meth:`serve` stops the
@@ -179,29 +275,42 @@ class DriverRuntime:
             try:
                 data = to_xml(msg) + b"\n"
             except Exception as exc:  # noqa: BLE001 - deliberate per-message isolation
-                self._device.log_error(f"could not serialise {message_name(msg)!r}: {exc}")
+                self._report(_owner(msg), f"could not serialise {message_name(msg)!r}: {exc}")
                 continue
+            log_wire("->", msg, len(data))
             await self._write(data)
 
-    async def _run_periodic(self, spec: PeriodicSpec, method: Callable[[], Any]) -> None:
-        """Run one ``@every`` job forever, one tick per interval.
+    async def _run_periodic(
+        self, device: Device, spec: PeriodicSpec, method: Callable[[], Any]
+    ) -> None:
+        """Run one device's ``@every`` job forever, one tick per interval.
 
-        Waits for the device's ``setup()`` to complete first, so a tick never
-        runs against a property that has not been defined yet. Jobs declared
-        with ``when_connected=True`` skip ticks while the device is not
-        connected.
+        Waits for that device's ``setup()`` to complete first, so a tick never
+        runs against a property that has not been defined yet - each device
+        gates on its own, since a ``getProperties`` naming one device runs only
+        that one's ``setup()``. Jobs declared with ``when_connected=True`` skip
+        ticks while their device is not connected.
 
         Ticks are scheduled against a running deadline rather than by sleeping
         the interval after each one, so a job's period stays at its declared
         interval instead of drifting out by however long each tick takes: at
         ``@every(seconds=1)`` around a 300 ms hardware read, sleep-after-tick
         would run every 1.3 s.
+
+        Parameters
+        ----------
+        device : Device
+            The device owning the job.
+        spec : PeriodicSpec
+            The interval and gating declared by ``@every``.
+        method : Callable
+            The bound method to run each tick.
         """
-        await self._device._setup_complete.wait()
+        await device._setup_complete.wait()
         loop = asyncio.get_running_loop()
         deadline = loop.time()
-        if spec.start_immediately and (not spec.when_connected or self._device.connected):
-            await self._tick(method)
+        if spec.start_immediately and (not spec.when_connected or device.connected):
+            await self._tick(device, method)
         while True:
             deadline += spec.interval
             now = loop.time()
@@ -210,27 +319,61 @@ class DriverRuntime:
                 # back-to-back, which would hammer the hardware to catch up.
                 deadline = now
             await asyncio.sleep(deadline - now)
-            if spec.when_connected and not self._device.connected:
+            if spec.when_connected and not device.connected:
                 continue
-            await self._tick(method)
+            await self._tick(device, method)
 
-    async def _tick(self, method: Callable[[], Any]) -> None:
-        """Run one tick under the device guard, isolating any failure.
+    async def _tick(self, device: Device, method: Callable[[], Any]) -> None:
+        """Run one tick under its own device's guard, isolating any failure.
 
         The guard (see `~indi_nexus.driver.device.Device.serialize_dispatch`)
         keeps the tick from interleaving with a client write, so a tick that
         awaits mid-flight cannot publish pre-write state over a just-applied
-        one. A raised :class:`Exception` is logged to the client and swallowed;
+        one. It is the *owning* device's guard and nobody else's, which is what
+        keeps a co-located device's jobs running while this one is busy. A
+        raised :class:`Exception` is logged to the client and swallowed;
         :class:`asyncio.CancelledError` is a :class:`BaseException`, so shutdown
         cancellation still propagates.
+
+        Parameters
+        ----------
+        device : Device
+            The device owning the job.
+        method : Callable
+            The bound method to run.
         """
         try:
-            async with self._device._guard():
+            async with device._guard():
                 result = method()
                 if inspect.isawaitable(result):
                     await result
         except Exception as exc:  # noqa: BLE001 - deliberate per-tick isolation
-            self._device.log_error(f"periodic task {task_name(method)!r} failed: {exc}")
+            device.log_error(f"periodic task {task_name(method)!r} failed: {exc}")
+
+
+def _owner(msg: IndiMessage) -> str | None:
+    """Return the INDI device a message belongs to, or `None` if it names none.
+
+    This is a device resolver, unlike :func:`message_name`, which builds a
+    display string. The writer needs one: it holds a message and no device, and
+    with several devices on one outbox the report has to say whose message
+    failed.
+
+    Parameters
+    ----------
+    msg : IndiMessage
+        The message being attributed.
+
+    Returns
+    -------
+    device : str or None
+        The device name the message carries. `None` only for the messages whose
+        ``device`` is optional - a ``getProperties`` or a ``message`` addressed
+        to no device in particular.
+    """
+    if isinstance(msg, (DefVector, SetVector, NewVector)):
+        return msg.vector.device
+    return msg.device
 
 
 def message_name(msg: IndiMessage) -> str:
@@ -297,18 +440,43 @@ async def _open_stdio() -> tuple[ReadFn, WriteFn]:
     return read, write
 
 
-async def serve_stdio(device: Device) -> None:
-    """Serve ``device`` over real stdin/stdout (async entrypoint)."""
-    read, write = await _open_stdio()
-    await DriverRuntime(device, read, write).serve()
-
-
-def run(device: Device) -> None:
-    """Serve ``device`` over real stdin/stdout until stdin closes.
+async def serve_stdio(devices: Device | Sequence[Device]) -> None:
+    """Serve one or more devices over real stdin/stdout (async entrypoint).
 
     Parameters
     ----------
-    device : Device
-        The device to run as an ``indiserver`` stdio child.
+    devices : Device or Sequence of Device
+        The device, or devices, to serve on this process's stdio.
     """
-    asyncio.run(serve_stdio(device))
+    read, write = await _open_stdio()
+    await DriverRuntime(devices, read, write).serve()
+
+
+def run(devices: Device | Sequence[Device]) -> None:
+    """Serve one or more devices over real stdin/stdout until stdin closes.
+
+    A list runs several devices from one executable, the shape ``indiserver``
+    has always supported::
+
+        run([Camera(), GuideChip(), FilterWheel()])
+
+    **This is where a driver's logging is configured**, from
+    ``INDI_NEXUS_LOG_LEVEL`` and ``INDI_NEXUS_WIRE_LOG`` in the environment
+    ``indiserver`` was started in. That is the whole answer to "what is on the
+    wire" for a driver author with no CLI in the loop: a driver launched as
+    ``./my_driver.py`` reaches here through
+    :meth:`~indi_nexus.driver.device.Device.run` and picks the variables up.
+
+    It is done here, the process entrypoint of the two, and **not** in
+    :func:`serve_stdio`, which is a coroutine that tests and embedders await:
+    configuring inside it would have every one of them mutate global logging
+    state as a side effect of running a driver.
+
+    Parameters
+    ----------
+    devices : Device or Sequence of Device
+        The device, or devices, to run as an ``indiserver`` stdio child.
+    """
+    config = settings()
+    configure_logging(config.log_level, wire=config.wire_log)
+    asyncio.run(serve_stdio(devices))

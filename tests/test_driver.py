@@ -21,6 +21,7 @@ import pytest
 
 from indi_nexus.driver import BoundProperty, Device, DriverRuntime, every, on_new
 from indi_nexus.driver.scheduling import iter_periodic
+from indi_nexus.logging_config import WIRE_LOGGER
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -1336,7 +1337,7 @@ def test_a_tick_in_flight_cannot_overwrite_a_client_write() -> None:
         dev._bind(captured.append)  # after the runtime, which binds its own outbox
         await dev.setup()
 
-        tick = asyncio.create_task(runtime._tick(dev.poll))
+        tick = asyncio.create_task(runtime._tick(dev, dev.poll))
         await dev.in_tick.wait()
 
         # The client presses while the tick is parked on its await. Without the
@@ -1788,3 +1789,404 @@ def test_a_superseded_handle_retracts_nothing_at_all() -> None:
         assert dev.number("num")["v"].value == 3.0
 
     asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Several devices on one stream                                                #
+# --------------------------------------------------------------------------- #
+class _Head(Device):
+    """One device of a multi-device driver, recording everything it was asked.
+
+    Parameters
+    ----------
+    name : str
+        The INDI device name this instance answers to.
+    fail : bool, optional
+        Whether ``setup`` and the ``@on_new`` handler raise, to exercise the
+        runtime's per-device error isolation.
+    """
+
+    def __init__(self, name: str, *, fail: bool = False) -> None:
+        """Initialise with zeroed counters and no recorded writes."""
+        super().__init__(name)
+        self.fail = fail
+        self.setup_calls = 0
+        self.ticks = 0
+        self.writes: list[float] = []
+
+    async def setup(self) -> None:
+        """Define this head's one property, raising first when asked to fail."""
+        self.setup_calls += 1
+        if self.fail:
+            raise RuntimeError("no hardware")
+        self.define_number("count", [Number(name="v", value=0.0)])
+
+    @every(seconds=0.001, start_immediately=True)
+    async def poll(self) -> None:
+        """Count one tick; the gate opens only after this head's own setup."""
+        self.ticks += 1
+
+    @on_new("count")
+    async def _write(self, vector: NumberVector) -> None:
+        """Record a client write, raising first when asked to fail."""
+        if self.fail:
+            raise RuntimeError("write refused")
+        self.writes.append(vector.get("v", 0.0))
+
+
+def _new_count(device: str, value: float) -> str:
+    """Return a client ``newNumberVector`` for one head's ``count`` property.
+
+    Parameters
+    ----------
+    device : str
+        The device the write is addressed to.
+    value : float
+        The value written to element ``v``.
+
+    Returns
+    -------
+    xml : str
+        The serialised client write.
+    """
+    return (
+        f"<newNumberVector device='{device}' name='count'>"
+        f"<oneNumber name='v'>{value}</oneNumber></newNumberVector>"
+    )
+
+
+def test_a_runtime_needs_at_least_one_device() -> None:
+    """An empty sequence is refused at construction rather than serving nothing."""
+    with pytest.raises(ValueError, match="at least one device"):
+        DriverRuntime([], _Harness().read, _Harness().write)
+
+
+def test_two_devices_answering_to_one_name_are_refused() -> None:
+    """Duplicate device names on one stream are unresolvable, so they raise.
+
+    No client could route a write between them, and both device-name guards
+    would answer every message addressed to the shared name.
+    """
+    harness = _Harness()
+    with pytest.raises(ValueError, match="duplicate device name"):
+        DriverRuntime([_Head("Twin"), _Head("Twin")], harness.read, harness.write)
+
+
+def test_get_properties_reaches_every_device_or_only_the_named_one() -> None:
+    """An unaddressed getProperties sets up both heads; an addressed one, only its own."""
+
+    async def scenario() -> None:
+        """Broadcast a getProperties, then address one head alone."""
+        harness = _Harness()
+        main, guide = _Head("Main"), _Head("Guide")
+        harness.feed("<getProperties version='1.7'/>")
+        harness.eof()
+        await DriverRuntime([main, guide], harness.read, harness.write).serve()
+
+        assert (main.setup_calls, guide.setup_calls) == (1, 1)
+        assert {d.vector.device for d in harness.messages() if isinstance(d, DefVector)} == {
+            "Main",
+            "Guide",
+        }
+
+        harness = _Harness()
+        main, guide = _Head("Main"), _Head("Guide")
+        harness.feed("<getProperties device='Main'/>")
+        harness.eof()
+        await DriverRuntime([main, guide], harness.read, harness.write).serve()
+
+        assert (main.setup_calls, guide.setup_calls) == (1, 0)
+        assert {d.vector.device for d in harness.messages() if isinstance(d, DefVector)} == {"Main"}
+
+    asyncio.run(scenario())
+
+
+def test_a_write_reaches_only_the_device_it_names() -> None:
+    """Each device's own name guard is what routes a client write on a shared stream."""
+
+    async def scenario() -> None:
+        """Write to one head and check the other never heard it."""
+        harness = _Harness()
+        main, guide = _Head("Main"), _Head("Guide")
+        harness.feed("<getProperties/>")
+        harness.feed(_new_count("Guide", 7.0))
+        harness.eof()
+        await DriverRuntime([main, guide], harness.read, harness.write).serve()
+
+        assert guide.writes == [7.0]
+        assert main.writes == []
+
+    asyncio.run(scenario())
+
+
+def test_every_device_gets_its_own_periodic_jobs() -> None:
+    """``@every`` discovery is per device, so both heads poll on one runtime."""
+
+    async def scenario() -> None:
+        """Serve both heads briefly and check each one ticked."""
+        harness = _Harness()
+        main, guide = _Head("Main"), _Head("Guide")
+        harness.feed("<getProperties/>")
+        serve = asyncio.create_task(
+            DriverRuntime([main, guide], harness.read, harness.write).serve()
+        )
+        await asyncio.sleep(0.05)
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        assert main.ticks >= 2
+        assert guide.ticks >= 2
+
+    asyncio.run(scenario())
+
+
+def test_a_failing_setup_on_one_device_leaves_the_others_alone() -> None:
+    """One head's raising setup is reported against it and the rest still define.
+
+    The reader offers the message to every device in turn, so the isolation has
+    to be per device and not per message: a broadcast getProperties that killed
+    the loop at the first failure would leave every device behind it silent.
+    """
+
+    async def scenario() -> None:
+        """Broadcast a getProperties past a head whose setup raises."""
+        harness = _Harness()
+        broken, guide = _Head("Broken", fail=True), _Head("Guide")
+        harness.feed("<getProperties/>")
+        harness.eof()
+        await DriverRuntime([broken, guide], harness.read, harness.write).serve()
+
+        msgs = harness.messages()
+        assert [d.vector.device for d in msgs if isinstance(d, DefVector)] == ["Guide"]
+        (error,) = [m for m in msgs if isinstance(m, Message)]
+        assert error.device == "Broken"  # attributed to the device dispatched to
+        assert str(error.message).startswith("[ERROR] ")
+        assert "no hardware" in str(error.message)
+
+    asyncio.run(scenario())
+
+
+def test_a_raising_handler_is_attributed_to_its_own_device() -> None:
+    """A failing write on one head neither stops nor is blamed on the other."""
+
+    async def scenario() -> None:
+        """Write to the failing head, then to the healthy one."""
+        harness = _Harness()
+        broken, guide = _Head("Broken", fail=True), _Head("Guide")
+        harness.feed("<getProperties device='Guide'/>")
+        harness.feed(_new_count("Broken", 1.0))
+        harness.feed(_new_count("Guide", 2.0))
+        harness.eof()
+        await DriverRuntime([broken, guide], harness.read, harness.write).serve()
+
+        (error,) = [m for m in harness.messages() if isinstance(m, Message)]
+        assert error.device == "Broken"
+        assert str(error.message).startswith("[ERROR] ")
+        assert "Broken.count" in str(error.message)
+        assert guide.writes == [2.0]  # the driver kept serving the other head
+
+    asyncio.run(scenario())
+
+
+def test_an_unserialisable_message_is_blamed_on_the_device_that_sent_it() -> None:
+    """The writer holds no device, so the message's own device is what it reports.
+
+    With one outbox behind several devices, an unattributed report would send an
+    operator looking at the wrong instrument.
+    """
+
+    class _BadBlob(Device):
+        """A device whose BLOB payload is set past the handle's coercion."""
+
+        async def setup(self) -> None:
+            """Define the BLOB the test then corrupts."""
+            self.define_blob("img", [BLOB(name="frame")])
+
+    async def scenario() -> None:
+        """Emit an unserialisable message from one device, a good one from the other."""
+        harness = _Harness()
+        camera, guide = _BadBlob("Camera"), _Head("Guide")
+        harness.feed("<getProperties/>")
+        serve = asyncio.create_task(
+            DriverRuntime([camera, guide], harness.read, harness.write).serve()
+        )
+        await asyncio.sleep(0.05)
+
+        # Reaching past the handle: base64 encoding a str raises inside to_xml,
+        # in the writer task, with only the message to go on.
+        camera.blob("img").vector.elements[0].data = "not bytes"  # type: ignore[assignment]
+        camera["img"].set(state=IPState.BUSY)
+        guide["count"].set(v=5.0)
+        await asyncio.sleep(0.05)
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+        msgs = harness.messages()
+        (error,) = [m for m in msgs if isinstance(m, Message)]
+        assert error.device == "Camera"
+        assert str(error.message).startswith("[ERROR] could not serialise 'Camera.img'")
+        # The other device's emission still went out: the writer dropped one message.
+        assert [(m.vector.device, m.vector.name) for m in msgs if isinstance(m, SetVector)] == [
+            ("Guide", "count")
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_a_slow_handler_on_one_device_does_not_stop_the_others_ticking() -> None:
+    """The concurrency boundary of a multi-device driver, pinned in both directions.
+
+    Inbound dispatch is sequential - the reader awaits each handler inline - so a
+    slow handler does delay the *next* inbound message for every device. What it
+    must not delay is the other devices' ``@every`` jobs: those are one task per
+    job taking only their own device's guard, and they are what keeps a
+    co-located instrument publishing while its neighbour is busy.
+    """
+
+    class _Slow(Device):
+        """A device whose handler parks until the test releases it."""
+
+        def __init__(self, name: str) -> None:
+            """Initialise with the two events the test drives it by."""
+            super().__init__(name)
+            self.in_handler = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def setup(self) -> None:
+            """Define the property the client writes to."""
+            self.define_number("count", [Number(name="v", value=0.0)])
+
+        @on_new("count")
+        async def _write(self, vector: NumberVector) -> None:
+            """Announce arrival and park, holding this device's guard."""
+            self.in_handler.set()
+            await self.release.wait()
+
+    async def scenario() -> None:
+        """Park a write on one device and watch the other keep polling."""
+        harness = _Harness()
+        slow, guide = _Slow("Slow"), _Head("Guide")
+        harness.feed("<getProperties/>")
+        harness.feed(_new_count("Slow", 1.0))
+        serve = asyncio.create_task(
+            DriverRuntime([slow, guide], harness.read, harness.write).serve()
+        )
+        async with asyncio.timeout(5):
+            await slow.in_handler.wait()
+
+        ticks = guide.ticks
+        await asyncio.sleep(0.05)
+        assert guide.ticks > ticks  # the neighbour polled right through it
+
+        slow.release.set()
+        harness.eof()
+        async with asyncio.timeout(5):
+            await serve
+
+    asyncio.run(scenario())
+
+
+def test_the_stall_warning_names_every_device_on_the_stream(monkeypatch, caplog) -> None:
+    """One stream, one parser, so the warning has to name everything it carries.
+
+    An operator reading ``indiserver``'s log needs to know which driver process
+    went quiet, and with several devices in one process naming only the first
+    would point at an instrument that may be perfectly healthy.
+    """
+    monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
+
+    async def scenario() -> None:
+        """Mute the parser with a root close landing mid-start-tag."""
+        harness = _Harness()
+        harness.feed("<newSwitchVector device='Main' name='count'")
+        harness.feed("</indinexus>")
+        for _ in range(4):
+            harness.feed("<message message='swallowed'/>")
+        harness.eof()
+        async with asyncio.timeout(5):
+            await DriverRuntime(
+                [_Head("Main"), _Head("Guide")], harness.read, harness.write
+            ).serve()
+
+    with caplog.at_level(logging.WARNING, logger="indi_nexus.driver.runtime"):
+        asyncio.run(scenario())
+
+    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.driver.runtime"]
+    assert warning.startswith("Main, Guide: ")
+
+
+# --------------------------------------------------------------------------- #
+# Wire logging                                                                 #
+# --------------------------------------------------------------------------- #
+class _Blobber(Device):
+    """A device that publishes one BLOB, so the log has a payload to not print."""
+
+    name = "Cam"
+
+    async def setup(self) -> None:
+        """Define and immediately publish a BLOB big enough to notice."""
+        prop = self.define_blob("CCD1", [BLOB(name="image")])
+        payload = b"\x00\xff" * 512
+        prop.set(image=payload)
+
+
+def test_wire_logging_reports_both_directions(caplog):
+    """One line per message, on one logger, whichever end of the driver saw it.
+
+    An operator wants a single switch for "show me the wire", not to learn that
+    the reader and the writer are different modules - which is why this is not on
+    ``indi_nexus.driver.runtime``'s own logger.
+    """
+
+    async def scenario() -> None:
+        """Drive a getProperties and a client write through the runtime."""
+        harness = _Harness()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.feed(_new_count("Main", 3.0))
+        harness.eof()
+        await DriverRuntime(_Head("Main"), harness.read, harness.write).serve()
+
+    with caplog.at_level(logging.DEBUG, logger=WIRE_LOGGER):
+        asyncio.run(scenario())
+
+    lines = [r.getMessage() for r in caplog.records if r.name == WIRE_LOGGER]
+    assert "<- getProperties" in lines
+    assert "<- new Main.count" in lines
+    assert any(line.startswith("-> def Main.count (") for line in lines)
+
+
+def test_a_blob_is_logged_by_size_and_never_by_payload(caplog):
+    """One BLOB frame is megabytes; logging it would make the log the bottleneck."""
+
+    async def scenario() -> None:
+        """Define and publish a BLOB, then let the driver shut down."""
+        harness = _Harness()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.eof()
+        await DriverRuntime(_Blobber(), harness.read, harness.write).serve()
+
+    with caplog.at_level(logging.DEBUG, logger=WIRE_LOGGER):
+        asyncio.run(scenario())
+
+    lines = [r.getMessage() for r in caplog.records if r.name == WIRE_LOGGER]
+    (published,) = [line for line in lines if line.startswith("-> set Cam.CCD1")]
+    assert "[1024 byte payload]" in published
+    assert "\\x00" not in published and "AP8A" not in published
+
+
+def test_nothing_is_logged_on_the_wire_below_debug(caplog):
+    """The ``isEnabledFor`` guard: a normal run pays one flag check per message."""
+
+    async def scenario() -> None:
+        """Run a driver through a full getProperties round trip."""
+        harness = _Harness()
+        harness.feed("<getProperties version='1.7'/>")
+        harness.eof()
+        await DriverRuntime(_Head("Main"), harness.read, harness.write).serve()
+
+    with caplog.at_level(logging.INFO, logger=WIRE_LOGGER):
+        asyncio.run(scenario())
+
+    assert [r for r in caplog.records if r.name == WIRE_LOGGER] == []

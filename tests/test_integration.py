@@ -13,6 +13,7 @@ import asyncio
 import json
 
 from examples.demo_device import Demo
+from examples.guided_camera import CameraLink, GuideChip, MainChip
 from indi_nexus.client import IndiClient
 from indi_nexus.driver import DriverRuntime
 from indi_nexus.protocol import IPState, ISState
@@ -176,6 +177,51 @@ def test_bridge_relays_driver_to_a_browser_sink():
         finally:
             await sub.aclose()
             await bridge.aclose()
+            to_driver.eof()
+            await asyncio.wait_for(driver_task, timeout=2)
+
+    asyncio.run(scenario())
+
+
+def test_one_runtime_serves_two_devices_to_one_client():
+    """Two devices on one stdio pipe reach a client as two devices, as libindi's do."""
+
+    async def scenario() -> None:
+        to_client = _Pipe()  # driver -> client
+        to_driver = _Pipe()  # client -> driver
+
+        link = CameraLink()
+        runtime = DriverRuntime([MainChip(link), GuideChip(link)], to_driver.read, to_client.write)
+        driver_task = asyncio.create_task(runtime.serve())
+
+        async def connect() -> tuple[object, object, object]:
+            """Wire the client's read/write onto the two pipes."""
+
+            async def close() -> None:
+                """Nothing to release for the in-memory pipes."""
+
+            return to_client.read, to_driver.write, close
+
+        client = IndiClient(connect=connect)
+        try:
+            async with client:
+                # One getProperties, sent on connect, names no device: both answer.
+                await client.wait_for("Camera", "CCD_EXPOSURE", timeout=2)
+                await client.wait_for("Camera Guider", "GUIDE_STAR", timeout=2)
+                assert {"Camera", "Camera Guider"} <= set(client.store.devices())
+
+                # A write routes to the device it names and nowhere else.
+                await client.set_switch("Camera", "CONNECTION", {"CONNECT": True})
+                await client.wait_for(
+                    "Camera",
+                    "CONNECTION",
+                    lambda v: v.element("CONNECT").value == ISState.ON and v.state == IPState.OK,
+                    timeout=2,
+                )
+                guider = client.get("Camera Guider", "CONNECTION")
+                assert guider is not None
+                assert guider.element("CONNECT").value == ISState.OFF
+        finally:
             to_driver.eof()
             await asyncio.wait_for(driver_task, timeout=2)
 
