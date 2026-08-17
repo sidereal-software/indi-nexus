@@ -13,6 +13,12 @@ transport is injectable (a ``connect`` coroutine returning ``read``/``write``/
 opens a real TCP connection via :func:`indi_nexus.transport.open_tcp`. The
 ``close`` callable is invoked whenever a connection ends - EOF, error, or
 :meth:`IndiClient.aclose` - so the OS socket never lingers between reconnects.
+
+Sending is deliberately *not* buffered across connections: a send with no live
+connection raises :class:`~indi_nexus.exceptions.NotConnectedError` and the
+outbox is emptied whenever a connection ends, so nothing a caller issued while
+``indiserver`` was away can be delivered to an instrument minutes later. See
+:meth:`IndiClient.send`.
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from indi_nexus.client.store import PropertyEvent, PropertyStore, Subscriber
+from indi_nexus.exceptions import NotConnectedError, SendQueueFull
 from indi_nexus.protocol import (
     BLOB,
     BLOBPolicy,
@@ -32,7 +39,6 @@ from indi_nexus.protocol import (
     EnableBLOB,
     GetProperties,
     IndiMessage,
-    ISState,
     Message,
     NewVector,
     Number,
@@ -43,36 +49,26 @@ from indi_nexus.protocol import (
     TextVector,
     Vector,
     XMLStreamParser,
+    coerce_switch,
     to_xml,
 )
 from indi_nexus.transport import CloseFn, ReadFn, WriteFn, open_tcp
 
 logger = logging.getLogger(__name__)
 
+#: How many messages may sit in the outbox waiting for the writer. The queue
+#: only ever holds traffic for the connection that is up right now (see
+#: :meth:`IndiClient.send`), so this is not a buffer for a down server; it is a
+#: guard against a socket that has stopped draining. A client that outruns its
+#: writer by this much is not going to catch up, and for instrument control a
+#: command that arrives late is worse than one that fails, so the overflow
+#: raises :class:`~indi_nexus.exceptions.SendQueueFull` instead of blocking.
+_OUTBOX_MAXSIZE = 256
+
 Connect = Callable[[], Awaitable[tuple[ReadFn, WriteFn, CloseFn]]]
 MessageCallback = Callable[[Message], object]
 ConnectionCallback = Callable[[bool], object]
 Predicate = Callable[[Vector], bool]
-
-
-def _coerce_switch(value: Any) -> ISState:
-    """Coerce a switch value (``ISState``/``bool``/``"On"``/``"Off"``) to ISState.
-
-    Parameters
-    ----------
-    value : ISState or bool or str
-        The value to coerce.
-
-    Returns
-    -------
-    state : ISState
-        The corresponding switch state.
-    """
-    if isinstance(value, ISState):
-        return value
-    if isinstance(value, bool):
-        return ISState.ON if value else ISState.OFF
-    return ISState(value)
 
 
 class IndiClient:
@@ -110,10 +106,13 @@ class IndiClient:
         self._connect = connect or self._default_connect
 
         self._store = PropertyStore()
-        self._outbox: asyncio.Queue[IndiMessage] = asyncio.Queue()
+        self._outbox: asyncio.Queue[IndiMessage] = asyncio.Queue(maxsize=_OUTBOX_MAXSIZE)
         self._message_subs: dict[int, MessageCallback] = {}
         self._conn_subs: dict[int, ConnectionCallback] = {}
         self._sub_ids = 0
+        # Every future wait_for() is parked on, and what it is waiting for, so
+        # aclose() can tell them the answer is never coming.
+        self._waiters: dict[asyncio.Future[Vector], str] = {}
 
         # Replayed on every (re)connect so the server re-sends what we care about.
         self._blob_policies: dict[tuple[str, str | None], EnableBLOB] = {}
@@ -145,12 +144,27 @@ class IndiClient:
             await self._ready.wait()
 
     async def aclose(self) -> None:
-        """Stop the connection loop and drop the connection."""
+        """Stop the connection loop, drop the connection, and fail the waiters.
+
+        Every :meth:`wait_for` still parked on its future is resolved with
+        :class:`~indi_nexus.exceptions.NotConnectedError`, because nothing will
+        ever read the socket again: without that, a wait with no timeout hangs
+        for good and a wait with one sits out its full timeout to learn what the
+        client already knows.
+        """
         self._closing = True
         if self._loop_task is not None:
             self._loop_task.cancel()
             await asyncio.gather(self._loop_task, return_exceptions=True)
             self._loop_task = None
+        self._fail_waiters()
+
+    def _fail_waiters(self) -> None:
+        """Resolve every pending :meth:`wait_for` future with a closed error."""
+        for future, label in self._waiters.items():
+            if not future.done():
+                future.set_exception(NotConnectedError(f"client closed while waiting for {label}"))
+        self._waiters.clear()
 
     async def __aenter__(self) -> IndiClient:
         """Start the client and return it once initially connected."""
@@ -193,6 +207,13 @@ class IndiClient:
                     pass
                 finally:
                     self._connected = False
+                    # Whatever is still queued was addressed to the connection
+                    # that just died. Delivering it on the next one is the
+                    # failure this whole guard exists to prevent - a slew or an
+                    # exposure landing on hardware whose state has moved on - so
+                    # it is dropped here, and send() refuses to add more until a
+                    # connection is up again.
+                    self._drain_outbox()
                     # Always release the socket - on EOF, error, or cancellation
                     # via aclose() - so the peer sees FIN, not a half-open socket.
                     with contextlib.suppress(OSError):
@@ -208,10 +229,27 @@ class IndiClient:
             raise
 
     def _enqueue_handshake(self) -> None:
-        """Queue the messages sent on every (re)connect: enumerate + BLOB policies."""
+        """Queue the messages sent on every (re)connect: enumerate + BLOB policies.
+
+        These go straight to the outbox rather than through :meth:`send`. They
+        are per-*connection* state, not a user's command: they describe what
+        this client wants the connection it has just opened to look like. The
+        outbox was emptied when the previous connection ended and this is one
+        message plus one per recorded BLOB policy - a policy per device on the
+        hub, an order of magnitude under :data:`_OUTBOX_MAXSIZE` - so there is
+        room for it.
+        """
         self._outbox.put_nowait(GetProperties())
         for policy in self._blob_policies.values():
             self._outbox.put_nowait(policy)
+
+    def _drain_outbox(self) -> None:
+        """Discard everything queued for a connection that has ended."""
+        while True:
+            try:
+                self._outbox.get_nowait()
+            except asyncio.QueueEmpty:
+                return
 
     async def _run_connection(self, read: ReadFn, write: WriteFn) -> None:
         """Run the reader and writer for one connection until it ends.
@@ -447,6 +485,15 @@ class IndiClient:
 
         Resolves immediately if the cached property already matches.
 
+        What comes back is a **snapshot**, detached from the cache: the vector
+        as it was at the instant the predicate held. The cached vector is
+        mutated in place by every later ``set``, and a whole TCP chunk's worth
+        of messages is folded in before the reader yields, so a property that
+        goes ``Busy``, ``Ok``, ``Busy`` inside one chunk would satisfy a
+        ``state == OK`` wait and then read back ``Busy`` to the coroutine that
+        was waiting on it. Read the live vector through :meth:`get` when that is
+        what you want.
+
         Parameters
         ----------
         device : str
@@ -462,27 +509,33 @@ class IndiClient:
         Returns
         -------
         vector : Vector
-            The matching vector.
+            A detached copy of the matching vector, as it was when it matched.
 
         Raises
         ------
         TimeoutError
             Raised if the timeout elapses first.
+        NotConnectedError
+            Raised if :meth:`aclose` is called while the wait is still parked.
         """
         current = self._store.get(device, name)
         if current is not None and (predicate is None or predicate(current)):
-            return current
+            return current.detached()
 
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Vector] = loop.create_future()
 
         def on_event(event: PropertyEvent) -> None:
-            """Resolve the future when a matching vector arrives."""
+            """Resolve the future with a copy of the vector that matched."""
             vec = event.vector
             if vec is not None and not future.done() and (predicate is None or predicate(vec)):
-                future.set_result(vec)
+                # Copy here, not at the await: the predicate was true of this
+                # object one line ago and may not be by the time the waiting
+                # coroutine is scheduled.
+                future.set_result(vec.detached())
 
         unsubscribe = self._store.subscribe(on_event, device=device, name=name)
+        self._waiters[future] = f"{device}.{name}"
         try:
             if timeout is not None:
                 async with asyncio.timeout(timeout):
@@ -490,22 +543,50 @@ class IndiClient:
             return await future
         finally:
             unsubscribe()
+            self._waiters.pop(future, None)
 
     # -- sends ------------------------------------------------------------- #
     async def send(self, msg: IndiMessage) -> None:
-        """Queue an arbitrary message to send upstream.
+        """Hand one message to the live connection's writer.
 
         The typed helpers (:meth:`set_number`, :meth:`get_properties`, ...) cover
         the common cases; this forwards any already-built message - used by the
         web bridge to relay a browser-authored ``new*``/``getProperties``/
         ``enableBLOB`` frame verbatim.
 
+        **A send with no connection fails; it is never held.** This is
+        instrument control: a command queued while ``indiserver`` is down would
+        be delivered whenever the hub came back, minutes or hours later, to
+        hardware whose state has nothing to do with the one the caller was
+        reasoning about. Every send routes through here, so every one of them
+        either reaches a live connection or raises. Callers that want to wait
+        for the link instead can watch :meth:`on_connection`.
+
         Parameters
         ----------
         msg : IndiMessage
             The message to send.
+
+        Raises
+        ------
+        NotConnectedError
+            Raised if there is no live connection to ``indiserver``. Also a
+            ConnectionError.
+        SendQueueFull
+            Raised if the outbox is full because the connection has stopped
+            draining it. Also a RuntimeError.
         """
-        self._outbox.put_nowait(msg)
+        if not self._connected:
+            raise NotConnectedError(
+                f"not connected to {self._host}:{self._port}; {type(msg).__name__} was not sent"
+            )
+        try:
+            self._outbox.put_nowait(msg)
+        except asyncio.QueueFull:
+            raise SendQueueFull(
+                f"outbox to {self._host}:{self._port} is full "
+                f"({_OUTBOX_MAXSIZE} messages); {type(msg).__name__} was not sent"
+            ) from None
 
     async def get_properties(self, device: str | None = None, name: str | None = None) -> None:
         """Ask the server to (re-)send property definitions.
@@ -526,6 +607,16 @@ class IndiClient:
 
         The request is remembered and replayed on every reconnect.
 
+        **The policy is recorded even when the send fails.** Unlike every other
+        send here, this is not a command to an instrument: it is a standing
+        subscription preference, idempotent, and already part of what the
+        client replays onto each new connection. Recording it while
+        disconnected is therefore the same statement as recording it while
+        connected - "BLOBs from this device, please" - and the next connection
+        honours it. The raise still happens, because nothing went out now, so a
+        caller that wants to know the request reached the server can act on it;
+        a caller that just wants BLOBs when the hub returns can ignore it.
+
         Parameters
         ----------
         device : str
@@ -535,6 +626,12 @@ class IndiClient:
         policy : BLOBPolicy, optional
             Whether BLOBs are never sent, sent alongside other updates, or sent
             exclusively.
+
+        Raises
+        ------
+        NotConnectedError
+            Raised if there is no live connection; the policy is remembered
+            regardless.
         """
         msg = EnableBLOB(device=device, name=name, policy=policy)
         self._blob_policies[(device, name)] = msg
@@ -585,7 +682,7 @@ class IndiClient:
             Mapping of element name to state (``ISState``, ``bool``, or ``"On"`` /
             ``"Off"``).
         """
-        elements = [Switch(name=k, value=_coerce_switch(v)) for k, v in values.items()]
+        elements = [Switch(name=k, value=coerce_switch(v)) for k, v in values.items()]
         vector = SwitchVector(device=device, name=name, elements=elements)
         await self.send(NewVector(vector=vector))
 

@@ -261,6 +261,14 @@ class PropertyStore:
     def matching(self, event: PropertyEvent) -> list[Subscriber]:
         """Return the callbacks subscribed to a given event.
 
+        A whole-device ``del`` reaches **every** subscriber for that device,
+        including the name-filtered ones. Its event carries no name because the
+        deletion names no property - it takes all of them - so matching the
+        filter against it literally would silence exactly the subscribers with
+        the most to lose: ``subscribe(cb, device="CCD", name="EXPOSURE")`` heard
+        nothing when the CCD's driver died and ``indiserver`` withdrew the
+        device, which is the one event that watcher must not miss.
+
         Parameters
         ----------
         event : PropertyEvent
@@ -275,7 +283,7 @@ class PropertyStore:
         for callback, device, name in self._subs.values():
             if device is not None and device != event.device:
                 continue
-            if name is not None and name != event.name:
+            if name is not None and event.name is not None and name != event.name:
                 continue
             out.append(callback)
         return out

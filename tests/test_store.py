@@ -302,6 +302,21 @@ def test_subscribe_matches_by_device_and_name():
     assert len(store.matching(event)) == 2  # exact + wildcard, not the Mount one
 
 
+def test_whole_device_delete_reaches_name_filtered_subscribers():
+    """An unnamed delProperty is news for a subscriber watching one property.
+
+    The event carries no name because the deletion takes every property with
+    it, so a filter matched literally would hide the CCD's driver dying from
+    exactly the code watching the CCD's exposure.
+    """
+    store = PropertyStore()
+    store.subscribe(lambda e: None, device="CCD", name="EXPOSURE")
+    store.subscribe(lambda e: None, device="Mount", name="EQUATORIAL_EOD_COORD")
+
+    event = PropertyEvent("del", "CCD", None, None)
+    assert len(store.matching(event)) == 1
+
+
 def test_unsubscribe_stops_delivery():
     """The unsubscribe handle removes the subscription."""
     store = PropertyStore()

@@ -13,9 +13,11 @@ import logging
 
 import indi_nexus.client.client as client_module
 from indi_nexus.client import IndiClient
+from indi_nexus.exceptions import NotConnectedError, SendQueueFull
 from indi_nexus.protocol import (
     BLOBVector,
     DefVector,
+    DelProperty,
     EnableBLOB,
     GetProperties,
     IPState,
@@ -658,5 +660,186 @@ def test_reconnects_after_connection_drop():
         assert True in transitions  # followed by a reconnect
         get_props = [m for m in server.sent() if isinstance(m, GetProperties)]
         assert len(get_props) >= 2  # initial + after reconnect
+
+    asyncio.run(scenario())
+
+
+def test_send_while_disconnected_raises_and_is_not_replayed_later():
+    """A command issued with the hub down fails; it does not sit in a queue.
+
+    The failure this guards: ``indiserver`` is away, ``set_number`` returns
+    happily, and the exposure is delivered whenever the hub comes back - to an
+    instrument whose state has nothing to do with the one the caller meant.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        gate = asyncio.Event()
+        real_connect = server.connect()
+
+        async def gated_connect() -> tuple[object, object, object]:
+            """Refuse to connect until the gate opens, then behave normally."""
+            if not gate.is_set():
+                raise OSError("indiserver is down")
+            return await real_connect()
+
+        client = IndiClient(connect=gated_connect, reconnect_delay=0.01)
+        await client.start(wait=False)
+        await _settle()
+        assert not client.connected
+
+        try:
+            await client.set_number("CCD", "EXPOSURE", {"secs": 1.0})
+            raise AssertionError("expected NotConnectedError")
+        except NotConnectedError:
+            pass
+
+        gate.set()
+        async with asyncio.timeout(2):
+            await client.start()  # returns once the connection is up
+        await _settle()
+        await client.aclose()
+
+        assert any(isinstance(m, GetProperties) for m in server.sent())
+        assert not [m for m in server.sent() if isinstance(m, NewVector)]
+
+    asyncio.run(scenario())
+
+
+def test_enable_blob_while_disconnected_is_still_replayed_on_connect():
+    """A BLOB policy is a standing preference: recorded even when the send fails."""
+
+    async def scenario() -> None:
+        server = _Server()
+        gate = asyncio.Event()
+        real_connect = server.connect()
+
+        async def gated_connect() -> tuple[object, object, object]:
+            """Refuse to connect until the gate opens, then behave normally."""
+            if not gate.is_set():
+                raise OSError("indiserver is down")
+            return await real_connect()
+
+        client = IndiClient(connect=gated_connect, reconnect_delay=0.01)
+        await client.start(wait=False)
+        await _settle()
+
+        try:
+            await client.enable_blob("CCD")
+            raise AssertionError("expected NotConnectedError")
+        except NotConnectedError:
+            pass
+
+        gate.set()
+        async with asyncio.timeout(2):
+            await client.start()
+        await _settle()
+        await client.aclose()
+
+        assert [m for m in server.sent() if isinstance(m, EnableBLOB)]
+
+    asyncio.run(scenario())
+
+
+def test_aclose_fails_a_parked_wait_for():
+    """Closing the client resolves waiters instead of leaving them hanging."""
+
+    async def scenario() -> None:
+        server = _Server()
+        client = IndiClient(connect=server.connect())
+        await client.start()
+        waiting = asyncio.create_task(client.wait_for("CCD", "EXPOSURE"))
+        await _settle()
+        assert not waiting.done()
+
+        await client.aclose()
+        try:
+            async with asyncio.timeout(1):
+                await waiting
+            raise AssertionError("expected NotConnectedError")
+        except NotConnectedError:
+            pass
+
+    asyncio.run(scenario())
+
+
+def test_wait_for_returns_a_snapshot_taken_when_the_predicate_held():
+    """Two sets in one chunk cannot rewrite the vector a wait_for handed back.
+
+    Every message in a read() chunk is folded in before the reader yields, so
+    the Ok that satisfies the wait and the Busy that follows it both land
+    before the waiting coroutine runs. The vector it receives has to be the one
+    the predicate saw.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect()) as client:
+            server.feed(DefVector(vector=_numvec(1.0, IPState.BUSY)))
+            await _settle()
+
+            waiting = asyncio.create_task(
+                client.wait_for("CCD", "EXPOSURE", lambda v: v.state == IPState.OK)
+            )
+            await _settle()
+
+            server.feed(
+                to_xml(SetVector(vector=_numvec(2.0, IPState.OK)))
+                + to_xml(SetVector(vector=_numvec(3.0, IPState.BUSY)))
+            )
+            async with asyncio.timeout(1):
+                vec = await waiting
+
+        assert vec.state == IPState.OK
+        assert vec.element("secs").value == 2.0
+        live = client.get("CCD", "EXPOSURE")
+        assert live is not None
+        assert live.state == IPState.BUSY  # the cache moved on; the snapshot did not
+
+    asyncio.run(scenario())
+
+
+def test_whole_device_delete_reaches_a_name_filtered_subscriber():
+    """A driver crash withdrawing the whole device notifies property watchers."""
+
+    async def scenario() -> None:
+        server = _Server()
+        seen: list[str | None] = []
+        async with IndiClient(connect=server.connect()) as client:
+            client.subscribe(lambda e: seen.append(e.name), device="CCD", name="EXPOSURE")
+            server.feed(DefVector(vector=_numvec(1.0)))
+            server.feed(DelProperty(device="CCD"))
+            await _settle()
+        assert seen == ["EXPOSURE", None]
+
+    asyncio.run(scenario())
+
+
+def test_outbox_overflow_raises_rather_than_blocking():
+    """A writer that has stopped draining fails sends instead of absorbing them."""
+
+    async def scenario() -> None:
+        server = _Server()
+        stuck = asyncio.Event()
+
+        async def stuck_write(data: bytes) -> None:
+            """Accept one message and then never return."""
+            await stuck.wait()
+
+        async def connect() -> tuple[object, object, object]:
+            """Connect with a writer that has wedged."""
+            return server.read, stuck_write, server.close
+
+        client = IndiClient(connect=connect)
+        await client.start()
+        try:
+            for _ in range(client_module._OUTBOX_MAXSIZE + 5):
+                await client.get_properties()
+            raise AssertionError("expected SendQueueFull")
+        except SendQueueFull:
+            pass
+        finally:
+            stuck.set()
+            await client.aclose()
 
     asyncio.run(scenario())
