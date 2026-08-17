@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import json
 import logging
@@ -11,6 +12,7 @@ import time
 import pytest
 from lxml import etree
 
+from indi_nexus.exceptions import ProtocolError
 from indi_nexus.protocol import (
     BLOB,
     BLOBPolicy,
@@ -36,6 +38,7 @@ from indi_nexus.protocol import (
     TextVector,
     XMLStreamParser,
     as_utc,
+    from_json,
     indi_now,
     parse_indi,
     slugify,
@@ -43,12 +46,11 @@ from indi_nexus.protocol import (
     to_xml,
 )
 from indi_nexus.protocol import xml as xml_module
+from indi_nexus.protocol.numbers import format_number, parse_number
 from indi_nexus.protocol.xml import (
     _element_from_xml,
     _element_xml,
-    format_number,
     message_from_xml,
-    parse_number,
 )
 
 
@@ -113,6 +115,17 @@ def test_format_number_falls_back_to_repr_for_bad_formats():
     assert format_number(1.5, "no-placeholder") == "1.5"  # TypeError from printf
 
 
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_format_number_falls_back_to_repr_for_a_non_finite_value(value):
+    """An integer conversion raises OverflowError on a non-finite value.
+
+    ``"%d" % float("inf")`` is neither the TypeError nor the ValueError the
+    fallback used to catch, so it escaped this function and killed the driver's
+    writer task on its way out.
+    """
+    assert format_number(value, "%d") == repr(value)
+
+
 def test_parse_number_empty_returns_zero():
     """Empty or whitespace-only element text parses to 0.0."""
     assert parse_number("") == 0.0
@@ -131,6 +144,25 @@ def test_parse_number_empty_returns_zero():
 def test_parse_number(text, expected):
     """Parsing handles decimal and sexagesimal inputs."""
     assert parse_number(text) == expected
+
+
+@pytest.mark.parametrize("text", ["nan", "inf", "-inf", "Infinity"])
+def test_parse_number_refuses_a_non_finite_value(text):
+    """``float`` reads these; no wire format we have can write them back."""
+    with pytest.raises(ValueError):
+        parse_number(text)
+
+
+@pytest.mark.parametrize("text", ["10:xx:00", "not a number", "12 ab 58", "--3"])
+def test_parse_number_raises_the_protocol_error_it_documents(text):
+    """Junk raises ProtocolError, not the bare ValueError ``float`` throws.
+
+    Nothing downstream changes - ProtocolError *is* a ValueError - but the
+    docstring promises the typed one, and a caller narrowing on it would have
+    missed every malformed sexagesimal component.
+    """
+    with pytest.raises(ProtocolError):
+        parse_number(text)
 
 
 def test_sexagesimal_roundtrip():
@@ -296,6 +328,117 @@ def test_blob_base64_roundtrip():
     back = _reparse(SetVector(vector=vec))
     assert back.vector["image"].data == payload
     assert back.vector["image"].size == len(payload)
+
+
+def test_a_line_wrapped_blob_payload_decodes():
+    """Real traffic carries a BLOB's base64 across lines, so whitespace is normal input.
+
+    This is why the payload is stripped of whitespace before it is validated
+    rather than simply handed to a validating decoder, which counts a newline as
+    an illegal character like any other and would drop every real FITS frame.
+    """
+    payload = bytes(range(256)) * 4
+    encoded = base64.encodebytes(payload).decode("ascii")  # line-wrapped, as on the wire
+    assert "\n" in encoded
+
+    (msg,) = parse_indi(
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        f"<oneBLOB name='image' size='{len(payload)}' format='.fits'>{encoded}</oneBLOB>"
+        "</setBLOBVector>"
+    )
+
+    assert isinstance(msg, SetVector)
+    assert msg.vector["image"].data == payload
+
+
+def test_a_corrupt_blob_payload_is_dropped_rather_than_quietly_repaired():
+    """Non-alphabet bytes used to be discarded, decoding to a plausible frame.
+
+    ``base64.b64decode`` without ``validate=True`` throws away anything outside
+    the alphabet, so ``QU*JD`` decoded to exactly the bytes ``QUJD`` means: a
+    corrupted image the client cannot tell from an intact one. Losing the
+    message and counting it is the documented behaviour for a value that cannot
+    be represented.
+    """
+    parser = XMLStreamParser()
+
+    out = list(
+        parser.feed(
+            "<setBLOBVector device='CCD' name='CCD1'>"
+            "<oneBLOB name='image' size='3' format='.fits'>QU*JD</oneBLOB></setBLOBVector>"
+        )
+    )
+
+    assert out == []
+    assert parser.dropped == 1
+
+
+# --------------------------------------------------------------------------- #
+# Non-finite numbers: both codecs refuse what neither can carry                #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_a_non_finite_number_never_enters_a_model(value):
+    """``Number.value`` is required and JSON has no literal for these.
+
+    ``to_json`` used to write ``null`` for such a value and ``from_json`` then
+    rejected its own output, so the browser codec could produce a payload it
+    could not read. The models refuse the value instead, which is the one point
+    both codecs agree on.
+    """
+    with pytest.raises(ValueError):
+        Number(name="secs", value=value)
+
+
+@pytest.mark.parametrize("text", ["nan", "inf", "-inf"])
+def test_a_non_finite_number_costs_the_element_it_arrived_in(text):
+    """The XML side drops it, exactly as it drops any other unrepresentable value."""
+    parser = XMLStreamParser()
+
+    out = list(
+        parser.feed(
+            "<setNumberVector device='CCD' name='EXPOSURE'>"
+            f"<oneNumber name='secs'>{text}</oneNumber></setNumberVector>"
+        )
+    )
+
+    assert out == []
+    assert parser.dropped == 1
+
+
+def test_a_non_finite_bound_degrades_to_absent_and_keeps_the_def():
+    """``min``/``max``/``step`` can say "absent", so they degrade instead of dropping."""
+    (msg,) = parse_indi(
+        "<defNumberVector device='CCD' name='EXPOSURE' state='Ok' perm='rw'>"
+        "<defNumber name='secs' format='%.2f' min='-inf' max='inf' step='nan'>1.5</defNumber>"
+        "</defNumberVector>"
+    )
+
+    assert isinstance(msg, DefVector)
+    element = msg.vector["secs"]
+    assert (element.min, element.max, element.step) == (None, None, None)
+    assert element.value == 1.5
+
+
+def test_json_reads_back_everything_it_writes():
+    """The JSON round trip, on the numbers that used to break it.
+
+    Very large and very small finite values are the interesting survivors: they
+    are what a driver reaches for once NaN is off the table.
+    """
+    vec = NumberVector(
+        device="CCD",
+        name="EXPOSURE",
+        elements=[
+            Number(name="secs", value=1.7976931348623157e308),
+            Number(name="tiny", value=5e-324),
+            Number(name="zero", value=-0.0),
+        ],
+    )
+
+    back = from_json(to_json(SetVector(vector=vec)))
+
+    assert isinstance(back, SetVector)
+    assert back.vector.values() == vec.values()
 
 
 # --------------------------------------------------------------------------- #
@@ -545,6 +688,54 @@ def test_every_unrepresentable_leaf_drops_rather_than_raises(frame):
 
     assert list(parser.feed(frame)) == []
     assert parser.dropped == 1
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        "<defNumberVector name='EXPOSURE' state='Ok' perm='rw'>"
+        "<defNumber name='secs'>1</defNumber></defNumberVector>",
+        "<setNumberVector device='CCD'><oneNumber name='secs'>1</oneNumber></setNumberVector>",
+        "<newSwitchVector device=''  name='MODE'>"
+        "<oneSwitch name='a'>On</oneSwitch></newSwitchVector>",
+        "<delProperty name='EXPOSURE'/>",
+        "<enableBLOB>Also</enableBLOB>",
+    ],
+)
+def test_a_message_missing_its_identity_is_dropped_not_invented(frame):
+    """``device``/``name`` are #REQUIRED, and ``""`` is not a degraded form of one.
+
+    These used to parse into a phantom device called ``""`` that no server would
+    ever update and no user asked for, sitting in the client's ``PropertyStore``
+    for the life of the session. Nothing here can degrade to a representable
+    absence, so the message goes, and the counter says so.
+    """
+    parser = XMLStreamParser()
+
+    assert list(parser.feed(frame)) == []
+    assert parser.dropped == 1
+
+
+def test_a_message_missing_its_identity_costs_nothing_else():
+    """The next well-formed message still arrives, as after any other drop."""
+    parser = XMLStreamParser()
+
+    out = list(parser.feed("<delProperty/>" + "<message message='still here'/>"))
+
+    assert [m.message for m in out] == ["still here"]
+    assert parser.dropped == 1
+    assert parser.resets == 0
+
+
+def test_an_optional_name_is_still_optional():
+    """``name`` is #IMPLIED on delProperty and enableBLOB: absent means "all"."""
+    (deleted, enabled) = parse_indi("<delProperty device='CCD'/><enableBLOB device='CCD'/>")
+
+    assert isinstance(deleted, DelProperty)
+    assert deleted.device == "CCD"
+    assert deleted.name is None
+    assert isinstance(enabled, EnableBLOB)
+    assert enabled.name is None
 
 
 def test_a_dropped_element_is_logged_without_its_payload(caplog):

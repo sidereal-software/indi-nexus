@@ -15,7 +15,7 @@ import time
 
 from conftest import getprop, setprop
 
-from indi_nexus.protocol.xml import parse_number
+from indi_nexus.protocol.numbers import parse_number
 
 
 def _await_value(port: int, spec: str, expected: str, timeout: float = 20.0) -> str:

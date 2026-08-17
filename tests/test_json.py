@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 
+import pytest
+from pydantic import ValidationError
+
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -90,3 +93,38 @@ def test_browser_new_frame_parses_to_new_vector():
     msg = from_json(frame)
     assert isinstance(msg, NewVector)
     assert msg.vector.element("secs").value == 2.0
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        "{}",
+        '{"event":"connection","connected":true}',
+        '{"event":"error","code":"malformed","message":"x","tag":null}',
+        '{"tag":"nonesuch","device":"CCD"}',
+    ],
+    ids=["empty", "connection-control", "error-control", "unknown-tag"],
+)
+def test_an_object_with_no_known_tag_is_refused(frame):
+    """A frame the codec cannot name is refused, not read as a getProperties.
+
+    Undiscriminated, the union was not closed: ``GetProperties`` defaults every
+    field and the base model ignores extras, so any of these validated as a
+    ``getProperties``. The bridge then accepted a browser echoing one of its own
+    control frames back up ``/ws`` and forwarded it upstream.
+    """
+    with pytest.raises(ValidationError):
+        from_json(frame)
+
+
+def test_an_invalid_frame_reports_one_branch_not_seven():
+    """A frame that names its tag fails against that member alone.
+
+    The observable proof the discriminator is declared rather than inferred:
+    without it every member is tried and a single missing field comes back as
+    seven parallel failures.
+    """
+    with pytest.raises(ValidationError) as exc:
+        from_json('{"tag":"def"}')
+    assert len(exc.value.errors()) == 1
+    assert exc.value.errors()[0]["loc"] == ("def", "vector")

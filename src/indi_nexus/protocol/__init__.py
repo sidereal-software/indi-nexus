@@ -4,9 +4,22 @@ This package is the single source of truth for the INDI 1.7 wire format. Every
 property is a validated Pydantic model that serializes to *both* canonical INDI
 XML (for interoperability with ``indiserver`` and existing C++ drivers/clients)
 and to JSON (for modern web clients).
+
+The number text a codec puts on the wire is its own concern:
+:func:`~indi_nexus.protocol.numbers.format_number` and
+:func:`~indi_nexus.protocol.numbers.parse_number` implement the INDI printf
+``format``, sexagesimal ``%m`` included, and are exported here because RA/Dec
+interop turns on them.
 """
 
-from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
+from indi_nexus.protocol.enums import (
+    BLOBPolicy,
+    IPerm,
+    IPState,
+    ISRule,
+    ISState,
+    coerce_switch,
+)
 from indi_nexus.protocol.json import from_json, to_json
 from indi_nexus.protocol.models import (
     BLOB,
@@ -34,6 +47,7 @@ from indi_nexus.protocol.models import (
     indi_now,
     slugify,
 )
+from indi_nexus.protocol.numbers import format_number, parse_number
 from indi_nexus.protocol.xml import XMLStreamParser, parse_indi, to_xml
 
 __all__ = [
@@ -43,6 +57,7 @@ __all__ = [
     "ISRule",
     "ISState",
     "BLOBPolicy",
+    "coerce_switch",
     # elements
     "Number",
     "Text",
@@ -77,4 +92,7 @@ __all__ = [
     "XMLStreamParser",
     "to_json",
     "from_json",
+    # number text
+    "format_number",
+    "parse_number",
 ]

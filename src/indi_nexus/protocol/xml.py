@@ -15,10 +15,14 @@ driver, and one element it malformed must not take down a session that is
 otherwise working: an unparseable optional attribute degrades to absent, an
 element whose value cannot be parsed at all is dropped and counted, and an
 unmatched close tag that would end the document reopens it. What leniency never
-does is invent a value - see :func:`parse_number`.
+does is invent a value - see :func:`~indi_nexus.protocol.numbers.parse_number`
+for a leaf and :func:`_required` for the ``device``/``name`` a message is
+nothing without.
 
 Number values honour the INDI printf-style ``format``, including the ``%m``
 sexagesimal form used for RA/Dec, so values round-trip faithfully with libindi.
+That rendering is not an XML concern and lives in
+:mod:`indi_nexus.protocol.numbers`; this module only calls it.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from typing import cast
 
 from lxml import etree
 
+from indi_nexus.exceptions import ProtocolError
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 from indi_nexus.protocol.models import (
     BLOB,
@@ -56,10 +61,15 @@ from indi_nexus.protocol.models import (
     Vector,
     as_utc,
 )
+from indi_nexus.protocol.numbers import format_number, parse_number
 
 logger = logging.getLogger(__name__)
 
 _TS_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
+#: Every run of whitespace, stripped out of a base64 payload before it is
+#: validated (see :func:`_decode_blob`).
+_WHITESPACE = re.compile(r"\s+")
 
 #: How many bytes a peer may send without the parser completing a single
 #: top-level element before :attr:`XMLStreamParser.stalled` calls the stream
@@ -92,115 +102,6 @@ _STEM_BY_TAGWORD = {
     "Light": "light",
     "BLOB": "blob",
 }
-
-
-# --------------------------------------------------------------------------- #
-# Sexagesimal helpers (libindi f_scansexa / fs_sexa)                           #
-# --------------------------------------------------------------------------- #
-def parse_number(text: str) -> float:
-    """Parse a number that may be decimal or sexagesimal.
-
-    Accepts plain decimals as well as ``dd:mm:ss`` (or space-separated)
-    sexagesimal forms used for RA/Dec, as libindi's ``f_scansexa`` does.
-
-    Deliberately a superset of libindi on the ``set`` path: libindi reads a
-    ``oneNumber`` with ``std::stod`` there and only uses ``f_scansexa`` on the
-    ``def`` path, so *it* reads ``"10:30:00"`` in a ``setNumberVector`` as
-    ``10.0``. We read sexagesimal in both, which cannot silently truncate a
-    coordinate. Do not "fix" this to match: matching would mean reading 10:30
-    as 10, which is a data-corruption bug wearing a compatibility badge.
-
-    Strict on purpose, where the rest of this module is lenient: ``value`` is
-    not nullable on the model, so there is no way to say "absent". Raising here
-    lets the stream parser drop the whole element rather than publish a reading
-    a mount would act on.
-
-    Parameters
-    ----------
-    text : str
-        The raw element text.
-
-    Returns
-    -------
-    value : float
-        The parsed value; ``0.0`` for empty input.
-
-    Raises
-    ------
-    ValueError
-        Raised if the text is neither a decimal nor a sexagesimal number.
-    """
-    s = text.strip()
-    if not s:
-        return 0.0
-    try:
-        return float(s)
-    except ValueError:
-        pass
-    parts = re.split(r"[:\s]+", s)
-    sign = -1.0 if parts[0].lstrip().startswith("-") else 1.0
-    nums = [abs(float(p)) for p in parts if p]
-    acc = 0.0
-    for i, n in enumerate(nums):
-        acc += n / (60**i)
-    return sign * acc
-
-
-def format_number(value: float, fmt: str) -> str:
-    """Format a number per an INDI printf-style format.
-
-    Handles ordinary printf conversions as well as the ``%m`` sexagesimal form
-    (e.g. ``%9.6m``), field-width padded like libindi's ``fs_sexa``.
-
-    Half-way values round *away from zero*, which is what ``fs_sexa`` does
-    (``indicom.c:165`` casts ``a * fracbase + 0.5`` to an integer). Python's
-    built-in `round` is half-to-*even*, so it disagrees on exactly the values
-    that land on a tick boundary: at ``%10.6m`` it renders ``0.03125`` as
-    ``0:01:52`` where libindi says ``0:01:53``. One arcsecond, only on exact
-    halves, in the format mounts use for RA and Dec.
-
-    One divergence from ``fs_sexa`` is kept on purpose: libindi passes a
-    negative width to ``%*s`` when ``w - f < 3`` (``indicom.c:171``), which
-    left-justifies instead. No real driver declares such a format, and matching
-    the quirk would only preserve it.
-
-    Parameters
-    ----------
-    value : float
-        The number to format.
-    fmt : str
-        The INDI ``format`` string from the element definition.
-
-    Returns
-    -------
-    text : str
-        The formatted value.
-    """
-    m = re.fullmatch(r"%(\d+)\.(\d+)m", fmt.strip())
-    if not m:
-        try:
-            return (fmt % value).strip()
-        except (TypeError, ValueError):
-            return repr(value)
-
-    width, frac = int(m.group(1)), int(m.group(2))
-    fracbase = {9: 360000, 8: 36000, 6: 3600, 5: 600}.get(frac, 60)
-    neg = value < 0
-    n = math.floor(abs(value) * fracbase + 0.5)
-    d, f = divmod(n, fracbase)
-    dd = f"{'-' if neg else ''}{d}"
-    field = max(width - frac, 1)
-    dd = dd.rjust(field)
-    if fracbase == 60:  # dd:mm
-        return f"{dd}:{f:02d}"
-    if fracbase == 600:  # dd:mm.m
-        return f"{dd}:{f // 10:02d}.{f % 10:1d}"
-    if fracbase == 3600:  # dd:mm:ss
-        return f"{dd}:{f // 60:02d}:{f % 60:02d}"
-    if fracbase == 36000:  # dd:mm:ss.s
-        return f"{dd}:{f // 600:02d}:{(f % 600) // 10:02d}.{f % 10:1d}"
-    # dd:mm:ss.ss
-    return f"{dd}:{f // 6000:02d}:{(f % 6000) // 100:02d}.{f % 100:02d}"
 
 
 # --------------------------------------------------------------------------- #
@@ -436,8 +337,8 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
 
     Raises
     ------
-    ValueError
-        Raised if ``kind`` is not a known element kind.
+    ProtocolError
+        Raised if ``kind`` is not a known element kind. Also a ValueError.
     """
     name = node.get("name") or ""
     label = node.get("label")
@@ -460,7 +361,7 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
     if kind == "light":
         return Light(name=name, label=label, value=IPState(text) if text else IPState.IDLE)
     if kind == "blob":
-        data = base64.b64decode(text) if text else None
+        data = _decode_blob(text) if text else None
         return BLOB(
             name=name,
             label=label,
@@ -468,7 +369,40 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
             size=_optint(node.get("size")),
             data=data,
         )
-    raise ValueError(f"Unknown element kind {kind!r}")
+    raise ProtocolError(f"Unknown element kind {kind!r}")
+
+
+def _decode_blob(text: str) -> bytes:
+    """Decode a BLOB payload, refusing anything that is not really base64.
+
+    ``base64.b64decode`` without ``validate=True`` *discards* every character
+    outside the alphabet, so a corrupted payload decodes to wrong-but-plausible
+    bytes - a truncated frame a client cannot tell from a real one - instead of
+    taking the drop path this module documents for a value it cannot represent.
+
+    Validating cannot simply be switched on, though: real libindi traffic
+    carries a BLOB's base64 broken across lines, and ``validate=True`` counts a
+    newline as an illegal character like any other, so flipping the flag alone
+    would drop every genuine FITS frame. The whitespace goes first - deliberately
+    the whitespace and nothing else - and what is left has to be base64 in full.
+
+    Parameters
+    ----------
+    text : str
+        The raw element text, as it came off the wire.
+
+    Returns
+    -------
+    data : bytes
+        The decoded payload.
+
+    Raises
+    ------
+    binascii.Error
+        Raised (as a `ValueError`, which the stream parser drops on) if the
+        payload is not valid base64.
+    """
+    return base64.b64decode(_WHITESPACE.sub("", text), validate=True)
 
 
 def _optfloat(v: str | None) -> float | None:
@@ -482,6 +416,11 @@ def _optfloat(v: str | None) -> float | None:
     definition to merge later ``set`` messages onto and therefore permanently
     blind to that property.
 
+    A non-finite value degrades the same way. JSON cannot write one, so keeping
+    it would put a ``min`` on the wire toward the browser that comes back as
+    `None` anyway; losing it here loses it once, in the direction the model can
+    describe.
+
     Parameters
     ----------
     v : str or None
@@ -490,14 +429,15 @@ def _optfloat(v: str | None) -> float | None:
     Returns
     -------
     value : float or None
-        The parsed float, or `None` when absent or unparseable.
+        The parsed float, or `None` when absent, unparseable or non-finite.
     """
     if v is None:
         return None
     try:
-        return float(v)
+        value = float(v)
     except ValueError:
         return None
+    return value if math.isfinite(value) else None
 
 
 def _optint(v: str | None) -> int | None:
@@ -522,6 +462,40 @@ def _optint(v: str | None) -> int | None:
         return int(v)
     except ValueError:
         return None
+
+
+def _required(node: etree._Element, key: str) -> str:
+    """Return a ``#REQUIRED`` attribute, refusing an absent or empty one.
+
+    The other half of "a leaf may degrade to a representable absence, it may
+    never invent a value": ``device`` and ``name`` are not optional on the
+    model, so ``node.get(key) or ""`` does not degrade anything - it invents an
+    identity. A ``defNumberVector`` with no ``device`` used to land in a client's
+    cache as a phantom device called ``""``, holding properties no server would
+    ever update and no user asked for. Losing the message is the honest answer,
+    and the stream parser counts it as dropped.
+
+    Parameters
+    ----------
+    node : lxml.etree._Element
+        The element carrying the attribute.
+    key : str
+        The attribute name.
+
+    Returns
+    -------
+    value : str
+        The attribute value.
+
+    Raises
+    ------
+    ProtocolError
+        Raised if the attribute is absent or empty. Also a ValueError.
+    """
+    value = node.get(key)
+    if not value:
+        raise ProtocolError(f"<{node.tag}> is missing the required {key!r} attribute")
+    return value
 
 
 def _optts(v: str | None) -> dt.datetime | None:
@@ -565,6 +539,12 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
     -------
     vector : Vector
         The parsed vector model.
+
+    Raises
+    ------
+    ValueError
+        Raised if ``device`` or ``name`` is missing, or if an element's value
+        cannot be represented.
     """
     kind = _STEM_BY_TAGWORD[stem]
     # `state` is #REQUIRED on a def* and #IMPLIED on a set*/new*, where absent
@@ -574,8 +554,8 @@ def _vector_from_xml(node: etree._Element, stem: str) -> Vector:
     state = node.get("state")
     perm_attr = node.get("perm")
     common: dict[str, object] = dict(
-        device=node.get("device") or "",
-        name=node.get("name") or "",
+        device=_required(node, "device"),
+        name=_required(node, "name"),
         label=node.get("label"),
         group=node.get("group"),
         state=IPState(state) if state else IPState.IDLE,
@@ -621,7 +601,10 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
     ------
     ValueError
         Raised if a value the model cannot represent as absent is malformed -
-        a number's text, or one of the state/permission/rule tokens.
+        a number's text, a BLOB's base64, one of the state/permission/rule
+        tokens, or a missing ``#REQUIRED`` ``device``/``name`` (see
+        :func:`_required`). The caller (:meth:`XMLStreamParser._convert`) turns
+        that into a dropped message.
     """
     tag = node.tag
     if not isinstance(tag, str):  # comments / PIs
@@ -635,7 +618,7 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
         )
     if tag == "delProperty":
         return DelProperty(
-            device=node.get("device") or "",
+            device=_required(node, "device"),
             name=node.get("name"),
             timestamp=_optts(node.get("timestamp")),
             message=node.get("message"),
@@ -649,7 +632,7 @@ def message_from_xml(node: etree._Element) -> IndiMessage | None:
     if tag == "enableBLOB":
         text = (node.text or "").strip()
         return EnableBLOB(
-            device=node.get("device") or "",
+            device=_required(node, "device"),
             name=node.get("name"),
             policy=BLOBPolicy(text) if text else BLOBPolicy.ALSO,
         )
