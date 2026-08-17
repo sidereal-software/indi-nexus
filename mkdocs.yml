@@ -118,6 +118,7 @@ nav:
       - Client: reference/python/client.md
       - Web bridge: reference/python/web.md
       - Transport: reference/python/transport.md
+      - Settings and logging: reference/python/settings.md
   - TypeScript API:
       - "@indi-nexus/client": reference/typescript/client/index.md
       - "@indi-nexus/react": reference/typescript/react/index.md

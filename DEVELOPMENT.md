@@ -39,6 +39,8 @@ indi-nexus/
 ├── pyproject.toml           # packaging, dependencies, tool config (ruff/mypy/pytest)
 ├── src/indi_nexus/
 │   ├── exceptions.py        # the error hierarchy: IndiError + a builtin base per type
+│   ├── settings.py          # the INDI_NEXUS_* environment, read once at an entrypoint
+│   ├── logging_config.py    # configure_logging + the shared indi_nexus.wire logger
 │   ├── protocol/            # the INDI protocol core
 │   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy + coerce_switch
 │   │   ├── models.py        #   typed Pydantic vectors, elements, def/set/new + enableBLOB
@@ -73,7 +75,17 @@ uv run pytest -k "name"           # run a single test by name
 uv run ruff check src tests       # lint
 uv run ruff format src tests      # auto-format
 uv run mypy src                   # type-check (strict)
+
+# Regenerate the browser wire schema after an intentional model change, and
+# update web/packages/client/src/types.ts in the same commit.
+INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
 ```
+
+`tests/data/wire_schema.json` is a committed snapshot of the JSON schema a browser is
+written against: the `IndiMessage` union, the `Vector` union and the bridge's own control
+frames. It is a speed bump, not a guarantee - it cannot check that `types.ts` followed,
+only make sure a model change and the hand-authored mirror land in front of the same
+reviewer.
 
 ## Frontend commands
 
@@ -103,9 +115,70 @@ indi-nexus serve --device examples.demo_device:Demo   # panel + a driver in one 
 indi-nexus new my_driver.py                 # scaffold a runnable driver file to start from
 indi-nexus serve                            # web panel against a real indiserver (open :8000)
 indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
+indi-nexus run mod:A mod:B                  # several devices from one driver process
 indi-nexus monitor                          # print live INDI updates from indiserver
 indi-nexus --help                           # all CLI commands and options
 ```
+
+### Configuration and logging
+
+Every knob lives under one prefix, `INDI_NEXUS_`, everything is optional, and
+`indi_nexus.settings.Settings` reads all of it. There is one reader and one story: a
+variable means what the table says wherever INDINexus runs, and no flag carries its own
+environment lookup.
+
+| Variable | Flag | Default | Effect |
+|---|---|---|---|
+| `INDI_NEXUS_LOG_LEVEL` | `--log-level`, `-v` | `INFO` | Level for `indi_nexus.*` **and** uvicorn. One of `CRITICAL`/`ERROR`/`WARNING`/`INFO`/`DEBUG`, case-insensitive; anything else is a usage error rather than a traceback out of `uvicorn.Config`. |
+| `INDI_NEXUS_WIRE_LOG` | `--wire` | off | One line per INDI message per direction, on the `indi_nexus.wire` logger. |
+| `INDI_NEXUS_CONNECT_TIMEOUT` | - | `10.0` | Seconds the client waits per connection attempt. |
+| `INDI_NEXUS_RECONNECT_DELAY` | - | `2.0` | Seconds between a lost connection and the next attempt. |
+| `INDI_NEXUS_MESSAGE_HISTORY` | - | `100` | INDI `message` frames replayed to a newly attached browser. |
+| `INDI_NEXUS_MAX_BACKLOG` | - | `512` | Live frames a browser may fall behind by before it is dropped. |
+| `INDI_NEXUS_TOKEN` | `--token` | unset | See [Access control on `serve`](#access-control-on-serve). |
+| `INDI_NEXUS_ALLOWED_ORIGINS` | `--allow-origin` | unset | Same. **Space separated** in the environment, repeatable as a flag. |
+| `INDI_NEXUS_ALLOW_INSECURE_BIND` | `--allow-insecure-bind` | off | Same. |
+
+Where a setting has both forms, **the flag wins and its absence defers to the
+environment**. A flag that names a variable has no default of its own - the table's
+default is the model's, in one place - and the command resolves the two when it runs
+rather than in its option defaults, which is what stops the first environment a process
+ever saw from being frozen into every later invocation. `--token ""` is a value like any
+other, so it turns a configured token back off for one run.
+
+`LOG_LEVEL` and `WIRE_LOG` also have to work with **no CLI in the loop**, since a driver
+launched by `indiserver` as `./my_driver.py` reaches `indi_nexus.driver.run` and never
+`indi-nexus`; that entrypoint reads the same two fields.
+
+In the Docker image the last three are also spelled `WEB_TOKEN`, `WEB_ALLOWED_ORIGINS` and
+`WEB_ALLOW_ANONYMOUS`, because the entrypoint generates a token when none was given and
+prints the URL with it; either spelling works there. See [docs/docker.md](docs/docker.md).
+
+Three rules hold everywhere:
+
+- **Only entrypoints configure logging**, and each does it exactly once: the Typer app
+  callback for a CLI invocation, `driver.run` for a driver. `serve_stdio` deliberately does
+  not - it is a coroutine tests and embedders await, and configuring inside it would have
+  every one of them mutate global logging as a side effect.
+- **Nothing reads the environment implicitly.** `IndiClient`, `Bridge` and `create_app`
+  take explicit parameters with today's defaults; the entrypoints read `Settings` and pass
+  the values down. That is what keeps `create_app(client=...)` injectable.
+- **Logs go to stderr, never stdout.** A driver's stdout *is* the INDI wire, so a line
+  written there corrupts the stream `indiserver` parses. `indiserver` relays a driver's
+  stderr into its own log, which is where an operator will look anyway.
+
+`--wire` is one switch for "show me the wire" across all four sites - the client's reader
+and writer and the driver runtime's reader and writer - which is why they do not log it on
+their own module loggers:
+
+```
+DEBUG    indi_nexus.wire: <- set CCD.CCD_TEMPERATURE
+DEBUG    indi_nexus.wire: -> new CCD.CONNECTION (142 bytes)
+```
+
+A BLOB's payload is never printed; the line reports its size (`[1048576 byte payload]`),
+read off the model. Every call site is guarded by `isEnabledFor`, so a run with wire
+logging off pays one flag check per message.
 
 ### Access control on `serve`
 
@@ -121,8 +194,12 @@ options on `serve` (they apply to `--device` too):
 | Option | Env var | Effect |
 |---|---|---|
 | `--token TEXT` | `INDI_NEXUS_TOKEN` | Shared secret required on `/ws` and `/api`. Unset leaves both open, which is what a loopback development server wants. |
-| `--allow-origin TEXT` | `INDI_NEXUS_ALLOWED_ORIGINS` | A browser origin to accept on `/ws` besides the server's own, e.g. `http://localhost:5173` for the Vite dev server. Repeatable; `*` accepts any. |
+| `--allow-origin TEXT` | `INDI_NEXUS_ALLOWED_ORIGINS` | A browser origin to accept on `/ws` besides the server's own, e.g. `http://localhost:5173` for the Vite dev server. Repeatable as a flag, space separated in the variable; `*` accepts any. |
 | `--allow-insecure-bind` | `INDI_NEXUS_ALLOW_INSECURE_BIND` | Permit the non-loopback bind with no token anyway. This exposes the instrument. |
+
+The flag wins over the variable, and the refusal above is checked against whichever of the
+two applies - a token set in the environment authenticates the bind exactly as `--token`
+does, and `--token ""` un-sets one for the run and is refused again.
 
 `Authorization: Bearer <token>` everywhere, plus `?token=` **on `/ws` only**. A browser
 cannot set a header on a WebSocket handshake, so the query parameter is the one form it
@@ -134,23 +211,55 @@ and CDN access logs and in browser history.
 Served by `indi-nexus serve`, with or without `--device`:
 
 - `GET /` - the reference panel; `GET /debug` - the raw debug inspector. Open.
-- `GET /health` - `{"status", "connected", "dropped_slow_sinks"}`. Open on purpose: the
-  Docker image's `HEALTHCHECK` calls it unauthenticated.
+- `GET /health` - open on purpose: the Docker image's `HEALTHCHECK` calls it
+  unauthenticated. **The body only ever grows**; `status`, `connected` and
+  `dropped_slow_sinks` keep their names at the top level, because a monitoring check
+  somewhere already reads them.
+
+  ```json
+  {
+    "status": "ok",
+    "protocol": 1,
+    "connected": true,
+    "dropped_slow_sinks": 0,
+    "sinks_attached": 3,
+    "upstream": {"uptime_seconds": 4211.3, "reconnects": 2, "last_message_age_seconds": 0.8},
+    "parser": {"dropped": 0, "resets": 0, "bytes_since_last_message": 1204,
+               "dropped_total": 0, "resets_total": 0}
+  }
+  ```
+
+  `protocol` is `BRIDGE_PROTOCOL_VERSION`, the same integer the `hello` frame carries, so
+  a deployment check can ask "will my pinned client understand this bridge" without
+  opening a WebSocket. `uptime_seconds` is the **current upstream connection**, not the
+  process, and is `null` while disconnected; `reconnects` counts successful
+  re-establishments only, so a bridge that has never reached `indiserver` reports `0` with
+  `connected: false`; `last_message_age_seconds` is the age of the last *parsed* INDI
+  message, so a peer dribbling malformed bytes does not read as healthy. While
+  disconnected the `parser` block reports the last connection's final counters, and the two
+  `_total` fields are the durable ones - they include the connection in progress, so
+  `dropped_total` is never behind `dropped`. There is deliberately **no release version**:
+  it would hand an unauthenticated caller the exact build to look up advisories against,
+  and `protocol` already answers the only compatibility question a caller has.
 - `GET /api/devices`, `GET /api/devices/{device}[/{name}]` - read-only JSON snapshot.
   **Behind the token** when one is configured.
-- `WS /ws` - live stream (snapshot on connect, then updates); browser frames are forwarded
-  upstream. **Behind the token and an `Origin` check**, both applied before `accept()`, so
-  a rejected handshake is closed with 1008. A browser sends only `new*Vector`,
-  `getProperties` and `enableBLOB`; anything else comes back to that browser alone as
-  `{"event": "error", "code": "not_permitted", ...}` with the socket left open.
+- `WS /ws` - live stream (`hello`, then the snapshot, then updates); browser frames are
+  forwarded upstream. **Behind the token and an `Origin` check**, both applied before
+  `accept()`, so a rejected handshake is closed with 1008. A browser sends only
+  `new*Vector`, `getProperties` and `enableBLOB`; anything else comes back to that browser
+  alone as `{"event": "error", "code": "not_permitted", ...}` with the socket left open.
 
 The `/ws` INDI frames are the protocol models dumped to JSON, so for those the frontend
 contract *is* the backend model schema. Two things on the wire are not:
 
-- The bridge's own control frames, `{"event": "connection"}` and `{"event": "error"}`,
-  which no Pydantic model backs - the protocol has no message for either.
-- `/api`, which returns **bare vectors** (`Vector.model_dump()`), not tagged messages, so
-  it has no `tag` field and is not a `IndiMessage` a client codec can parse.
+- The bridge's own control frames - `{"event": "hello"}`, `{"event": "connection"}` and
+  `{"event": "error"}` - which INDI has no message for. They are modelled all the same, in
+  `indi_nexus/web/control_frames.py`, and the `hello` carries `BRIDGE_PROTOCOL_VERSION`:
+  the version of the browser contract itself, bumped only on a breaking change.
+- `/api`, which returns **bare vectors**, not tagged messages, so it has no `tag` field and
+  is not an `IndiMessage` a client codec can parse. The routes are annotated with
+  `dict[str, Vector]` and `Vector`, so FastAPI serialises through the real schema and
+  OpenAPI documents it.
 
 Attach to the bridge in Python with `Bridge.attach(sink) -> Subscription` (a bounded queue
 plus its own pump task); `Subscription.aclose()` detaches. There is no `snapshot()`,

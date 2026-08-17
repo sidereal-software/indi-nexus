@@ -320,6 +320,46 @@ flight.
 
 If you have a device where that is wrong, set `serialize_dispatch = False` on the class.
 
+## Several devices in one driver
+
+Some instruments are more than one INDI device: a camera with a guide chip, a focuser and
+a rotator on one hub, three channels of a power box. One driver process announces them all.
+Hand `run` a list instead of calling `Device.run()`:
+
+```python
+from indi_nexus.driver import run
+
+if __name__ == "__main__":
+    run([Camera(), GuideChip(), FilterWheel()])
+```
+
+Nothing else changes. `indiserver ./my_driver.py` launches it as before, and the three
+devices appear as three devices on the first `getProperties`. From the command line,
+`indi-nexus run my_driver:Camera my_driver:GuideChip` does the same with no `__main__`
+block. Each device keeps its own name, properties, handlers and `@every` jobs; they are
+ordinary independent objects that happen to share a process, which is the point - it is how
+they share the one USB handle or serial port the hardware actually has.
+
+`examples/guided_camera.py` is the worked version: a camera and its guide chip behind one
+blocking link.
+
+What they share, and what they do not:
+
+- **`@every` jobs stay concurrent.** Each is its own task taking only its own device's
+  lock, so the guider keeps reporting right through the camera's exposure.
+- **Everything the devices publish goes out on one shared queue**, drained by a writer that
+  is not waiting for any of them. A busy device does not delay another's updates.
+- **Client writes are handled one at a time, across all of them.** The driver reads the
+  next message only after the current handler returns, so a handler that takes two seconds
+  delays the *next* write - for every device in the process, not only its own.
+
+That last one is the trade, and it is what libindi has always done. It is usually right,
+because devices sharing a process usually share hardware that has to take turns anyway.
+Note what does *not* change it: `off_thread` keeps the event loop free but the handler
+still waits for it, and `serialize_dispatch = False` drops a lock that the other device was
+never waiting on. If two devices must never delay each other's commands, run them as two
+drivers - `indiserver ./camera.py ./wheel.py` launches both, and that is the real answer.
+
 ## Testing without hardware
 
 A driver is an ordinary object, so a test can drive it and check what it told its clients:
@@ -342,8 +382,10 @@ async def test_lamp_turns_on():
 - `write(name, **values)` sends exactly what a real client would and routes it through the
   device's real dispatch, so a handler that passes here works under `indiserver`.
 - `tick(job)` runs one iteration of an `@every` method without waiting out its interval.
-- `defs()`, `sets()`, `messages` and `latest(name)` are what the device said;
+- `defs()`, `sets()`, `deletes()`, `messages` and `latest(name)` are what the device said;
   `clear()` forgets the history so far, to separate setup from the thing being tested.
+  `deletes()` is how you assert a retraction: a `delete_property` in `on_disconnect`
+  shows up there, and nowhere else.
 
 `tests/test_weather_example.py` is a complete worked set, including a failing instrument
 and a dropped connection.

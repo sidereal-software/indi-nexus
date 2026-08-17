@@ -6,7 +6,7 @@ A `pnpm` workspace holding a reusable library plus the reference panel that ship
 wheel. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
 **Vitest** runs tests, **Biome** lints and formats (`web/biome.json`; the vendored shadcn
 `ui/` files are excluded). Run everything from `web/`: `pnpm -r build`, `pnpm -r typecheck`,
-`pnpm -r test`, `pnpm lint`.
+`pnpm -r test`, `pnpm lint`, `pnpm run lint:diagrams`. All five are CI gates.
 
 ## `packages/client/` - `@indi-nexus/client`
 
@@ -38,7 +38,20 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
 - `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts` is
   `IndiClient` mirroring the Python surface. It tracks two connection states: `transport`
   (browser to bridge) and `upstream` (bridge to `indiserver`, from the bridge's `connection`
-  control frame). The bridge's other control frame, `{"event":"error"}`, says a frame this
+  control frame), plus `protocol` from the bridge's `hello`. `CLIENT_PROTOCOL_VERSION`
+  mirrors `BRIDGE_PROTOCOL_VERSION`; a mismatch is **never** fatal in either direction
+  (bumps are breaking-only, everything additive keeps working), so it logs one line and
+  carries on, and `ConnectionStatus` shows it. Two traps live here:
+  - `protocol` is `null` until a frame arrives and `0` once a **non-hello** frame arrives
+    first, meaning a bridge older than the frame. The latch is evaluated **before**
+    `acceptFrame`, so a first frame the frame guard rejects still trips it, and it resets in
+    `handleClose` alongside `protocol` - without that a reconnect onto an older bridge sits
+    at `null` for ever.
+  - `setState` early-returns on an unchanged state, so **every** field has to be in that
+    comparison. Leave one out and it is assigned and never notified, which no typecheck
+    catches. For the same reason the state is written out in full at each site rather than
+    spread from the previous one.
+- The third control frame, `{"event":"error"}`, says a frame this
   browser sent did **not** go upstream; it lands in the message log, because nothing retries
   it and a browser that hears nothing would assume its write landed. An `event` the client
   does not know is still dropped. The default URL carries the page's own `?token=` across to
@@ -81,7 +94,9 @@ fences verbatim apart from the imports - `./index` instead of the published name
 shows drift and nothing else; keep it that way.
 
 `@indi-nexus/react/testing` (`src/testing/`) is the counterpart to `indi_nexus.testing`:
-`renderConnected(ui)` renders under a provider wired to a `FakeSocket`, and
+`renderConnected(ui)` renders under a provider wired to a `FakeSocket` **that has already
+sent its `hello`**, as the bridge does - a harness that skipped it would put a "no hello
+frame" entry at the head of every message log a consumer asserts on - and
 `receive(socket, frame)` feeds it what a driver would send. It re-exports
 `cleanup`/`screen`/`within` deliberately - importing those from a consumer's own copy of
 `@testing-library/react` gives a second registry of mounted containers, and the DOM
@@ -128,6 +143,10 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
   the instrument safe and its properties `Idle`. These demos are the first contact most
   people have with the project, so a panel whose Connect button does nothing is worse than
   no demo.
+- **A simulator opens with the `hello`, before its connection frame and its `def`s**, the
+  way the real bridge does. Skip it and the client logs "the bridge sent no hello frame"
+  into the demo's own message panel, where a visitor reads it as a fault on a page that is
+  most people's first contact with the project.
 - **Construct a simulator lazily *inside* `webSocketFactory`.** It starts delivering frames
   the moment it exists, and a client that has not attached its handlers yet misses every
   `def`.

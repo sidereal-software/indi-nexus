@@ -67,6 +67,14 @@ Exposures that count down and deliver a rendered 16-bit FITS star field as a BLO
 frame types, binning, gain and offset, and a cooler with believable warm-up physics. Read
 it for how a long-running operation reports progress.
 
+## `guided_camera.py` - two devices, one driver
+
+A camera and the guide chip beside it: two INDI devices behind one USB link, in one
+process, ending in `run([MainChip(), GuideChip()])`. Read it for how devices that share
+hardware share a driver - the link is claimed once and released by whichever chip
+disconnects last - and for what that costs, which the
+[driver guide](writing-drivers.md#several-devices-in-one-driver) spells out.
+
 ## `monitor_client.py` - the client side
 
 The one example that is a client rather than a driver. It connects to a running

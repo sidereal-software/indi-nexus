@@ -17,6 +17,15 @@ itself is `WebSecurity`, under [Security](#security) below.
 
 ::: indi_nexus.web.bridge
 
+## Control frames
+
+The non-INDI half of the browser contract: `hello`, `connection` and `error`,
+plus `BRIDGE_PROTOCOL_VERSION`, the version of that contract. See
+[Protocol concepts](../../guides/protocol.md#versioning-the-browser-contract)
+for what a client does with a version mismatch.
+
+::: indi_nexus.web.control_frames
+
 ## Security
 
 ::: indi_nexus.web.security

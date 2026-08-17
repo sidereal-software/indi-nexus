@@ -47,8 +47,12 @@ client.get("Mount", "EQUATORIAL_EOD_COORD"); // a single vector, or undefined
 ```
 
 The connection reconnects by itself, replays any BLOB policies you set, and reports
-transitions through `onConnection`. `connectionState` distinguishes the browser-to-bridge
-socket from the bridge's own upstream link to `indiserver`.
+transitions through `onConnection`. `connectionState` carries three fields: `transport`,
+the browser-to-bridge socket; `upstream`, the bridge's own link to `indiserver`; and
+`protocol`, the contract version the bridge announced in its `hello` frame (`null` until
+one arrives). Compare it with the exported `CLIENT_PROTOCOL_VERSION` if you want to know
+whether the bridge and this build agree; a mismatch is never fatal, and the client only
+logs one line.
 
 ## Documentation
 

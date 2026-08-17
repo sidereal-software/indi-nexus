@@ -17,18 +17,39 @@ program expects, and JSON to browsers.
 Both encodings come from the same Python model, so they cannot drift apart. The INDI
 messages a frontend receives are the protocol itself rather than a summary of it.
 
-Two frames on that WebSocket are **not** INDI, because the protocol has no message for
-either and a UI needs both. They are objects with an `event` key instead of a `tag`:
+Three frames on that WebSocket are **not** INDI, because the protocol has no message for
+any of them and a UI needs all three. They are objects with an `event` key instead of a
+`tag`, and they are modelled in
+[`indi_nexus.web.control_frames`](../reference/python/web.md#control-frames):
 
 | Frame | Means |
 |---|---|
+| `{"event": "hello", "protocol": 1, "server": "0.2.0"}` | the first frame on every socket: which version of *this* contract the bridge speaks, and which INDINexus release is serving it. |
 | `{"event": "connection", "connected": false}` | whether the *bridge* is connected to `indiserver`. Distinct from whether your browser is connected to the bridge. |
 | `{"event": "error", "code": ..., "message": ..., "tag": ...}` | a frame this browser sent did not go upstream - malformed, not something a client may send, or refused because the upstream was down or busy. It is sent only to the browser that sent the frame. |
 
 Write a frame reader that **skips an `event` it does not recognise** rather than treating
 it as a protocol violation, since that is where any future control frame will arrive.
-`@indi-nexus/client` already does both: it surfaces the connection state and routes the
-error into the message log, and drops anything else.
+`@indi-nexus/client` already does both: it surfaces the connection state and the protocol
+version, routes the error into the message log, and drops anything else.
+
+### Versioning the browser contract
+
+`protocol` versions the bridge-to-browser JSON only. INDI's own `version` attribute is frozen
+at 1.7 and has nothing to do with it.
+
+It is bumped **only on a breaking change** - a field removed, renamed, or given a new
+meaning. Adding an optional field does not bump it, because a client that ignores an
+unknown key is already handling that correctly. So a mismatch is never fatal in either
+direction, and nothing in INDINexus refuses a socket over one: `@indi-nexus/client`
+compares the number against its own `CLIENT_PROTOCOL_VERSION`, writes one line into the
+message log when they differ, and carries on. Turning a version skew into a dark panel
+mid-session helps no one at a telescope.
+
+A bridge older than the hello frame simply never sends one. A client should treat **the
+first frame that is not a `hello`** as the answer - `@indi-nexus/client` records
+`protocol: 0` at that point - rather than waiting for a `def` that may never come, since
+with the upstream down and the cache empty the first frame is the connection frame.
 
 ## def, set, new
 

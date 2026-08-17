@@ -49,13 +49,17 @@ uv run pytest                   # run tests
 uv run ruff check src tests     # lint
 uv run ruff format src tests    # format
 uv run mypy src                 # type-check (strict)
+
+# After an intentional protocol-model change: regenerate the golden wire schema,
+# and update web/packages/client/src/types.ts in the same commit.
+INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
 ```
 
 Frontend commands run from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`,
-`pnpm lint`.
+`pnpm lint`, `pnpm run lint:diagrams`.
 
 **Green baseline before any commit:** `ruff check` and `ruff format --check` clean,
-`mypy src` clean, `pytest` passing, and the frontend four if you touched `web/`. New work
+`mypy src` clean, `pytest` passing, and the frontend five if you touched `web/`. New work
 lands with its own tests.
 
 ## How to work here
@@ -93,14 +97,18 @@ lands with its own tests.
 
 ```
 src/indi_nexus/
-├── protocol/     the INDI 1.7 wire format: models, enums, XML + JSON codecs
-├── driver/       driver SDK: subclass a base device; stdio XML under indiserver
-├── testing.py    DeviceHarness: drive a Device in a test, no indiserver
-├── client/       reconnecting asyncio TCP client to indiserver + property cache
-├── transport.py  shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
-├── hub.py        InProcessHub: drivers in this process, standing in for indiserver
-├── web/          FastAPI app: WebSocket bridge (INDI <-> JSON) + REST + panel/debug
-└── cli.py        Typer CLI (serve web, run driver, monitor)
+├── exceptions.py       the error hierarchy: IndiError + a builtin base per type
+├── settings.py         the INDI_NEXUS_* environment, read once at an entrypoint
+├── logging_config.py   configure_logging + the shared indi_nexus.wire logger
+├── protocol/           the INDI 1.7 wire format: models, enums, XML + JSON codecs
+├── driver/             driver SDK: subclass a base device; stdio XML under indiserver
+├── testing.py          DeviceHarness: drive a Device in a test, no indiserver
+├── client/             reconnecting asyncio TCP client to indiserver + property cache
+├── transport.py        shared ReadFn/WriteFn/CloseFn byte-stream contract + TCP adapter
+├── hub.py              InProcessHub: drivers in this process, standing in for indiserver
+├── web/                FastAPI app: WebSocket bridge (INDI <-> JSON, plus the bridge's
+│                       own control frames) + REST + panel/debug
+└── cli.py              Typer CLI (new / serve / run / monitor)
 
 web/              pnpm workspace: the TypeScript frontend
 ├── packages/client/     @indi-nexus/client - framework-agnostic transport + property store
@@ -122,7 +130,7 @@ flowchart LR
     hub -- "TCP<br/>INDI 1.7 XML" --> cli
     drv -. "in-memory pipes<br/>serve --device: no hub" .-> cli
     cli --> web
-    web -- "WebSocket<br/>typed JSON" --> ui["Browser<br/>React/TS"]
+    web -- "WebSocket<br/>typed JSON" --> ui["React panel<br/>or your UI"]
 
     %% No colours here on purpose: GitHub and the docs site each theme the diagram
     %% for their own light and dark modes, and a hardcoded light palette turns into
@@ -145,7 +153,7 @@ boundary (`indiserver`, the browser, the instrument).
 
 | File | Diagram |
 |---|---|
-| `CLAUDE.md`, `README.md`, `docs/index.md` | the stack (duplicated; update together) |
+| `CLAUDE.md`, `README.md`, `docs/index.md` | the stack (three byte-identical copies; edit one, copy it to the other two, and diff to confirm) |
 | `src/indi_nexus/CLAUDE.md` | the driver runtime internals |
 
 Rendering is wired up already (`pymdownx.superfences` for MkDocs, native on GitHub). Keep
@@ -182,6 +190,10 @@ silently skipping it.
   the signature or docstring.
 - New wire behavior gets a round-trip test in `tests/test_protocol.py` (serialize -> parse
   -> assert); streaming behavior gets a chunk-boundary test.
+- A change to a protocol model or a bridge control frame also fails
+  `tests/test_wire_contract.py` against the golden `tests/data/wire_schema.json`.
+  Regenerate it with the command above **in the same commit as the `types.ts` mirror** -
+  that pairing is the whole point of the golden file. See `DEVELOPMENT.md`.
 - Touching the protocol means keeping XML and JSON serialization consistent. The models are
   the shared contract with the frontend.
 

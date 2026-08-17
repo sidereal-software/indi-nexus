@@ -47,7 +47,8 @@ bridge accepts its own by default, so name yours when you start it:
 indi-nexus serve --allow-origin http://localhost:5173
 ```
 
-Repeat the flag for more, or set `INDI_NEXUS_ALLOWED_ORIGINS`. Skipping it is not an
+Repeat the flag for more, or set `INDI_NEXUS_ALLOWED_ORIGINS` to a space-separated list
+(the flag wins if you do both). Skipping it is not an
 option the bridge can quietly take for you: `/ws` is its whole write surface, a frame
 sent there becomes an INDI `new*` that moves hardware, and a WebSocket is exempt from
 both the same-origin policy and CORS - so without the check, any page an operator
@@ -99,7 +100,7 @@ The full set:
 
 | Hook | Gives you |
 |---|---|
-| `useConnection()` | `{ transport, upstream }` - your link to the bridge, and the bridge's link to the observatory |
+| `useConnection()` | `{ transport, upstream, protocol }` - your link to the bridge, the bridge's link to the observatory, and the bridge's [contract version](protocol.md#versioning-the-browser-contract) |
 | `useDevices()` | the device names currently known, sorted |
 | `useDevice(device)` | every property of one device |
 | `useProperty(device, name)` | one property, or `undefined` if it does not exist yet |
@@ -164,7 +165,7 @@ for scripting a sequence.
 | `DevicePanel` | every property of a device, grouped |
 | `PropertyVectorCard` | one property, with the right control for its kind |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |
-| `ConnectionStatus` | both connection states |
+| `ConnectionStatus` | both connection states, plus a badge when the bridge announces a [protocol version](protocol.md#versioning-the-browser-contract) this build was not written against |
 | `MessageLog` | the rolling INDI message log, **and the bridge's write rejections** |
 
 Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,

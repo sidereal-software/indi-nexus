@@ -7,18 +7,27 @@ Detail for `src/indi_nexus/`. The repository-wide rules are in the root `CLAUDE.
 What the runtime owns, and where the device guard sits. **Keep this current** - it is one of
 the two diagrams named in the root file's diagram table.
 
+One runtime serves **one or more** devices: one stdin, one parser, one outbox, one writer,
+and a device guard plus a set of `@every` tasks per device. Device B below is every
+co-located device, drawn once.
+
 ```mermaid
 flowchart TB
-    stdin(["stdin<br/>from indiserver"]) --> reader["reader loop<br/>XMLStreamParser"]
-    reader -->|getProperties| setup["Device.setup()"]
-    reader -->|newXxxVector| disp["@on_new handler"]
-    timer["@every job<br/>deadline-scheduled"] --> tick["tick"]
+    stdin(["stdin<br/>from indiserver"]) --> reader["reader loop<br/>XMLStreamParser (one per stream)"]
+    reader -->|"getProperties (device= or all)"| setup["A: Device.setup()"]
+    reader -->|"newXxxVector (device=A)"| disp["A: @on_new handler"]
+    reader -->|"offered to B in turn<br/>after A returns"| bdisp["B: setup() / @on_new"]
+    timer["A: @every job<br/>deadline-scheduled"] --> tick["tick"]
+    btimer["B: @every job<br/>own task, runs throughout"] --> btick["tick"]
 
-    setup --> guard{{"device guard<br/>serialize_dispatch"}}
+    setup --> guard{{"A: device guard<br/>serialize_dispatch"}}
     disp --> guard
     tick --> guard
+    bdisp --> bguard{{"B: device guard<br/>own lock, never A's"}}
+    btick --> bguard
     guard --> props["BoundProperty.set()<br/>emit policy applies"]
-    props --> outbox["outbox<br/>asyncio.Queue"]
+    bguard --> props
+    props --> outbox["shared outbox<br/>asyncio.Queue"]
     outbox --> writer["writer loop<br/>to_xml"]
     writer --> stdout(["stdout<br/>to indiserver"])
 
@@ -31,9 +40,19 @@ flowchart TB
     %% on colour alone.
     classDef ours stroke-width:3px
     classDef ext stroke-width:1px,stroke-dasharray:4 4
-    class reader,setup,disp,timer,tick,guard,props,outbox,writer ours
+    class reader,setup,disp,bdisp,timer,tick,btimer,btick,guard,bguard,props,outbox,writer ours
     class stdin,stdout,blocking ext
 ```
+
+The one edge worth reading twice is `reader -> B`: the reader **awaits** each dispatch, so
+while A's handler runs, the next inbound message waits - for every device on the stream.
+That is head-of-line blocking in the reader, not lock contention, and neither `off_thread`
+nor `serialize_dispatch = False` moves it: a message addressed to A never reaches B's guard
+in the first place (both `_dispatch_*` return on the device-name check before entering it),
+and `off_thread` still awaits. Outbound is unaffected - one outbox, a separate writer task -
+and so are `@every` jobs, which is why B keeps polling and publishing throughout. Two
+devices that must never delay each other's writes are two drivers, which `indiserver`
+launches happily.
 
 ## `exceptions.py` - the error hierarchy
 
@@ -58,6 +77,73 @@ formatting (`KeyError`'s repr-quoting) is unchanged too.
 Adding a type here means answering both questions: what it is a kind of (`IndiError`,
 always) and which builtin it has to stay compatible with. `tests/test_exceptions.py` asserts
 both halves per type, and that is the test that stops the compatibility guarantee rotting.
+
+## `settings.py` and `logging_config.py` - configuration and logging
+
+Both sit at the bottom of the graph on purpose: `settings.py` imports **pydantic-settings
+and nothing from `driver/`, `web/` or `client/`**, because both the CLI and `driver.run`
+import it, and `logging_config.py` imports only `protocol`. Anything more would put an
+edge in the graph `tests/test_layering.py` holds flat.
+
+- `settings.py` - `Settings`, the `INDI_NEXUS_*` environment, and the `settings()` accessor
+  (`lru_cache`d; tests call `settings.cache_clear()`). Every default is what the code
+  already used, so freezing them as contract changed no behaviour: `connect_timeout=10.0`
+  and `reconnect_delay=2.0` from `IndiClient`, `message_history=100` and `max_backlog=512`
+  from `bridge.py`, and `token`/`allowed_origins`/`allow_insecure_bind` from `serve`'s own
+  flags. `extra="ignore"` is load-bearing, not tidiness: the prefix is not reserved for
+  this model - the suite ships `INDI_NEXUS_UPDATE_GOLDEN` and an operator's tooling may
+  set anything - and the default `forbid` would take every entrypoint down at once over
+  one such name.
+  - **One reader.** No Typer option carries an `envvar=` (`tests/test_cli.py` asserts it),
+    so within the Python package the whole `INDI_NEXUS_*` environment is read here and
+    nowhere else, and a variable has one meaning and one place documenting it. The one
+    exception is outside the package: `docker/entrypoint.sh` reads `INDI_NEXUS_TOKEN`,
+    `INDI_NEXUS_ALLOW_INSECURE_BIND` and `INDI_NEXUS_ALLOWED_ORIGINS` (as fallbacks for
+    `WEB_TOKEN`, `WEB_ALLOW_ANONYMOUS` and `WEB_ALLOWED_ORIGINS`), because it has to
+    generate a token and print the panel's URL with it *before* `serve` starts. It passes
+    them on as flags, which beat the environment, so `Settings` still resolves one value.
+    See `docs/docker.md`. The three that are also `serve` options are resolved in the command
+    body against a `None` default: `None` is "flag absent, take the environment" and
+    anything else is the operator's explicit choice, which wins. Resolving in the body is
+    the whole point - a default computed in the signature is evaluated at *import*, which
+    freezes the first environment the process ever saw and is silent about it under any
+    in-process runner. `--token ""` is therefore a real value that turns a configured
+    token off, and `serve`'s non-loopback refusal is checked against the resolved token,
+    not the flag.
+  - `allowed_origins` is a `tuple[str, ...]` read **space separated** from the environment,
+    which needs `NoDecode` to stop pydantic-settings JSON-decoding a collection field. An
+    origin cannot contain whitespace, and it is what Click already did with a repeatable
+    option's `envvar`, so compose files written against the old behaviour keep working.
+  - **Nothing reads it implicitly.** `IndiClient`, `Bridge` and `create_app` keep explicit
+    parameters with their present defaults, and the entrypoints pass values down. A
+    constructor that read `Settings()` itself would destroy the injectability the whole
+    suite and `create_app(client=...)` rest on, and would let import order decide
+    behaviour.
+  - `LogLevel` is a closed `StrEnum` because the level is handed to **uvicorn** as well, at
+    both call sites in `cli.py`. A free string makes a typo a traceback out of
+    `uvicorn.Config`; the enum makes it a usage error, and `--log-level DEBUG` no longer
+    leaves the request log at `info`.
+- `logging_config.py` - `configure_logging`, the only handler installation in the package,
+  and `log_wire` behind the `indi_nexus.wire` logger.
+  - **stderr, not stdout, and it installs the handler outright** rather than deferring
+    through `basicConfig`. A driver's stdout *is* the INDI wire (`runtime._open_stdio`
+    writes XML to `sys.stdout.buffer`), so a log line there corrupts the stream
+    `indiserver` parses - and `basicConfig` defers to a root that already has a handler,
+    which under any test runner means installing nothing and holding the stderr guarantee
+    only when nothing else got there first.
+  - **Exactly one entrypoint per path configures.** The Typer callback for a CLI
+    invocation; `driver.run` for a driver. Not `serve_stdio`, which tests and embedders
+    await - configuring there would make every one of them mutate global logging. That is
+    also why `cli.run_devices` calls `serve_stdio` directly instead of `driver.run`:
+    reaching `driver.run` would re-read the environment and throw away `--log-level`.
+  - `indi_nexus.wire` is **one** logger for four sites (the client's reader and writer, the
+    runtime's reader and writer), because an operator wants one switch for "show me the
+    wire", not to learn which module each end lives in. Every call is guarded by
+    `isEnabledFor`. A message is named by its **model tag** (`def`, `set`, `new`, ...),
+    not by the XML element it would serialise to: the same message travels as JSON to a
+    browser, so the XML name would be wrong for half of it, and reproducing the codec's
+    tag-stem rule would put a fourth copy of it in the package. A BLOB's payload is never
+    logged, only its size, read off the model.
 
 ## `protocol/` - the wire format
 
@@ -247,7 +333,23 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
   Plain `asyncio`: an outbox queue, a writer task, one task per periodic job, all driven by
   the reader until stdin EOF. Inbound dispatch has the same error isolation as ticks - a
   raising `@on_new` handler or `setup()` is reported to the client and swallowed, so one bad
-  client write never kills the driver. The writer loop splits its two failures the same
+  client write never kills the driver.
+  - **`devices` is one device or a sequence of them**, and everything above is shared by
+    all of them: one parser (there is one stdin), one outbox, one writer. What is per
+    device is the guard, the `setup()` gate and the `@every` tasks. Duplicate device names
+    and an empty sequence both raise `ValueError` at construction - two devices answering
+    to one name is unresolvable by any client, and both guards would take every message
+    addressed to it. `Device.run()` is unchanged and still the single-device path; its
+    function-local import of `run` is what keeps `driver.device -> driver.runtime` out of
+    the module graph, and `tests/test_layering.py` enforces that.
+  - Error attribution differs by direction, because the two ends know different things.
+    **Inbound** already has the device it dispatched to, so it reports through that
+    device's own `log_error` - which matters most for a failing `setup()`, whose
+    `getProperties` usually names no device to guess from. **Outbound** has only the
+    message, so `_owner(msg)` resolves the device off the model and `_report` queues the
+    `[ERROR] `-prefixed `message` itself. The prefix is not decoration: `Device.message`
+    writes `f"[{level}] {text}"`, and dropping it would change the panel's log format for
+    runtime errors alone. The writer loop splits its two failures the same
   way: a message that will not **serialise** is reported and dropped, while a failed
   **write** has lost the only channel it could be reported on, so it propagates and
   `serve()` shuts the driver down rather than leaving a mute driver that still looks
@@ -325,6 +427,25 @@ cache, always as protocol models and never raw XML.
     connection rather than a user's intent. `enable_blob` **records the policy even when
     the send raises**: a BLOB policy is a standing, idempotent subscription preference that
     the handshake replays anyway, not a command to an instrument.
+  - **The parser is per connection, and holding it on `self` must not change that.**
+    `_reader_loop` calls `_new_parser()` as its first statement and nowhere else; the
+    stall path ends the connection precisely so the reconnect hands it a parser with no
+    half-open lxml document in it. Assign it once at construction instead and everything
+    still passes except stall recovery, silently, and only against a peer that has
+    actually gone mute - which is what `tests/test_client.py`'s
+    "replaced on every connection" test exists for.
+  - `stats` -> `ClientStats` is the operational read, and `/health` reports it. Three
+    definitions are contract rather than convenience: `reconnects` counts **successful**
+    re-establishments only (a bridge that never reached the hub reports `0` with
+    `connected` false, which already tells that story, while a rising count means real
+    flapping); `last_message_age_seconds` measures the last **parsed** message, because
+    `bytes_since_last_message` already answers the byte question and a peer dribbling
+    junk must not look healthy on both; `uptime_seconds` is the **current connection**,
+    `None` while down, since the container runtime already reports process uptime.
+    The `_total` counters add the **live** parser's numbers at read time rather than
+    folding it when it retires - folding on retirement left `dropped_total < dropped` for
+    the whole life of every connection, and permanently short after `aclose()`, which is
+    exactly when someone asks.
   - `wait_for` hands back a **detached snapshot**, taken at the moment the predicate
     passed, and `aclose()` fails every parked waiter with `NotConnectedError`. Both are the
     same class of bug: one read() chunk is folded in entirely before the reader yields, so
@@ -354,10 +475,30 @@ A FastAPI app putting one shared `IndiClient` behind an HTTP/WebSocket surface. 
 only **downwards** - client, protocol, exceptions - and `tests/test_layering.py` holds it
 there, along with the whole package's freedom from import cycles.
 
-- `bridge.py` - `Bridge` fans client activity out to browser WebSocket sinks: property events
+- `control_frames.py` - the three **control** frames, the non-INDI half of the browser
+  contract: `hello`, `connection`, `error`. Models rather than hand-built dicts for the
+  same reason the INDI messages are - `web/packages/client/src/types.ts` is a hand-authored
+  mirror, and a frame assembled with `json.dumps` at three call sites has no schema for the
+  mirror to be checked against. `BridgeFrame` is discriminated on `event` exactly as
+  `IndiMessage` is on `tag`.
+  - `BRIDGE_PROTOCOL_VERSION` versions **this** contract, not INDI's frozen 1.7, and is
+    bumped only on a breaking change: a field removed, renamed, or given a new meaning.
+    Adding an optional field does not bump it, because an older client ignoring an unknown
+    key is already correct. It stays a **model default**, so a bump shows up in the golden
+    schema diff, which is the diff a reviewer should be made to read.
+  - `HelloFrame.server` has **no model default**, and that is load-bearing: a model default
+    lands in `model_json_schema()`, so pinning `__version__` there would fail
+    `tests/test_wire_contract.py` on every release and train whoever cuts it to regenerate
+    the golden file without reading it. `Bridge.__init__` takes it as a *function* default
+    instead, which is a different thing.
+- `bridge.py` - `Bridge(client, server=__version__, *, message_history=, max_backlog=)`
+  fans client activity out to browser WebSocket sinks: property events
   become `def`/`set`/`delProperty` JSON, `on_message` becomes `message` JSON, and
-  `on_connection` becomes a small `{"event":"connection"}` **control** frame (one of the two
-  non-INDI frames; the UI needs it and the protocol has no message for it). `start()` calls
+  `on_connection` becomes a small `{"event":"connection"}` control frame. The **first**
+  frame on every socket is the `hello`: it names the contract version everything after it
+  is written in, so it cannot follow the frames a browser needs it to interpret. It rides in
+  `Subscription.preamble`, which `_pump` drains ahead of `seed_vectors`, then `seed_frames`,
+  then the live queue - `attach` stays synchronous and gains no `await`. `start()` calls
   `IndiClient.start(wait=False)`: the server must come up with `indiserver` down (the state a
   first `indi-nexus serve` usually starts in) and show a disconnected panel rather than hang
   in startup. Scripts and monitors still get the blocking default.
@@ -383,7 +524,7 @@ there, along with the whole package's freedom from import cycles.
   - A queued `set` **coalesces**: the next `set` for the same property replaces it in place.
     A `def` or `del` invalidates that slot, so a later `set` cannot fold into one sitting
     ahead of a retraction and overtake it - the correctness condition the whole scheme turns
-    on. `message` frames are a log and always append. Past `_MAX_BACKLOG` live frames the
+    on. `message` frames are a log and always append. Past `max_backlog` live frames the
     browser is dropped, counted (`dropped_slow_sinks`, reported on `/health`) and logged; it
     reconnects and re-seeds. A browser cannot tell that from a network fault, which is
     accepted, because the remedy is identical either way.
@@ -402,8 +543,23 @@ there, along with the whole package's freedom from import cycles.
   `Origin` is allowed on purpose**: a browser always sends one, so refusing it stops no
   browser and breaks every non-browser peer, `TestClient` and the interop suite included.
 - `app.py` - `create_app(*, client=None, indi_host=, indi_port=, token=None,
-  allowed_origins=())`. Lifespan starts and stops the bridge. `GET /health`;
-  `GET /api/devices[/{device}[/{name}]]`; `WS /ws` (origin and token checked before
+  allowed_origins=(), connect_timeout=, reconnect_delay=, message_history=,
+  max_backlog=)`. The four tuning arguments default to today's constants and are what
+  `indi-nexus serve` fills from `Settings`; nothing here reads the environment, which is
+  what keeps `create_app(client=...)` injectable. Lifespan starts and stops the bridge.
+  `GET /health` - **purely additive**: `status`, `connected` and `dropped_slow_sinks` keep
+  their names at the top level, because an operator's monitoring check already reads them,
+  and `protocol`, `sinks_attached` and the `upstream`/`parser` blocks were added beside
+  them rather than by nesting those three. No release version: it hands an unauthenticated
+  caller the exact build to look up advisories against, and `protocol` (item A's integer,
+  the same one the `hello` carries) answers the only compatibility question a caller has.
+  No addresses and no device names either;
+  `GET /api/devices[/{device}[/{name}]]` - annotated `dict[str, Vector]` / `Vector`, so
+  FastAPI serialises through the real schema and OpenAPI documents it instead of `object`;
+  the payload is byte-identical to the old explicit `model_dump`, and the cost is that a
+  response model re-validates on the way out, which is right on a snapshot endpoint and
+  would not be on `/ws`. The shape stays **bare vectors keyed by property name**: a REST
+  resource is the property, not a wire event. `WS /ws` (origin and token checked before
   `accept()`, then `bridge.attach`, then browser frames forwarded upstream); `GET /` serves
   the built panel, falling back to the debug page, which stays at `/debug`. `client` is
   injectable so tests use `TestClient` over an in-memory upstream. The token guards `/ws` and
@@ -422,13 +578,24 @@ there, along with the whole package's freedom from import cycles.
 ## `cli.py`
 
 Typer app, the `indi-nexus` entrypoint. `new` scaffolds a runnable driver file (the template
-is import-tested so it cannot rot); `serve` runs the web bridge; `run module:attr` imports a
-`Device` subclass and serves it over stdio; `monitor` prints live updates. `serve` **refuses
+is import-tested so it cannot rot); `serve` runs the web bridge; `run module:attr ...` imports
+one or more `Device` subclasses and serves them over one stdio pipe; `monitor` prints live updates. `serve` **refuses
 a non-loopback `--host` with no `--token`** unless `--allow-insecure-bind` says so: that bind
 publishes the instrument's control surface, and it should be a decision rather than a
-default. `--allow-origin` (repeatable) names browser origins besides the server's own. Heavy
-imports
+default. `--allow-origin` (repeatable) names browser origins besides the server's own.
+Those three options carry **no `envvar=`**: they default to `None` and are resolved
+against `Settings` in the body, so the flag beats the environment and the refusal is
+checked on the resolved value - see `settings.py` above for why the resolution cannot move
+into the signature. Heavy imports
 (uvicorn, fastapi) are lazy so `--help` stays fast.
+
+`@app.callback()` carries `--log-level` / `-v` / `--wire`, so all four subcommands have
+them, and it is the one place a CLI invocation configures logging. `serve` reads the
+chosen level back off `ctx.obj` and hands it to **both** uvicorn call sites (`uvicorn.run`
+and `uvicorn.Config`), keeping uvicorn's own `log_config` - owning that tree would mean
+reimplementing its access-log format for nothing. `run_devices` lives here rather than
+being `driver.run` re-exported: `driver.run` configures logging from the environment
+itself, and reaching it from the CLI would do that twice and discard `--log-level`.
 
 ## The examples
 
@@ -460,6 +627,10 @@ The same rule holds for the TypeScript simulators that mirror these drivers, whi
   `tests/data/open_meteo_response.json`, a recorded real reply, so the field names are
   checked against what the service actually sends. If you change what the driver requests,
   re-record rather than hand-editing that fixture.
+- `examples/guided_camera.py` - the reference **multi-device** driver: a camera and its
+  guide chip in one process behind one shared (blocking) link, ending in
+  `run([MainChip(), GuideChip()])`. Keep an example in this shape - it is the only place
+  the several-devices-on-one-pipe wiring is shown end to end, and the guide points at it.
 - `examples/monitor_client.py` - the reference client.
 - `indi-nexus serve --device` - driver, bridge and panel over in-memory pipes, so the whole
   stack runs end to end with `indi-nexus serve --device examples.demo_device:Demo` and no `indiserver`.

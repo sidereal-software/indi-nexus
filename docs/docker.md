@@ -88,15 +88,64 @@ docker run --rm -p 8000:8000 -p 7624:7624 \
 
 ## Configuration
 
+Two sets of variables reach this container, and which one to use follows from who reads
+it.
+
+**The container's own**, read by `docker/entrypoint.sh`, which turns them into an
+`indiserver` command line and `indi-nexus serve` flags. They exist because the entrypoint
+composes two processes, which no single `indi-nexus` invocation can be configured to do:
+
 | Variable | Default | Effect |
 |---|---|---|
 | `INDI_DRIVERS` | `indi_simulator_telescope` | Space-separated drivers: a name on `PATH`, a path to an executable, or a path to a `.py` file. |
 | `INDI_DRIVER_DIR` | `/drivers` | A directory whose entries are appended to that list. |
 | `INDI_PORT` | `7624` | The port `indiserver` listens on. |
 | `WEB_HOST`, `WEB_PORT` | `0.0.0.0`, `8000` | Where the bridge binds. |
-| `WEB_TOKEN` | generated | The shared token `/ws` and `/api` require. Left unset, one is generated and printed with the panel's URL on startup; set it to keep that URL stable across a restart. |
-| `WEB_ALLOW_ANONYMOUS` | unset | Set to any value to serve with no token. |
-| `WEB_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept in addition to the bridge's own. |
+| `WEB_TOKEN` | generated | The shared token `/ws` and `/api` require. Left unset, one is generated and printed with the panel's URL on startup; set it to keep that URL stable across a restart. `INDI_NEXUS_TOKEN` is accepted as the same setting. |
+| `WEB_ALLOW_ANONYMOUS` | unset | Set to any value to serve with no token: the entrypoint then passes `--allow-insecure-bind` and no `--token` at all. Ignored when a token is set, which wins. Same as `INDI_NEXUS_ALLOW_INSECURE_BIND`. |
+| `WEB_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept in addition to the bridge's own. Same as `INDI_NEXUS_ALLOWED_ORIGINS`, same format. |
+
+**INDINexus's own**, read by `indi-nexus` itself wherever it runs - in this container, on a
+host install, or in a driver process `indiserver` launched. They are passed straight
+through by Docker, so setting one on the service is all it takes:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `INDI_NEXUS_LOG_LEVEL` | `INFO` | Level for INDINexus and uvicorn: `CRITICAL`, `ERROR`, `WARNING`, `INFO` or `DEBUG`. |
+| `INDI_NEXUS_WIRE_LOG` | unset | Set to `1` for one log line per INDI message in each direction. BLOB payloads are reported by size, never printed. |
+| `INDI_NEXUS_CONNECT_TIMEOUT` | `10.0` | Seconds the bridge waits for each attempt to reach `indiserver`. |
+| `INDI_NEXUS_RECONNECT_DELAY` | `2.0` | Seconds between a lost upstream connection and the next attempt. |
+| `INDI_NEXUS_MESSAGE_HISTORY` | `100` | INDI `message` frames replayed to a browser that has just connected. |
+| `INDI_NEXUS_MAX_BACKLOG` | `512` | Live frames a browser may fall behind by before the bridge drops it and it reconnects. |
+| `INDI_NEXUS_TOKEN` | unset (generated in this image) | The shared token `/ws` and `/api` require. In this image, `WEB_TOKEN`. |
+| `INDI_NEXUS_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept. In this image, `WEB_ALLOWED_ORIGINS`. |
+| `INDI_NEXUS_ALLOW_INSECURE_BIND` | unset | Permit the non-loopback bind with no token anyway. It does **not** turn off a token that is set. In this image, `WEB_ALLOW_ANONYMOUS`, which also drops `--token` - see below. |
+
+**The last three have two names here, and they are the same setting.** The entrypoint has
+to decide something about them before `serve` runs - it generates a token when none was
+given and prints the panel's URL with it - so it resolves them itself and passes them as
+flags, which beat the environment. It reads `WEB_TOKEN` first and falls back to
+`INDI_NEXUS_TOKEN`, and likewise for the other two, so either spelling works and the URL
+printed at startup is the one that opens. Set one of each pair, not both; `WEB_*` is the
+name to prefer in this image, and `INDI_NEXUS_*` is what you use when you run `indi-nexus`
+yourself.
+
+`ALLOW_INSECURE_BIND` is narrower than its container spelling suggests, and it is worth
+being exact about because it is the one variable here that gives something away. On its
+own it only **permits a non-loopback bind that has no token**; `serve` refuses that bind
+otherwise. It never disables a token that is configured. What actually serves the panel
+anonymously in this image is the entrypoint: when `WEB_ALLOW_ANONYMOUS` is set and no
+token is, it starts `serve` with `--allow-insecure-bind` and **no `--token`**, so there
+is no token to check. Set a token as well and the token wins, on a bind that no longer
+needs the permission.
+
+Turning the log up is the usual first move when a driver is not appearing:
+
+```bash
+docker run --rm -p 8000:8000 -p 7624:7624 \
+  -e INDI_NEXUS_LOG_LEVEL=DEBUG -e INDI_NEXUS_WIRE_LOG=1 \
+  ghcr.io/sidereal-software/indi-nexus
+```
 
 ## The token
 
@@ -118,7 +167,11 @@ accepts `?token=`. `/api` takes `Authorization: Bearer <token>` and nothing else
 curl -H 'Authorization: Bearer Xb3...' http://localhost:8000/api/devices
 ```
 
-`/health` needs no token, because the image's health check calls it.
+`/health` needs no token, because the image's health check calls it. It reports liveness,
+the upstream link and a few counters, and deliberately carries no release version, no
+addresses and no device names - see
+[the bridge's HTTP surface](https://github.com/sidereal-software/indi-nexus/blob/main/DEVELOPMENT.md#the-bridges-http-surface)
+for the body.
 
 Browsers apply neither the same-origin policy nor CORS to WebSockets, so the bridge
 also checks the handshake's `Origin` against its own and refuses anything else. A

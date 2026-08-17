@@ -41,7 +41,7 @@ For your own layout, the same live state is available through hooks:
 import { useNumber, useSwitch, useConnection } from "@indi-nexus/react";
 
 export const Readout = () => {
-  const { transport } = useConnection(); // also `upstream`: the bridge's own link
+  const { transport } = useConnection(); // also `upstream` and `protocol`
   const ra = useNumber("Mount", "EQUATORIAL_EOD_COORD", "RA");
   const tracking = useSwitch("Mount", "TELESCOPE_TRACK_STATE", "TRACK_ON");
 
