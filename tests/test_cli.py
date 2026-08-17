@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import runpy
 import sys
 import warnings
@@ -13,12 +15,37 @@ import uvicorn
 from typer.testing import CliRunner
 
 import indi_nexus.cli
+import indi_nexus.logging_config as logging_config
+import indi_nexus.web
 from examples.demo_device import Demo
+from examples.flat_panel import FlatPanel
 from indi_nexus.cli import app, load_device
 from indi_nexus.client import PropertyEvent
+from indi_nexus.driver import Device
+from indi_nexus.logging_config import WIRE_LOGGER
 from indi_nexus.protocol import IPState, Number, NumberVector
+from indi_nexus.settings import settings
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _clean_environment(monkeypatch):
+    """Run every CLI test against an empty ``INDI_NEXUS_*`` environment.
+
+    The CLI reads the whole of it through :func:`indi_nexus.settings.settings`,
+    which is cached for the life of the process, so without this a developer with
+    ``INDI_NEXUS_TOKEN`` set would see the access-control tests pass or fail on
+    their shell, and the cache would carry one test's variables into the next.
+    ``monkeypatch`` restores whatever was there afterwards, so a deliberate
+    ``INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest`` still reaches the tests that
+    read it.
+    """
+    for name in [key for key in dict(os.environ) if key.startswith("INDI_NEXUS_")]:
+        monkeypatch.delenv(name, raising=False)
+    settings.cache_clear()
+    yield
+    settings.cache_clear()
 
 
 def test_load_device_resolves_a_device_subclass():
@@ -60,23 +87,37 @@ def test_run_rejects_bad_spec_via_cli():
 
 
 def test_run_invokes_the_device_entrypoint(monkeypatch):
-    """`run` resolves the spec and calls the Device subclass's run()."""
-    calls: list[str] = []
-    monkeypatch.setattr(Demo, "run", classmethod(lambda cls, name=None: calls.append(cls.__name__)))
+    """`run` resolves the spec, instantiates it, and serves it over stdio."""
+    served: list[list[Device]] = []
+    monkeypatch.setattr(indi_nexus.cli, "run_devices", served.append)
     result = runner.invoke(app, ["run", "examples.demo_device:Demo"])
     assert result.exit_code == 0
-    assert calls == ["Demo"]
+    assert [type(device) for device in served[0]] == [Demo]
+    # The name=None path a bare spec takes: the class-level device name stands.
+    assert served[0][0].device == Demo.name
+
+
+def test_run_serves_several_drivers_on_one_stream(monkeypatch):
+    """`run` with several specs puts every named device on one runtime."""
+    served: list[list[Device]] = []
+    monkeypatch.setattr(indi_nexus.cli, "run_devices", served.append)
+    result = runner.invoke(
+        app, ["run", "examples.demo_device:Demo", "examples.flat_panel:FlatPanel"]
+    )
+    assert result.exit_code == 0
+    assert [type(device) for device in served[0]] == [Demo, FlatPanel]
 
 
 def test_serve_hands_the_app_to_uvicorn(monkeypatch):
     """`serve` builds the web app and passes host/port to uvicorn.run."""
     captured: dict[str, object] = {}
 
-    def fake_run(application, *, host, port):
+    def fake_run(application, *, host, port, log_level):
         """Capture the app and bind options uvicorn.run was given."""
         captured["app"] = application
         captured["host"] = host
         captured["port"] = port
+        captured["log_level"] = log_level
 
     monkeypatch.setattr(uvicorn, "run", fake_run)
     result = runner.invoke(
@@ -86,6 +127,7 @@ def test_serve_hands_the_app_to_uvicorn(monkeypatch):
     assert result.exit_code == 0
     assert captured["host"] == "127.0.0.2"
     assert captured["port"] == 9123
+    assert captured["log_level"] == "info"
     assert captured["app"].title == "INDINexus web bridge"
 
 
@@ -110,6 +152,182 @@ def test_serve_refuses_a_network_bind_with_no_token(monkeypatch):
     )
     assert runner.invoke(app, ["serve", "--host", "127.0.0.1"]).exit_code == 0
     assert len(started) == 3
+
+
+# --------------------------------------------------------------------------- #
+# Access control: --token / --allow-origin / --allow-insecure-bind             #
+# --------------------------------------------------------------------------- #
+def _serve_capturing_create_app(monkeypatch, args):
+    """Invoke ``serve`` with uvicorn and the app factory stubbed out.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        The patcher to install the stubs with.
+    args : list of str
+        The arguments after ``serve``.
+
+    Returns
+    -------
+    captured : dict
+        The keyword arguments ``create_app`` was called with.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_create_app(**kwargs):
+        """Record how the bridge was configured and stand in for the app."""
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(indi_nexus.web, "create_app", fake_create_app)
+    monkeypatch.setattr(uvicorn, "run", lambda application, **kw: None)
+    result = runner.invoke(app, ["serve", *args])
+    assert result.exit_code == 0, result.output
+    return captured
+
+
+def test_the_access_control_environment_is_read(monkeypatch):
+    """The three ``serve`` options are ``Settings`` fields like everything else.
+
+    They used to be Typer ``envvar=`` reads. This is the same environment
+    reaching the same place through the one reader - and it proves the values
+    are not baked into the option defaults at import time, since this module was
+    imported long before the fixture emptied the environment.
+    """
+    monkeypatch.setenv("INDI_NEXUS_TOKEN", "from-the-environment")
+    monkeypatch.setenv("INDI_NEXUS_ALLOWED_ORIGINS", "http://a http://b")
+    captured = _serve_capturing_create_app(monkeypatch, [])
+    assert captured["token"] == "from-the-environment"
+    assert captured["allowed_origins"] == ("http://a", "http://b")
+
+
+def test_an_explicit_flag_beats_the_environment(monkeypatch):
+    """One rule for all three: the flag is this invocation, the variable is the box."""
+    monkeypatch.setenv("INDI_NEXUS_TOKEN", "from-the-environment")
+    monkeypatch.setenv("INDI_NEXUS_ALLOWED_ORIGINS", "http://a http://b")
+    captured = _serve_capturing_create_app(
+        monkeypatch,
+        ["--token", "from-the-flag", "--allow-origin", "http://c"],
+    )
+    assert captured["token"] == "from-the-flag"
+    assert captured["allowed_origins"] == ("http://c",)
+
+
+def test_an_empty_token_flag_turns_a_configured_token_off(monkeypatch):
+    """``--token ""`` is a choice, not a missing flag, so it wins.
+
+    Without the ``None`` sentinel an empty string would be indistinguishable
+    from "not given" and the environment would silently win instead.
+    """
+    monkeypatch.setenv("INDI_NEXUS_TOKEN", "from-the-environment")
+    captured = _serve_capturing_create_app(monkeypatch, ["--token", ""])
+    assert captured["token"] == ""
+
+
+def test_the_origin_flag_is_still_repeatable(monkeypatch):
+    """Both forms survive: repeated on the command line, space separated in the box."""
+    captured = _serve_capturing_create_app(
+        monkeypatch, ["--allow-origin", "http://a", "--allow-origin", "http://b"]
+    )
+    assert captured["allowed_origins"] == ("http://a", "http://b")
+
+
+def test_no_option_reads_the_environment_through_typer():
+    """``Settings`` is the one reader, so no Click parameter may carry an envvar.
+
+    Checked on the built Click command rather than on the Python signature,
+    because that is where a stray ``envvar=`` would actually take effect - and
+    it catches every subcommand, including ones added later.
+    """
+    command = typer.main.get_command(app)
+    stack = [command]
+    offenders = []
+    while stack:
+        current = stack.pop()
+        offenders += [
+            f"{current.name}.{param.name}={param.envvar}"
+            for param in current.params
+            if param.envvar is not None
+        ]
+        stack += list(getattr(current, "commands", {}).values())
+    assert offenders == []
+
+
+def test_the_logging_flags_default_to_the_environment(monkeypatch, restore_logging):
+    """``--log-level`` and ``--wire`` go through ``Settings`` like everything else.
+
+    They are the two a driver needs with no CLI in the loop, so they were always
+    ``Settings`` fields; this is the CLI reading the same field instead of
+    parsing the same variable a second time.
+    """
+    monkeypatch.setenv("INDI_NEXUS_LOG_LEVEL", "error")
+    monkeypatch.setenv("INDI_NEXUS_WIRE_LOG", "1")
+    _serve_capturing_uvicorn(monkeypatch, ["serve"])
+    assert logging.getLogger().level == logging.ERROR
+    assert logging.getLogger(WIRE_LOGGER).isEnabledFor(logging.DEBUG)
+
+
+def test_serve_help_still_lists_the_access_control_flags():
+    """Moving the reader must not move the options out of the help.
+
+    An operator finds these by typing ``--help``, so each one names its variable
+    there as well.
+    """
+    result = runner.invoke(app, ["serve", "--help"])
+    assert result.exit_code == 0
+    output = " ".join(result.output.split())
+    for flag, variable in [
+        ("--token", "INDI_NEXUS_TOKEN"),
+        ("--allow-origin", "INDI_NEXUS_ALLOWED_ORIGINS"),
+        ("--allow-insecure-bind", "INDI_NEXUS_ALLOW_INSECURE_BIND"),
+    ]:
+        assert flag in output
+        assert variable in output
+
+
+def test_a_token_from_the_environment_satisfies_the_security_refusal(monkeypatch):
+    """The refusal is a security control, and it now has a second way in.
+
+    A token set in the environment authenticates the bind exactly as ``--token``
+    does; anything else would mean a container configured entirely by
+    environment could not serve on ``0.0.0.0`` at all.
+    """
+    monkeypatch.setattr(uvicorn, "run", lambda application, **kw: None)
+
+    monkeypatch.setenv("INDI_NEXUS_TOKEN", "x")
+    settings.cache_clear()
+    assert runner.invoke(app, ["serve", "--host", "0.0.0.0"]).exit_code == 0
+
+    # And an empty one does not: the variable is present but says "no token".
+    monkeypatch.setenv("INDI_NEXUS_TOKEN", "")
+    settings.cache_clear()
+    refused = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+    assert refused.exit_code != 0
+    assert "--allow-insecure-bind" in refused.output
+
+
+def test_the_insecure_bind_override_works_from_the_environment(monkeypatch):
+    """``INDI_NEXUS_ALLOW_INSECURE_BIND`` accepts the exposure as the flag does."""
+    monkeypatch.setattr(uvicorn, "run", lambda application, **kw: None)
+    monkeypatch.setenv("INDI_NEXUS_ALLOW_INSECURE_BIND", "1")
+    settings.cache_clear()
+    assert runner.invoke(app, ["serve", "--host", "0.0.0.0"]).exit_code == 0
+
+
+def test_an_empty_token_flag_does_not_smuggle_past_the_refusal(monkeypatch):
+    """``--token ""`` beats the environment on the security check too.
+
+    The check has to run on the resolved value, not on the flag: reading the
+    flag alone would refuse a bind the environment had authenticated, and
+    reading the environment alone would accept one the operator had just
+    turned off.
+    """
+    monkeypatch.setattr(uvicorn, "run", lambda application, **kw: None)
+    monkeypatch.setenv("INDI_NEXUS_TOKEN", "x")
+    settings.cache_clear()
+    refused = runner.invoke(app, ["serve", "--host", "0.0.0.0", "--token", ""])
+    assert refused.exit_code != 0
+    assert "--allow-insecure-bind" in refused.output
 
 
 class _FakeMonitorClient:
@@ -243,3 +461,127 @@ def test_new_refuses_to_overwrite():
         result = runner.invoke(app, ["new", existing.name])
         assert result.exit_code != 0
         assert "refusing to overwrite" in result.output
+
+
+# --------------------------------------------------------------------------- #
+# Logging flags                                                                #
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def restore_logging():
+    """Undo what the app callback does to global logging state.
+
+    Configuring logging is an entrypoint's job, so invoking the CLI genuinely
+    mutates the process; a test that does it has to put it back or every later
+    test inherits the level.
+    """
+    root = logging.getLogger()
+    handlers, level = list(root.handlers), root.level
+    wire_level = logging.getLogger(WIRE_LOGGER).level
+    yield
+    root.handlers[:] = handlers
+    root.setLevel(level)
+    logging.getLogger(WIRE_LOGGER).setLevel(wire_level)
+    logging_config._handler = None
+
+
+def _serve_capturing_uvicorn(monkeypatch, args):
+    """Invoke ``serve`` with uvicorn stubbed out, returning the captured kwargs.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        The patcher to install the uvicorn stub with.
+    args : list of str
+        The full argument list, subcommand included.
+
+    Returns
+    -------
+    captured : dict
+        The keyword arguments ``uvicorn.run`` was called with.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_run(application, **kwargs):
+        """Record what uvicorn.run was asked for."""
+        captured.update(kwargs)
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    return captured
+
+
+def test_the_log_level_flag_applies_to_the_package(monkeypatch, restore_logging):
+    """``--log-level`` is on the callback, so every subcommand carries it."""
+    _serve_capturing_uvicorn(monkeypatch, ["--log-level", "DEBUG", "serve"])
+    assert logging.getLogger().level == logging.DEBUG
+
+
+def test_verbose_is_shorthand_for_debug(monkeypatch, restore_logging):
+    """``-v`` is what somebody reaches for before reading the help."""
+    _serve_capturing_uvicorn(monkeypatch, ["-v", "serve"])
+    assert logging.getLogger().level == logging.DEBUG
+
+
+def test_the_wire_flag_turns_up_the_wire_logger(monkeypatch, restore_logging):
+    """``--wire`` gives the wire without the rest of the package's DEBUG."""
+    _serve_capturing_uvicorn(monkeypatch, ["--wire", "serve"])
+    assert logging.getLogger(WIRE_LOGGER).isEnabledFor(logging.DEBUG)
+    assert logging.getLogger().level == logging.INFO
+
+
+def test_the_environment_is_honoured_and_the_flag_wins(monkeypatch, restore_logging):
+    """One vocabulary: the flag and the variable name the same setting."""
+    monkeypatch.setenv("INDI_NEXUS_LOG_LEVEL", "warning")
+    _serve_capturing_uvicorn(monkeypatch, ["serve"])
+    assert logging.getLogger().level == logging.WARNING
+
+    _serve_capturing_uvicorn(monkeypatch, ["--log-level", "ERROR", "serve"])
+    assert logging.getLogger().level == logging.ERROR
+
+
+def test_uvicorn_is_started_at_the_same_level(monkeypatch, restore_logging):
+    """Otherwise ``--log-level DEBUG`` silently leaves out the request log.
+
+    That is usually the half an operator turning the level up was after, and
+    uvicorn.Config defaults to info on its own.
+    """
+    captured = _serve_capturing_uvicorn(monkeypatch, ["--log-level", "DEBUG", "serve"])
+    assert captured["log_level"] == "debug"
+
+
+def test_an_unknown_log_level_is_rejected_by_the_parser():
+    """A closed set, so a typo is a usage error rather than a uvicorn traceback."""
+    result = runner.invoke(app, ["--log-level", "CHATTY", "serve"])
+    assert result.exit_code != 0
+
+
+def test_the_device_path_configures_uvicorn_at_the_same_level(monkeypatch, restore_logging):
+    """``serve --device`` builds uvicorn.Config itself, so it needs the level too.
+
+    Two call sites, and missing either one leaves uvicorn at ``info`` while
+    ``indi_nexus.*`` moved - which is the failure this passthrough exists for.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_config(application, **kwargs):
+        """Record what uvicorn.Config was asked for."""
+        captured.update(kwargs)
+        return application
+
+    class _FakeServer:
+        """A uvicorn.Server that finishes immediately."""
+
+        def __init__(self, config):
+            """Ignore the config; the assertion is on what built it."""
+
+        async def serve(self):
+            """Return at once, so the command shuts the hub down and exits."""
+
+    monkeypatch.setattr(uvicorn, "Config", fake_config)
+    monkeypatch.setattr(uvicorn, "Server", _FakeServer)
+    result = runner.invoke(
+        app, ["--log-level", "WARNING", "serve", "--device", "examples.demo_device:Demo"]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["log_level"] == "warning"

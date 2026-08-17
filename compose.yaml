@@ -35,10 +35,21 @@ services:
       # always runs with a token. Left unset, one is generated and printed on
       # startup with the panel's URL; set it to keep that URL stable across a
       # restart. WEB_ALLOW_ANONYMOUS=1 turns it off, deliberately and knowingly.
+      # (INDI_NEXUS_TOKEN and INDI_NEXUS_ALLOW_INSECURE_BIND are the same two
+      # settings under their package names; the entrypoint reads either. Set one
+      # name per setting, not both.)
       # WEB_TOKEN: change-me
       # A front end served from somewhere else needs its origin named here,
       # space separated; the bridge's own origin is always accepted.
+      # (Package name: INDI_NEXUS_ALLOWED_ORIGINS, same format.)
       # WEB_ALLOWED_ORIGINS: http://localhost:5173
+      # Every other INDINexus setting is read by indi-nexus itself wherever it
+      # runs, so it is passed straight through rather than translated by the
+      # entrypoint. These two are what to reach for when a driver is not
+      # appearing: WIRE_LOG puts one line per INDI message in each direction into
+      # the log (BLOB payloads by size, never printed). docs/docker.md has the rest.
+      # INDI_NEXUS_LOG_LEVEL: DEBUG
+      # INDI_NEXUS_WIRE_LOG: 1
     restart: unless-stopped
 
   # Not started by `docker compose up`: the interop suite is a developer tool, and it

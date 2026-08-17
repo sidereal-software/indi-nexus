@@ -18,12 +18,27 @@
 #   WEB_PORT         the port the bridge listens on (8000).
 #   WEB_TOKEN        the shared token /ws and /api require. Unset, one is generated
 #                    and printed; set it to keep the panel's URL stable across a
-#                    `restart: unless-stopped`.
+#                    `restart: unless-stopped`. INDI_NEXUS_TOKEN works too.
 #   WEB_ALLOW_ANONYMOUS  set to any value to serve with no token at all. The
 #                    published port is then an unauthenticated control surface for
 #                    the instrument, for anything that can reach the host.
+#                    INDI_NEXUS_ALLOW_INSECURE_BIND works too.
 #   WEB_ALLOWED_ORIGINS  space-separated browser origins to accept in addition to
 #                    the bridge's own, for a front end served from elsewhere.
+#                    INDI_NEXUS_ALLOWED_ORIGINS works too, same format.
+#
+# The variables above are this script's own: it composes two processes, which no single
+# indi-nexus invocation can be configured to do. INDINexus's own INDI_NEXUS_* variables
+# are read by indi-nexus itself and need nothing from here - they are already in the
+# environment this script's children inherit.
+#
+# Three of them are the exception, because this script has to *decide* something about
+# them before `serve` runs: it generates a token when none was given, and prints the
+# panel's URL with it. So it resolves those three itself and passes them as flags, which
+# beat the environment. It falls back to the INDI_NEXUS_ spelling for each, so setting
+# either name works and the URL printed below is the one that will actually open - a
+# container configured with INDI_NEXUS_TOKEN alone would otherwise be handed a generated
+# token instead. docs/docker.md says the same.
 #
 # To run something else entirely - the panel against a hub in another container, say -
 # override the container command, which replaces this script.
@@ -109,10 +124,14 @@ done
 # anything that can reach the host. So a token is always passed unless the operator
 # has said otherwise, and a generated one is printed rather than being a secret
 # nobody can use.
+WEB_TOKEN="${WEB_TOKEN:-${INDI_NEXUS_TOKEN:-}}"
+web_allow_anonymous="${WEB_ALLOW_ANONYMOUS:-${INDI_NEXUS_ALLOW_INSECURE_BIND:-}}"
+web_allowed_origins="${WEB_ALLOWED_ORIGINS:-${INDI_NEXUS_ALLOWED_ORIGINS:-}}"
+
 web_args=()
-if [[ -n "${WEB_TOKEN:-}" ]]; then
+if [[ -n "$WEB_TOKEN" ]]; then
     web_args+=(--token "$WEB_TOKEN")
-elif [[ -n "${WEB_ALLOW_ANONYMOUS:-}" ]]; then
+elif [[ -n "$web_allow_anonymous" ]]; then
     web_args+=(--allow-insecure-bind)
 else
     WEB_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
@@ -120,10 +139,11 @@ else
     echo "indi-nexus: generated a web token. Set WEB_TOKEN to keep it stable across restarts."
 fi
 
-if [[ -n "${WEB_ALLOWED_ORIGINS:-}" ]]; then
-    # Unquoted on purpose: WEB_ALLOWED_ORIGINS is a space-separated list.
+if [[ -n "$web_allowed_origins" ]]; then
+    # Unquoted on purpose: this is a space-separated list, the same format
+    # INDI_NEXUS_ALLOWED_ORIGINS itself takes.
     # shellcheck disable=SC2206
-    for origin in ${WEB_ALLOWED_ORIGINS}; do
+    for origin in ${web_allowed_origins}; do
         web_args+=(--allow-origin "$origin")
     done
 fi
