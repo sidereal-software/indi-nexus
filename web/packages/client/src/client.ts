@@ -19,6 +19,7 @@ import {
   type WebSocketFactory,
 } from "./connection";
 import { type BLOBPolicy, ISState } from "./enums";
+import { acceptFrame } from "./frames";
 import {
   type PropertyEvent,
   PropertyStore,
@@ -28,6 +29,7 @@ import {
 import type {
   ConnectionFrame,
   EnableBlob,
+  ErrorFrame,
   GetProperties,
   IndiMessage,
   Message,
@@ -76,13 +78,22 @@ export interface IndiClientOptions {
   messageLogLimit?: number;
 }
 
-/** Derive the bridge WebSocket URL from the current page location. */
+/**
+ * Derive the bridge WebSocket URL from the current page location.
+ *
+ * The page's own `?token=` is carried across to `/ws`. A bridge started with a
+ * token requires it there, and a browser cannot put one in a header on a
+ * WebSocket handshake, so the query parameter is the only form available - and
+ * the panel is served by that same bridge from a URL that already carries it.
+ */
 function defaultWsUrl(): string {
   if (typeof location === "undefined") {
     throw new Error("No global location; pass `url` to IndiClient.");
   }
   const protocol = location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://${location.host}/ws`;
+  const token = new URLSearchParams(location.search).get("token");
+  const query = token === null ? "" : `?token=${encodeURIComponent(token)}`;
+  return `${protocol}://${location.host}/ws${query}`;
 }
 
 /** Coerce a {@link SwitchInput} to an `ISState`. */
@@ -382,20 +393,36 @@ export class IndiClient {
     // Valid JSON need not be an object: `null`, a bare number and a bare string
     // all parse, and none of them is a frame (`"event" in null` would throw).
     if (typeof parsed !== "object" || parsed === null) return;
-    const frame = parsed as IndiMessage | ConnectionFrame;
-    if ("event" in frame && frame.event === "connection") {
-      this.setState({ transport: this._state.transport, upstream: frame.connected });
+    const frame = parsed as IndiMessage | ConnectionFrame | ErrorFrame;
+    // A bridge control frame is not an INDI message and never reaches the store.
+    // An `event` this version does not know is dropped, as it always was.
+    if ("event" in frame) {
+      if (frame.event === "connection") {
+        this.setState({ transport: this._state.transport, upstream: frame.connected });
+      } else if (frame.event === "error") {
+        this.recordMessage({
+          tag: "message",
+          message: frame.tag ? `${frame.tag} was not sent: ${frame.message}` : frame.message,
+        });
+      }
       return;
     }
     const message = frame as IndiMessage;
+    // A frame the wire contract cannot represent is dropped whole, exactly like
+    // the non-object JSON above: a `def` with no device would otherwise cache a
+    // phantom device, and a NaN would reach a control. See `frames.ts`.
+    if (!acceptFrame(message)) return;
     const event = this._store.apply(message);
     if (event !== null) this.dispatch(event);
-    if (message.tag === "message") {
-      const next = [...this._messages, message];
-      if (next.length > this.messageLogLimit) next.splice(0, next.length - this.messageLogLimit);
-      this._messages = next;
-      for (const callback of this.messageSubs.values()) callback(message);
-    }
+    if (message.tag === "message") this.recordMessage(message);
+  }
+
+  /** Append to the rolling log and notify `onMessage` subscribers. */
+  private recordMessage(message: Message): void {
+    const next = [...this._messages, message];
+    if (next.length > this.messageLogLimit) next.splice(0, next.length - this.messageLogLimit);
+    this._messages = next;
+    for (const callback of this.messageSubs.values()) callback(message);
   }
 
   private dispatch(event: PropertyEvent): void {

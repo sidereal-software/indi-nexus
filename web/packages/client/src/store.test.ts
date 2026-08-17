@@ -203,6 +203,18 @@ describe("PropertyStore subscriptions", () => {
     expect(store.matching(event)).toHaveLength(2); // exact + wildcard, not Mount
   });
 
+  // A whole-device del names no property because it takes all of them, so
+  // matching its (absent) name against the filter literally silenced exactly
+  // the watchers with the most to lose. Same rule in client/store.py.
+  it("delivers a whole-device del to name-filtered subscribers too", () => {
+    const store = new PropertyStore();
+    store.subscribe(() => {}, { device: "CCD", name: "EXPOSURE" });
+    store.subscribe(() => {}, { device: "Mount", name: "EXPOSURE" });
+
+    const event: PropertyEvent = { type: "del", device: "CCD", name: null, vector: null };
+    expect(store.matching(event)).toHaveLength(1); // the CCD watcher, not Mount's
+  });
+
   it("stops delivery after unsubscribe", () => {
     const store = new PropertyStore();
     const unsubscribe = store.subscribe(() => {});

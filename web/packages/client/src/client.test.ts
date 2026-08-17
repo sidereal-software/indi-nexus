@@ -16,6 +16,15 @@ function numVec(value = 1.0, state: NumberVector["state"] = "Idle"): NumberVecto
   };
 }
 
+/**
+ * A frame built from a plain object, so a test can put on the wire what a
+ * mistaken producer would: a missing attribute, or a value JSON can carry but
+ * the model cannot.
+ */
+function rawFrame(frame: unknown): string {
+  return JSON.stringify(frame);
+}
+
 /** Build a started client wired to a fresh open FakeSocket. */
 function connectedClient() {
   FakeSocket.reset();
@@ -70,6 +79,37 @@ describe("IndiClient inbound", () => {
     expect(states).toEqual(["true/false", "true/true", "false/false"]);
   });
 
+  it("surfaces a bridge error frame in the message log without touching the store", () => {
+    const { client, socket } = connectedClient();
+    const messages: string[] = [];
+    client.onMessage((message) => messages.push(message.message));
+
+    socket.receive(
+      JSON.stringify({
+        event: "error",
+        code: "not_connected",
+        message: "not connected to indiserver; the write was not sent",
+        tag: "new",
+      }),
+    );
+
+    // The bridge only sends this when a write did *not* go upstream, and
+    // nothing retries it, so dropping it silently would leave the operator
+    // believing the slew was accepted.
+    expect(messages).toEqual([
+      "new was not sent: not connected to indiserver; the write was not sent",
+    ]);
+    expect(client.messages()).toHaveLength(1);
+    expect(client.devices()).toEqual([]);
+  });
+
+  it("ignores a control frame it does not know", () => {
+    const { client, socket } = connectedClient();
+    expect(() => socket.receive(JSON.stringify({ event: "from-the-future" }))).not.toThrow();
+    expect(client.devices()).toEqual([]);
+    expect(client.messages()).toEqual([]);
+  });
+
   it("ignores malformed frames without throwing", () => {
     const { client, socket } = connectedClient();
     expect(() => socket.receive("not json")).not.toThrow();
@@ -83,6 +123,137 @@ describe("IndiClient inbound", () => {
     }
     expect(client.devices()).toEqual([]);
     expect(client.connectionState).toEqual({ transport: true, upstream: false });
+  });
+});
+
+// The Python parser drops a frame whose #REQUIRED device or name is missing
+// rather than defaulting it to "" (`_required` in protocol/xml.py): "" is not a
+// degraded device, it is an invented one, and it landed in the cache as a
+// phantom device nothing would ever update. A frame can reach a browser without
+// having passed through that parser, so the rule is enforced here too.
+describe("IndiClient frame validation: identity", () => {
+  it("drops a def whose device is empty, leaving the cache untouched", () => {
+    const { client, socket } = connectedClient();
+    const events: string[] = [];
+    client.subscribe((event) => events.push(event.type));
+
+    socket.receive(rawFrame({ tag: "def", vector: { ...numVec(), device: "" } }));
+
+    expect(client.devices()).toEqual([]);
+    expect(client.device("")).toEqual({});
+    expect(events).toEqual([]);
+  });
+
+  it("drops a def with no device attribute at all", () => {
+    const { client, socket } = connectedClient();
+    const { device: _device, ...vector } = numVec();
+
+    socket.receive(rawFrame({ tag: "def", vector }));
+
+    expect(client.devices()).toEqual([]);
+    expect(client.device("undefined")).toEqual({});
+  });
+
+  it("drops a def with no property name", () => {
+    const { client, socket } = connectedClient();
+    const { name: _name, ...vector } = numVec();
+
+    socket.receive(rawFrame({ tag: "def", vector }));
+
+    expect(client.devices()).toEqual([]);
+  });
+
+  it("drops a def with no vector rather than throwing", () => {
+    const { client, socket } = connectedClient();
+    expect(() => socket.receive(rawFrame({ tag: "def" }))).not.toThrow();
+    expect(client.devices()).toEqual([]);
+  });
+
+  it("drops a delProperty with no device, keeping the cached property", () => {
+    const { client, socket } = connectedClient();
+    socket.receive(JSON.stringify({ tag: "def", vector: numVec() }));
+
+    socket.receive(rawFrame({ tag: "delProperty" }));
+
+    expect(client.get("CCD", "EXPOSURE")).toBeDefined();
+    expect(client.devices()).toEqual(["CCD"]);
+  });
+});
+
+// `Number.value` is `allow_inf_nan=False`, so `from_json` rejects a message
+// carrying one and the XML parser drops the element. JSON has no NaN or
+// Infinity literal - `JSON.parse("NaN")` throws - so a producer sends `null` or
+// the string, and either would render as NaN in a control or go back to an
+// instrument as one.
+describe("IndiClient frame validation: non-finite numbers", () => {
+  const nonFinite = [null, "NaN", "Infinity", "-Infinity"];
+
+  it("leaves the cached vector untouched when a set carries one", () => {
+    const { client, socket } = connectedClient();
+    socket.receive(JSON.stringify({ tag: "def", vector: numVec(1.5, "Ok") }));
+    const cached = client.get("CCD", "EXPOSURE");
+    const events: string[] = [];
+    client.subscribe((event) => events.push(event.type));
+
+    for (const value of nonFinite) {
+      socket.receive(
+        rawFrame({
+          tag: "set",
+          vector: {
+            ...numVec(),
+            state: "Alert",
+            elements: [{ kind: "number", name: "secs", value }],
+          },
+        }),
+      );
+    }
+
+    // Not merged, not replaced, and no subscriber told otherwise.
+    expect(client.get("CCD", "EXPOSURE")).toBe(cached);
+    expect((client.get("CCD", "EXPOSURE") as NumberVector).elements[0]?.value).toBe(1.5);
+    expect(client.get("CCD", "EXPOSURE")?.state).toBe("Ok");
+    expect(events).toEqual([]);
+  });
+
+  it("drops a def carrying one instead of caching a NaN", () => {
+    const { client, socket } = connectedClient();
+
+    for (const value of nonFinite) {
+      socket.receive(
+        rawFrame({
+          tag: "def",
+          vector: { ...numVec(), elements: [{ kind: "number", name: "secs", value }] },
+        }),
+      );
+    }
+
+    expect(client.devices()).toEqual([]);
+  });
+
+  // The optional metadata *can* say absent, so it degrades instead of costing
+  // the frame - dropping the def would leave the client permanently blind to
+  // the property, which is what `_optfloat` exists to avoid.
+  it("degrades a non-finite min/max/step to absent and keeps the property", () => {
+    const { client, socket } = connectedClient();
+
+    socket.receive(
+      rawFrame({
+        tag: "def",
+        vector: {
+          ...numVec(),
+          timeout: "Infinity",
+          elements: [
+            { kind: "number", name: "secs", value: 1.5, min: "NaN", max: 3600, step: null },
+          ],
+        },
+      }),
+    );
+
+    const cached = client.get("CCD", "EXPOSURE") as NumberVector;
+    expect(cached.elements[0]?.value).toBe(1.5);
+    expect(cached.elements[0]?.min).toBeNull();
+    expect(cached.elements[0]?.max).toBe(3600);
+    expect(cached.timeout).toBeNull();
   });
 });
 

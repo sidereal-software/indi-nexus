@@ -218,6 +218,25 @@ export interface ConnectionFrame {
   connected: boolean;
 }
 
+/**
+ * The bridge's report that a frame this browser sent did not go upstream.
+ *
+ * Sent only to the browser that sent the frame, and never for something the
+ * bridge accepted. The socket stays open. Silence would be worse than the
+ * frame: a write that is refused (no upstream connection, a full outbox, a
+ * message kind a client may not send) is not retried anywhere, so a browser
+ * that hears nothing has no reason not to believe it landed.
+ */
+export interface ErrorFrame {
+  event: "error";
+  /** A stable machine-readable reason, e.g. `not_connected`. */
+  code: string;
+  /** Human-readable detail, suitable for a UI log. */
+  message: string;
+  /** The rejected message's INDI tag, or `null` if it did not parse. */
+  tag?: string | null;
+}
+
 /** Return the element with a given name, or `undefined`. */
 export function elementByName(vector: Vector, name: string): IndiElement | undefined {
   return vector.elements.find((element) => element.name === name);

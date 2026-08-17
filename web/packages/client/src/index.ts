@@ -46,6 +46,7 @@ export type {
   DefVector,
   DelProperty,
   EnableBlob,
+  ErrorFrame,
   GetProperties,
   IndiElement,
   IndiMessage,

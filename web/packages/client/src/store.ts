@@ -251,12 +251,22 @@ export class PropertyStore {
     };
   }
 
-  /** Return the callbacks whose device/name filters match an event. */
+  /**
+   * Return the callbacks whose device/name filters match an event.
+   *
+   * A whole-device `del` reaches **every** subscriber for that device,
+   * including the name-filtered ones. Its event carries no name because the
+   * deletion names no property - it takes all of them - so matching the filter
+   * against it literally would silence exactly the subscribers with the most to
+   * lose: `subscribe(cb, {device: "CCD", name: "EXPOSURE"})` heard nothing when
+   * the CCD's driver died and the whole device went away. Same rule in
+   * `client/store.py`.
+   */
   matching(event: PropertyEvent): Subscriber[] {
     const out: Subscriber[] = [];
     for (const { callback, device, name } of this.subs.values()) {
       if (device !== undefined && device !== event.device) continue;
-      if (name !== undefined && name !== event.name) continue;
+      if (name !== undefined && event.name !== null && name !== event.name) continue;
       out.push(callback);
     }
     return out;
