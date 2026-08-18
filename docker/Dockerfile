@@ -1,4 +1,11 @@
-# syntax=docker/dockerfile:1
+# No `# syntax=` directive on purpose. That line makes BuildKit fetch a parser
+# image from Docker Hub before it reads anything else, so a machine that cannot
+# reach the registry fails here rather than at a step that has something to do
+# with this project. The only feature here that ever needed an external parser is
+# the `RUN --mount=type=cache` below, and that has been in the engine's built-in
+# parser since Docker 23 made BuildKit the default builder. Add the directive
+# back if this file ever needs syntax newer than the oldest engine in use, and
+# accept the registry round trip that comes with it.
 
 # INDINexus in a container: libindi's indiserver and the Python web bridge together,
 # so `docker compose up` gives a working INDI stack - the panel on :8000, the hub on
