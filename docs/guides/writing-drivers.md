@@ -315,6 +315,92 @@ Clients inflate on the way in, so nothing downstream ever sees the `.z`. Most dr
 should not bother - libindi's `CCD_COMPRESSION` defaults to off - and `.fits.fz` (fpack,
 compression inside the FITS container) passes through untouched if that suits you better.
 
+## Saving configuration
+
+An operator who points your driver at a site, sets a focuser offset or names the filter in
+slot 3 expects it to still know that after a reboot. `define_config()` publishes the
+standard INDI `CONFIG_PROCESS` switch - Load, Save and Purge - which every libindi driver
+has, so clients already know what the buttons do. Which properties it covers is declared
+per property, at define time:
+
+```python
+async def setup(self) -> None:
+    self.define_connection()
+    self.define_config()
+    ...
+    try:
+        await self.load_config()
+    except ConfigError as exc:
+        self.message(f"Using the built-in site: {exc}")
+```
+
+Two things there are deliberate.
+
+`persist=True` on a `define_*` call is what marks a property as configuration; everything
+else is left out. `examples/openmeteo_device.py` marks its `GEOGRAPHIC_COORD` and nothing
+else, because a temperature reading is not a setting.
+
+**`define_config()` does no file I/O.** Restoring is the separate `await self.load_config()`
+above, which you write yourself, because reading a file is exactly the kind of blocking
+work the rest of this page tells you to be deliberate about. Having nothing saved is the
+ordinary first run, and it arrives as `ConfigError` (an `OSError`, from `indi_nexus`) - so
+catch it, or a first start would look like a broken driver.
+
+Where you put the call is not a correctness question - a load applies to every persisted
+property already defined *and* waits for the ones defined after it, `on_connect`'s
+included - but the two orders differ in one visible way. Load *before* the persisted
+`define_*` calls and each property is announced once, already holding its saved value.
+Load after them, as above, and each is announced with its built-in default and corrected a
+moment later, in exchange for `on_config_loaded` being handed the names while the
+properties are all there - which is what a driver that also keeps its settings in ordinary
+Python attributes needs.
+
+What is written is values, keyed by property, and nothing else:
+
+```json
+{"version": 1, "device": "Open-Meteo", "saved": "2026-08-17T21:14:03Z",
+ "properties": {"GEOGRAPHIC_COORD": {"LAT": 47.6, "LONG": -122.3}}}
+```
+
+Definitions - labels, permissions, limits - stay in the code, which is the only thing that
+knows what this version of the driver publishes. The file lives in
+`$XDG_CONFIG_HOME/indi-nexus`, or wherever `INDI_NEXUS_CONFIG_DIR` says.
+
+### Acting on what was restored
+
+Restoring a value is not the same as acting on it. A focuser that saved its position has to
+physically move; a driver that saved a site has to start fetching for it. `on_config_loaded`
+is where that happens, and it is handed the names of the properties the load applied to.
+
+It hands you names rather than doing the work itself because the work is yours. The shape
+that survives contact with a real driver is to keep the body of the corresponding `@on_new`
+handler in a method of its own, and call it from both, so a value that arrives from a file
+does exactly what one typed into the panel does:
+
+```python
+async def on_config_loaded(self, names: list[str]) -> None:
+    if "GEOGRAPHIC_COORD" not in names:
+        return
+    site = self.number("GEOGRAPHIC_COORD")
+    self._latitude = site.value("LAT")
+    self._longitude = site.value("LONG")
+    await self._apply_site()
+
+@on_new("GEOGRAPHIC_COORD")
+async def _move_site(self, vector: NumberVector) -> None:
+    self._latitude = vector.get("LAT", self._latitude)
+    self._longitude = vector.get("LONG", self._longitude)
+    await self._apply_site()
+
+async def _apply_site(self) -> None:
+    ...
+```
+
+Saving needs no hook at all: `CONFIG_SAVE` reads the persisted properties itself. It also
+writes the properties that are *not* defined at that moment - a connect-time property is
+captured as it is withdrawn - so a Save taken while the instrument is disconnected does not
+quietly erase half the configuration.
+
 ## Handy shortcuts
 
 A bank of lights with exactly one lit is the commonest shape in status reporting.

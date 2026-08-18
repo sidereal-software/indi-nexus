@@ -34,6 +34,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from indi_nexus import ConfigError
 from indi_nexus.driver import Device, every, on_new
 from indi_nexus.protocol import (
     IPerm,
@@ -215,6 +216,7 @@ class OpenMeteo(Device):
     async def setup(self) -> None:
         """Define the site, the readings, their status lights and the almanac."""
         self.define_connection()
+        self.define_config()
         self.define_number(
             "GEOGRAPHIC_COORD",  # the standard INDI name for "where the site is"
             [
@@ -237,6 +239,7 @@ class OpenMeteo(Device):
             ],
             label="Site",
             group="Site",
+            persist=True,  # the one thing here worth surviving a restart
         )
         self.define_number(
             "WEATHER_PARAMETERS",  # the standard INDI name for weather readings
@@ -279,6 +282,15 @@ class OpenMeteo(Device):
             perm=IPerm.RO,
             emit="on_change",
         )
+        # Restoring the saved site is an explicit line, not something
+        # define_config did quietly: it is I/O, it belongs where the driver can
+        # see it, and it works just as well from on_connect. Having nothing
+        # saved is the ordinary first run rather than a failure, so the
+        # built-in site stands and the driver says which one it is using.
+        try:
+            await self.load_config()
+        except ConfigError as exc:
+            self.message(f"Using the built-in site: {exc}")
         self.message("Open-Meteo driver ready. Press Connect to fetch.")
 
     # -- connection lifecycle ----------------------------------------------- #
@@ -440,9 +452,42 @@ class OpenMeteo(Device):
         )
 
     # -- client writes ------------------------------------------------------ #
+    async def on_config_loaded(self, names: list[str]) -> None:
+        """Start reporting for the site the saved configuration restored.
+
+        The hook is handed the property names it applied to, and restoring a
+        value is not the same as *acting* on it: the numbers are in
+        ``GEOGRAPHIC_COORD``, and the driver is still fetching for wherever it
+        was pointed before. This is where that becomes true, and it does it by
+        calling the same method a client write calls - which is the whole
+        reason :meth:`_move_site` keeps its body in :meth:`_apply_site`.
+
+        Parameters
+        ----------
+        names : list of str
+            The properties the load applied values to.
+        """
+        if "GEOGRAPHIC_COORD" not in names:
+            return
+        site = self.number("GEOGRAPHIC_COORD")
+        self._latitude = site.value("LAT")
+        self._longitude = site.value("LONG")
+        await self._apply_site()
+
     @on_new("GEOGRAPHIC_COORD")
     async def _move_site(self, vector: NumberVector) -> None:
-        """Point the driver at a different site and refetch immediately.
+        """Point the driver at a different site and refetch immediately."""
+        self._latitude = vector.get("LAT", self._latitude)
+        self._longitude = vector.get("LONG", self._longitude)
+        await self._apply_site()
+
+    async def _apply_site(self) -> None:
+        """Publish the current site and refetch for it.
+
+        Shared by the client write and the configuration restore, so a site
+        that arrives from a file does exactly what one typed into the panel
+        does. Nothing here reads the request, which is what lets both callers
+        set the site their own way and then hand over.
 
         The sanctioned exception to "every handler opens with
         ``require_connected()``": the site is the driver's own configuration
@@ -450,8 +495,6 @@ class OpenMeteo(Device):
         disconnected. The connection is still checked - below, and only around
         the part that actually goes out to the network.
         """
-        self._latitude = vector.get("LAT", self._latitude)
-        self._longitude = vector.get("LONG", self._longitude)
         site = self["GEOGRAPHIC_COORD"]
         site.set(LAT=self._latitude, LONG=self._longitude, state=IPState.BUSY)
 

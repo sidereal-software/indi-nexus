@@ -20,6 +20,10 @@ properties in `setup()`, poll with `@every`, handle client writes with
 
 ::: indi_nexus.driver.dispatch
 
+## Configuration persistence
+
+::: indi_nexus.driver.config
+
 ## Runtime
 
 ::: indi_nexus.driver.runtime

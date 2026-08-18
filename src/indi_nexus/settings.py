@@ -40,10 +40,12 @@ the bridge and every driver at once.
 from __future__ import annotations
 
 import enum
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
-from pydantic import BeforeValidator
+from pydantic import BeforeValidator, Field
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -104,6 +106,42 @@ def _split_origins(value: object) -> object:
     return value.split() if isinstance(value, str) else value
 
 
+def _default_config_dir() -> Path | None:
+    """Return the XDG directory a driver saves its configuration under.
+
+    The two variables read here are not ``INDI_NEXUS_*`` and never will be, so
+    this is the one place in the package that reaches outside the prefix - which
+    is exactly why it lives in this module and not in ``driver/``.
+
+    ``None`` is a real answer, and the important one. A process with no
+    resolvable home is how a service manager runs a driver, and both obvious
+    alternatives are worse than admitting it: :meth:`pathlib.Path.home` *raises*
+    there, taking down a driver that was never going to save anything, and a
+    temporary directory would accept every save and lose the lot on reboot
+    without a word. ``None`` makes the persistence methods raise
+    :class:`~indi_nexus.ConfigError` naming ``INDI_NEXUS_CONFIG_DIR`` as the fix.
+
+    Not ``~/.indi``: that is libindi's directory, and a file of ours sitting in
+    it under a colliding name would leave two frameworks fighting over one path
+    with different schemas.
+
+    Returns
+    -------
+    directory : Path or None
+        ``$XDG_CONFIG_HOME/indi-nexus``, else ``~/.config/indi-nexus``, else
+        `None` when the home directory cannot be expanded.
+    """
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "indi-nexus"
+    # expanduser leaves "~" untouched when there is nothing to expand it with,
+    # which is the signal Path.home() turns into a RuntimeError instead.
+    home = os.path.expanduser("~")  # noqa: PTH111 - Path.home() raises; this reports
+    if home == "~":
+        return None
+    return Path(home) / ".config" / "indi-nexus"
+
+
 class Settings(BaseSettings):
     """The ``INDI_NEXUS_*`` environment, parsed and typed.
 
@@ -147,6 +185,10 @@ class Settings(BaseSettings):
     allow_insecure_bind : bool
         ``INDI_NEXUS_ALLOW_INSECURE_BIND``, or ``serve --allow-insecure-bind``.
         Whether ``serve`` may bind a non-loopback host with no token.
+    config_dir : Path or None
+        ``INDI_NEXUS_CONFIG_DIR``. Where a driver's ``CONFIG_PROCESS`` saves and
+        loads its properties, defaulting per :func:`_default_config_dir`. `None`
+        means there is nowhere to save, and the persistence methods say so.
     """
 
     model_config = SettingsConfigDict(env_prefix="INDI_NEXUS_", extra="ignore")
@@ -160,6 +202,9 @@ class Settings(BaseSettings):
     token: str = ""
     allowed_origins: Annotated[tuple[str, ...], NoDecode, BeforeValidator(_split_origins)] = ()
     allow_insecure_bind: bool = False
+    # default_factory, never a computed default in the signature: the latter is
+    # evaluated at import and would freeze the first environment the process saw.
+    config_dir: Path | None = Field(default_factory=_default_config_dir)
 
 
 @lru_cache(maxsize=1)

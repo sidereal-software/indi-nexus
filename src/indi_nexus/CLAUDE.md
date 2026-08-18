@@ -32,6 +32,7 @@ flowchart TB
     writer --> stdout(["stdout<br/>to indiserver"])
 
     blocking["blocking hardware call<br/>off_thread"] -.->|worker thread| tick
+    guard -->|"load/save/purge_config<br/>off_thread"| cfgfile[("config file<br/>config_dir/A.json")]
 
     %% No colours here on purpose: GitHub and the docs site each theme the diagram
     %% for their own light and dark modes, and a hardcoded light palette turns into
@@ -41,7 +42,7 @@ flowchart TB
     classDef ours stroke-width:3px
     classDef ext stroke-width:1px,stroke-dasharray:4 4
     class reader,setup,disp,bdisp,timer,tick,btimer,btick,guard,bguard,props,outbox,writer ours
-    class stdin,stdout,blocking ext
+    class stdin,stdout,blocking,cfgfile ext
 ```
 
 The one edge worth reading twice is `reader -> B`: the reader **awaits** each dispatch, so
@@ -73,6 +74,7 @@ formatting (`KeyError`'s repr-quoting) is unchanged too.
 | `DeviceNotServing` | `RuntimeError` | a `Device` sends while not attached to a runtime |
 | `NotConnectedError` | `ConnectionError` | `IndiClient` has no live connection, on a send or to fail a parked `wait_for` |
 | `SendQueueFull` | `RuntimeError` | the client's outbox is full because the connection stopped draining it |
+| `ConfigError` | `OSError` | a device's saved configuration cannot be located, read, written or removed - including "nothing saved yet", which is a first run |
 
 Adding a type here means answering both questions: what it is a kind of (`IndiError`,
 always) and which builtin it has to stay compatible with. `tests/test_exceptions.py` asserts
@@ -110,6 +112,14 @@ edge in the graph `tests/test_layering.py` holds flat.
     in-process runner. `--token ""` is therefore a real value that turns a configured
     token off, and `serve`'s non-loopback refusal is checked against the resolved token,
     not the flag.
+  - `config_dir` is the one field with a **`default_factory`**, because its default is
+    computed: `INDI_NEXUS_CONFIG_DIR`, else `$XDG_CONFIG_HOME/indi-nexus`, else
+    `~/.config/indi-nexus`, else `None`. `_default_config_dir` is therefore the one place
+    in the package that reads a variable outside the prefix, which is why it lives here.
+    Not `Path.home()`, which **raises** when there is no home - how a service manager runs
+    a driver - and not a temp directory, which would accept every save and lose the lot on
+    reboot. `None` is the honest answer and makes the persistence methods raise
+    `ConfigError` naming the variable as the fix.
   - `allowed_origins` is a `tuple[str, ...]` read **space separated** from the environment,
     which needs `NoDecode` to stop pydantic-settings JSON-decoding a collection field. An
     origin cannot contain whitespace, and it is what Click already did with a repeatable
@@ -323,6 +333,39 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
     switch back and leaves the property `Alert` with the reason, so a device never claims a
     link it does not have. A subclass `@on_new("CONNECTION")` shadows the built-in (the
     handler map keeps the MRO-first entry per property).
+  - `define_config()` adds the standard `CONFIG_PROCESS` switch (`CONFIG_LOAD` / `CONFIG_SAVE`
+    / `CONFIG_PURGE`, `AtMostOne`) with a built-in handler over `load_config()`,
+    `save_config()` and `purge_config()`. Four things about it are settled and each was got
+    wrong once.
+    - **It defines a property and does no I/O.** Restoring is `await self.load_config()`,
+      written in `setup()`. An async `define_*` would be the only one in the SDK, blocking
+      I/O in a sync method breaks the rule `off_thread` exists to teach, and
+      `asyncio.create_task` would run the load *after* the `define_*(persist=True)` calls
+      below it in the same `setup()` body, which is exactly the ordering that must hold.
+    - **The handler resets the switch to all-Off** after acting. `_on_connection_write` is
+      the model for its *reporting* (Busy, act, Ok/Alert, shadowable) and deliberately not
+      for its latching: `CONNECTION` is state, `CONFIG_PROCESS` is a momentary action, and
+      under `AtMostOne` a member left on stays selected forever - a panel button stuck in
+      its pressed position. libindi calls `IUResetSwitch` here for the same reason.
+    - **One authoritative `_config_values` map**, not a write-once cache, which cannot tell
+      "never restored" from "restored and since changed by the operator". Its four rules are
+      the whole design, and each closes a data-loss path: `load_config()` merges the file in,
+      applies it to every persisted property defined *now* **and** leaves it in place for
+      every one defined later; `define_*(persist=True)` applies it *before* `_announce()`, so
+      startup puts one frame on the wire instead of a default and a correction; withdrawing
+      a persisted property captures its live values first, so redefine-after-delete restores
+      what the operator had rather than what is on disk; and `save_config()` refreshes from
+      the live persisted properties then writes the whole map, so a Save taken while a
+      connect-time property is withdrawn does not erase it.
+    - **Values, never definitions**, as JSON under `config_dir`, never libindi's
+      `~/.indi/<device>_config.xml` - a colliding filename with a different schema is two
+      frameworks fighting over one file. `CONFIG_DEFAULT` is not published: the code is
+      already the definition of default. `persist=True` on a light or a BLOB raises at
+      define time.
+    - `NEXUS_CONFIG_PERSISTED` is **reserved** for the follow-up that tells a client which
+      properties are persisted. Nothing publishes it yet, and nothing reads it: the panel
+      ships the honest fallback. `persist=` being declarative is what makes that follow-up
+      small.
   - `await self.off_thread(fn, ...)` runs a **blocking** instrument call in a worker thread.
     This is the answer to the commonest way a real driver goes wrong: calling a synchronous
     vendor library from an `async def` silently stalls the whole reactor. Only the blocking
@@ -347,9 +390,17 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
     timestamp, as libindi's `IDDelete` does. The handle is the wrong shape for the
     repeated-disconnect idiom, because `self["NAME"]` raises once the property is gone;
     reach for the name-based call there.
-  - A `Text` element coerces a non-string at assignment rather than at serialisation, and a
-    `Number` refuses a non-finite value there, so a bad publish fails at the call site,
-    never inside the writer loop.
+  - **Every element value is coerced or refused at assignment, never at serialisation**, so
+    a bad publish fails at the call site that caused it instead of inside the writer loop a
+    long way away - or, worse, on the wire. A `Text` takes `str(value)`. A `Number` goes
+    through `float(value)`, which accepts an int, a bool or a numeric string (a vendor
+    library handing back `"2.5"` is ordinary) and raises `ProtocolError` for anything else,
+    and then refuses a non-finite result for the reason `Number.value` forbids one on the
+    model. Both are load-bearing because assigning to a model attribute **skips pydantic's
+    validation entirely**: before the `float()`, a string sailed into a number element and
+    sat there looking like a reading. `docs/guides/writing-drivers.md` quotes the
+    non-finite message verbatim and `tests/test_docs_snippets.py` checks it, so keep the
+    text `... cannot be set to <value!r>` intact.
   - A **BLOB** gets its `size` derived from the payload - except on a `.z` element, where
     the payload is deflated and `len(data)` would put the compressed length under an
     attribute INDI defines as the uncompressed one. That was silent: a plausible integer
@@ -679,10 +730,11 @@ field. That means all four of these, not just the first:
 - `define_connection()` is the first line of `setup()`.
 - Every `@on_new` handler opens with `if not self.require_connected(): return`. **One
   sanctioned exception**, and only one: `openmeteo_device._move_site` checks
-  `self.connected` mid-handler instead, because the site is the driver's own
-  configuration rather than a command to hardware and an operator may move it while
-  disconnected. The reason is written at the handler; do not re-file it as a violation,
-  and do not add a second exception without writing the same kind of argument.
+  `self.connected` mid-handler instead - in `_apply_site`, the shared body it and
+  `on_config_loaded` both call - because the site is the driver's own configuration
+  rather than a command to hardware and an operator may move it while disconnected. The
+  reason is written at that method; do not re-file it as a violation, and do not add a
+  second exception without writing the same kind of argument.
 - A job that touches hardware is `@every(..., when_connected=True)`.
 - `on_disconnect()` leaves the instrument safe and its properties `Idle`, so nothing keeps
   reading live after the client has gone. Skip `on_connect()` when there is genuinely
@@ -724,7 +776,12 @@ different files.
   `slugify`; `openmeteo_device.py` spells the same readings `UPPER_CASE` by hand, and the
   divergence is deliberate.
 - `examples/openmeteo_device.py` - the same shape against a **real public API**, and what
-  `docs/guides/tutorial-open-meteo.md` builds. Its tests run against
+  `docs/guides/tutorial-open-meteo.md` builds. It is also the worked example of
+  **persistence**: `define_config()`, `persist=True` on the site, an explicit
+  `await self.load_config()` in `setup()`, and an `on_config_loaded` that calls the same
+  `_apply_site` its `@on_new` handler does. Keep that factoring - a hook that is handed
+  only a list of names reads as "you cannot do side effects" without it, and
+  `docs/guides/writing-drivers.md` quotes these two methods as the idiom. Its tests run against
   `tests/data/open_meteo_response.json`, a recorded real reply, so the field names are
   checked against what the service actually sends. If you change what the driver requests,
   re-record rather than hand-editing that fixture.

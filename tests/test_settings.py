@@ -8,6 +8,7 @@ and the prefix is checked to tolerate a name this model does not know.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -136,6 +137,43 @@ def test_other_prefixed_names_are_ignored(monkeypatch):
     monkeypatch.setenv("INDI_NEXUS_UPDATE_GOLDEN", "1")
     monkeypatch.setenv("INDI_NEXUS_SOMETHING_A_LATER_VERSION_ADDS", "x")
     assert Settings().log_level is LogLevel.INFO
+
+
+def test_config_dir_is_taken_from_the_variable_first(monkeypatch, tmp_path):
+    """``INDI_NEXUS_CONFIG_DIR`` wins over every computed default."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
+    monkeypatch.setenv("INDI_NEXUS_CONFIG_DIR", str(tmp_path))
+    assert Settings().config_dir == tmp_path
+
+
+def test_config_dir_falls_back_to_xdg(monkeypatch):
+    """With no variable of ours, the XDG one decides."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
+    assert Settings().config_dir == Path("/xdg/indi-nexus")
+
+
+def test_config_dir_falls_back_to_the_home_directory(monkeypatch):
+    """With neither, it is ``~/.config/indi-nexus``, expanded from HOME."""
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", "/home/observer")
+    assert Settings().config_dir == Path("/home/observer/.config/indi-nexus")
+
+
+def test_config_dir_is_none_when_there_is_no_home(monkeypatch):
+    """No resolvable home is `None`, not a raise and not a temporary directory.
+
+    A service manager runs a driver with no ``HOME``, and both alternatives are
+    worse than admitting it: ``Path.home()`` raises there, taking down a driver
+    that was never going to save anything, and a temp directory would accept
+    every save and lose the lot at the next reboot without a word.
+    """
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("USERPROFILE", raising=False)
+    # expanduser consults the password database when HOME is unset, which on a
+    # developer's machine still answers; pwd is where that lookup lands.
+    monkeypatch.setattr("pwd.getpwuid", lambda _uid: (_ for _ in ()).throw(KeyError("no such uid")))
+    assert Settings().config_dir is None
 
 
 def test_settings_is_read_once(monkeypatch):

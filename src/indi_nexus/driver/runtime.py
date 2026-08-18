@@ -35,6 +35,7 @@ import inspect
 import logging
 import sys
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from indi_nexus.driver.device import Device
@@ -98,6 +99,11 @@ class DriverRuntime:
         Awaitable returning the next chunk of inbound bytes, or ``b""`` at EOF.
     write : Callable
         Awaitable that writes one serialised message to the transport.
+    config_dir : Path or None, optional
+        Where the devices keep their saved configuration, resolved by whichever
+        entrypoint started the driver. `None` leaves every device's persistence
+        method raising :class:`~indi_nexus.ConfigError`, which is what a driver
+        with no ``CONFIG_PROCESS`` never notices.
 
     Raises
     ------
@@ -108,7 +114,14 @@ class DriverRuntime:
         to it.
     """
 
-    def __init__(self, devices: Device | Sequence[Device], read: ReadFn, write: WriteFn) -> None:
+    def __init__(
+        self,
+        devices: Device | Sequence[Device],
+        read: ReadFn,
+        write: WriteFn,
+        *,
+        config_dir: Path | None = None,
+    ) -> None:
         """Bind the devices to their shared transport and outbound-message callback."""
         self._devices = (devices,) if isinstance(devices, Device) else tuple(devices)
         if not self._devices:
@@ -124,7 +137,7 @@ class DriverRuntime:
         # emit never blocks.
         self._outbox: asyncio.Queue[IndiMessage | None] = asyncio.Queue()
         for device in self._devices:
-            device._bind(self._emit)
+            device._bind(self._emit, config_dir=config_dir)
 
     def _emit(self, msg: IndiMessage) -> None:
         """Queue one outbound message on the (unbounded) shared outbox."""
@@ -440,16 +453,22 @@ async def _open_stdio() -> tuple[ReadFn, WriteFn]:
     return read, write
 
 
-async def serve_stdio(devices: Device | Sequence[Device]) -> None:
+async def serve_stdio(
+    devices: Device | Sequence[Device], *, config_dir: Path | None = None
+) -> None:
     """Serve one or more devices over real stdin/stdout (async entrypoint).
 
     Parameters
     ----------
     devices : Device or Sequence of Device
         The device, or devices, to serve on this process's stdio.
+    config_dir : Path or None, optional
+        Where the devices keep their saved configuration. Resolved by the
+        caller, because this coroutine is what tests and embedders await and
+        reading the environment here would make every one of them do so.
     """
     read, write = await _open_stdio()
-    await DriverRuntime(devices, read, write).serve()
+    await DriverRuntime(devices, read, write, config_dir=config_dir).serve()
 
 
 def run(devices: Device | Sequence[Device]) -> None:
@@ -479,4 +498,4 @@ def run(devices: Device | Sequence[Device]) -> None:
     """
     config = settings()
     configure_logging(config.log_level, wire=config.wire_log)
-    asyncio.run(serve_stdio(devices))
+    asyncio.run(serve_stdio(devices, config_dir=config.config_dir))

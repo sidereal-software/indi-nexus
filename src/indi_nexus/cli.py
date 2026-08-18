@@ -110,7 +110,7 @@ def run_devices(devices: list[Device]) -> None:
     devices : list of Device
         The device instances to serve on one stdio pipe.
     """
-    asyncio.run(serve_stdio(devices))
+    asyncio.run(serve_stdio(devices, config_dir=settings().config_dir))
 
 
 _DRIVER_TEMPLATE = '''#!/usr/bin/env python3
@@ -297,7 +297,7 @@ async def _serve_devices(
     from indi_nexus.web import create_app
 
     config = settings()
-    hub = InProcessHub([load_device(spec)() for spec in specs])
+    hub = InProcessHub([load_device(spec)() for spec in specs], config_dir=config.config_dir)
     app_ = create_app(
         client=IndiClient(connect=hub.connect),
         token=token,

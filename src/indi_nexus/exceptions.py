@@ -95,6 +95,22 @@ class NotConnectedError(IndiError, ConnectionError):
     """
 
 
+class ConfigError(IndiError, OSError):
+    """A device's saved configuration could not be read, written or located.
+
+    Covers every way persistence fails: no resolvable configuration directory,
+    a device name that cannot be a filename, a file that is absent, oversized or
+    not valid JSON, and any refusal from the filesystem underneath. Also an
+    :class:`OSError`, because that is what the filesystem would have raised on
+    its own, so an ``except OSError`` already wrapped around a driver goes on
+    catching it.
+
+    Its message is written for a client to read: it never quotes a path or an
+    operating-system error string, both of which go to the ``indi_nexus``
+    logger instead.
+    """
+
+
 class SendQueueFull(IndiError, RuntimeError):
     """The outbox is full: the connection is not draining as fast as we send.
 
@@ -107,6 +123,7 @@ class SendQueueFull(IndiError, RuntimeError):
 
 
 __all__ = [
+    "ConfigError",
     "DeviceNotServing",
     "IndiError",
     "NotConnectedError",

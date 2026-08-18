@@ -34,6 +34,7 @@ example, or from its test, on the strength of a green suite.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from indi_nexus.driver import Device, DriverRuntime
 from indi_nexus.transport import CloseFn, ReadFn, WriteFn
@@ -66,13 +67,18 @@ class InProcessHub:
     ----------
     devices : list of Device
         The driver instances to serve.
+    config_dir : Path or None, optional
+        Where the drivers keep their saved configuration, exactly as
+        ``indiserver`` would leave it to them. Passed on so that a driver tried
+        out here behaves the same way it will under the real hub, rather than
+        reporting that it has nowhere to save.
     """
 
-    def __init__(self, devices: list[Device]) -> None:
+    def __init__(self, devices: list[Device], *, config_dir: Path | None = None) -> None:
         self._to_client = _Pipe()
         self._to_drivers = [_Pipe() for _ in devices]
         self.runtimes = [
-            DriverRuntime(device, pipe.read, self._to_client.write)
+            DriverRuntime(device, pipe.read, self._to_client.write, config_dir=config_dir)
             for device, pipe in zip(devices, self._to_drivers, strict=True)
         ]
 

@@ -140,6 +140,7 @@ through by Docker, so setting one on the service is all it takes:
 | `INDI_NEXUS_TOKEN` | unset (generated in this image) | The shared token `/ws` and `/api` require. In this image, `WEB_TOKEN`. |
 | `INDI_NEXUS_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept. In this image, `WEB_ALLOWED_ORIGINS`. |
 | `INDI_NEXUS_ALLOW_INSECURE_BIND` | unset | Permit the non-loopback bind with no token anyway. It does **not** turn off a token that is set. In this image, `WEB_ALLOW_ANONYMOUS`, which also drops `--token` - see below. |
+| `INDI_NEXUS_CONFIG_DIR` | `~/.config/indi-nexus` | Where a driver's `CONFIG_PROCESS` saves and loads its properties. **In a container this is inside the container**, so it goes with the container - mount a volume over it, or point this at one. |
 
 **The last three have two names here, and they are the same setting.** The entrypoint has
 to decide something about them before `serve` runs - it generates a token when none was
@@ -158,6 +159,17 @@ anonymously in this image is the entrypoint: when `WEB_ALLOW_ANONYMOUS` is set a
 token is, it starts `serve` with `--allow-insecure-bind` and **no `--token`**, so there
 is no token to check. Set a token as well and the token wins, on a bind that no longer
 needs the permission.
+
+**A driver's saved configuration lives in the container's filesystem and dies with it.**
+An INDINexus driver that publishes `CONFIG_PROCESS` writes under `INDI_NEXUS_CONFIG_DIR`,
+and a libindi driver writes under `$HOME/.indi`; neither survives `docker run --rm` or an
+image upgrade. Keep both by mounting a volume and pointing the variable into it:
+
+```bash
+docker run --rm -p 8000:8000 -p 7624:7624 \
+  -v indi-config:/config -e INDI_NEXUS_CONFIG_DIR=/config \
+  ghcr.io/sidereal-software/indi-nexus
+```
 
 Turning the log up is the usual first move when a driver is not appearing:
 

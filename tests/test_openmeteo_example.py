@@ -311,3 +311,40 @@ async def test_moving_the_site_while_disconnected_does_not_fetch(site) -> None:
 
     assert len(api.calls) == before
     assert harness.latest("GEOGRAPHIC_COORD").state is IPState.OK
+
+
+# --------------------------------------------------------------------------- #
+# Saving and restoring the site                                                #
+# --------------------------------------------------------------------------- #
+async def test_the_site_survives_a_restart(tmp_path) -> None:
+    """Save the site, start the driver again, and it fetches for the saved one.
+
+    The whole point of ``on_config_loaded`` in this driver: the restored numbers
+    reach ``GEOGRAPHIC_COORD`` on their own, but the driver is still fetching
+    for wherever it was pointed before until the hook runs ``_apply_site``. So
+    the assertion is on the *request*, not on the property.
+    """
+    api = _FakeApi()
+    harness = DeviceHarness(OpenMeteo(client=api), config_dir=tmp_path)
+    await harness.setup()
+    await harness.write("CONNECTION", CONNECT=True)
+    await harness.write("GEOGRAPHIC_COORD", LAT=-30.2407, LONG=-70.7367)  # La Silla
+    await harness.write("CONFIG_PROCESS", CONFIG_SAVE=True)
+
+    restarted_api = _FakeApi()
+    restarted = DeviceHarness(OpenMeteo(client=restarted_api), config_dir=tmp_path)
+    await restarted.setup()
+
+    assert restarted.latest("GEOGRAPHIC_COORD").get("LAT") == pytest.approx(-30.2407)
+    await restarted.write("CONNECTION", CONNECT=True)
+    assert restarted_api.calls[-1] == (-30.2407, -70.7367)
+
+
+async def test_a_first_run_says_it_is_using_the_built_in_site(tmp_path) -> None:
+    """Nothing saved is the ordinary first run, not a driver that failed to start."""
+    harness = DeviceHarness(OpenMeteo(client=_FakeApi()), config_dir=tmp_path)
+
+    await harness.setup()
+
+    assert "GEOGRAPHIC_COORD" in harness.device
+    assert any("Using the built-in site" in text for text in harness.messages)

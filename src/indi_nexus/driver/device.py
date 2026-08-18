@@ -18,13 +18,28 @@ import asyncio
 import contextlib
 import datetime as dt
 import inspect
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Coroutine
 from contextlib import AbstractAsyncContextManager
+from pathlib import Path
 from typing import Any, cast
 
+from indi_nexus.driver.config import (
+    ConfigDocument,
+    config_path,
+    read_document,
+    remove_document,
+    values_of,
+    write_document,
+)
 from indi_nexus.driver.dispatch import iter_new_handlers, on_new
 from indi_nexus.driver.property import BoundProperty, EmitPolicy
-from indi_nexus.exceptions import DeviceNotServing, PropertyNotFound, WrongPropertyKind
+from indi_nexus.exceptions import (
+    ConfigError,
+    DeviceNotServing,
+    PropertyNotFound,
+    WrongPropertyKind,
+)
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -47,8 +62,26 @@ from indi_nexus.protocol import (
     indi_now,
 )
 
+logger = logging.getLogger(__name__)
+
 Emit = Callable[[IndiMessage], None]
 NewHandler = Callable[[Vector], object]
+
+#: The standard INDI configuration property, and the three actions this SDK
+#: implements on it. ``CONFIG_DEFAULT`` is libindi's fourth member and is
+#: deliberately absent: "reset to the defaults" is what the code already says,
+#: and a driver that wants it withdraws the saved file with ``CONFIG_PURGE``
+#: and restarts, rather than the SDK inventing a second definition of default.
+CONFIG_PROCESS = "CONFIG_PROCESS"
+CONFIG_LOAD = "CONFIG_LOAD"
+CONFIG_SAVE = "CONFIG_SAVE"
+CONFIG_PURGE = "CONFIG_PURGE"
+
+#: Vector kinds that cannot be persisted. A light is a status readout the driver
+#: computes - restoring one would put a stale judgement on screen with nothing
+#: behind it - and a BLOB is an image, which is not configuration and would put
+#: an unbounded payload into a text file.
+_UNPERSISTABLE = (LightVector, BLOBVector)
 
 
 class Device:
@@ -104,6 +137,15 @@ class Device:
         for prop_name, method in iter_new_handlers(self):
             self._new_handlers.setdefault(prop_name, method)
         self._emit: Emit | None = None
+        # This device's configuration as it stands right now: element values
+        # keyed by property name, for every property declared persist=True. It
+        # is one authoritative map rather than a cache of the file, and the four
+        # rules in define_config's docstring are the whole of its behaviour.
+        self._config_values: dict[str, dict[str, Any]] = {}
+        # Where that configuration is written. Injected by whatever is serving
+        # the device (the runtime, the harness); `None` until then, and `None`
+        # afterwards on a machine with no resolvable configuration directory.
+        self._config_dir: Path | None = None
         self._setup_done = False
         # Set once setup() has run; periodic (@every) jobs wait on it so they
         # never touch a property before setup() defines it.
@@ -253,11 +295,294 @@ class Device:
         prop.set(state=IPState.OK)
         self.message(f"{self._device} is {'connected' if connect else 'disconnected'}.")
 
+    # -- configuration ------------------------------------------------------ #
+    def define_config(
+        self, *, label: str = "Configuration", group: str = "Options"
+    ) -> BoundProperty[SwitchVector]:
+        """Define the standard INDI ``CONFIG_PROCESS`` switch.
+
+        Three momentary actions - ``CONFIG_LOAD``, ``CONFIG_SAVE`` and
+        ``CONFIG_PURGE`` - wired to :meth:`load_config`, :meth:`save_config` and
+        :meth:`purge_config` by a built-in handler, which a subclass
+        ``@on_new("CONFIG_PROCESS")`` shadows the way it shadows the
+        ``CONNECTION`` one. Every libindi driver publishes this property, so a
+        client already knows what the buttons do.
+
+        **This defines a property and does no I/O.** Restoring the saved
+        configuration at startup is one explicit line in :meth:`setup`::
+
+            async def setup(self) -> None:
+                self.define_connection()
+                self.define_config()
+                self.define_number("GEOGRAPHIC_COORD", [...], persist=True)
+                with contextlib.suppress(ConfigError):
+                    await self.load_config()   # a first run has nothing saved
+
+        Where that line goes is not a correctness question - :meth:`load_config`
+        applies to every persisted property already defined *and* stays in place
+        for every one defined after it, an ``on_connect``'s included - but the
+        two orders differ in one visible way. Load **before** the persisted
+        ``define_*`` calls and each property is announced once, already holding
+        its saved value. Load after them, as above, and each is announced with
+        its built-in default and corrected a moment later, in exchange for
+        :meth:`on_config_loaded` being handed the names while the properties are
+        all there.
+
+        What is saved is chosen per property, at define time, with
+        ``persist=True``. Values only, never definitions: labels, permissions
+        and limits belong to the code, which is the only thing that knows what
+        this version of the driver publishes. Lights and BLOBs cannot be
+        persisted at all.
+
+        The device keeps one authoritative map of its configuration, and four
+        rules govern it:
+
+        * :meth:`load_config` merges the file into it, applies it to every
+          persisted property currently defined, and leaves it in place for the
+          ones defined afterwards.
+        * ``define_*(persist=True)`` applies it before announcing the property,
+          so startup puts one frame on the wire and not a default followed by a
+          correction.
+        * Withdrawing a persisted property captures its current values into it
+          first, so defining the property again restores what the operator had
+          rather than what is on disk.
+        * :meth:`save_config` refreshes it from every live persisted property
+          and then writes the whole of it, so a Save taken while a connect-time
+          property is withdrawn does not erase that property's values.
+
+        **Two drivers sharing one configuration directory and one device name
+        overwrite each other**, last writer wins. Nothing can arbitrate that
+        across processes, and two devices answering to one name is already
+        unresolvable for a client; libindi has the identical property with
+        ``$HOME/.indi/<device>_config.xml``.
+
+        Parameters
+        ----------
+        label : str, optional
+            The property label shown by clients.
+        group : str, optional
+            The property group (tab) shown by clients.
+
+        Returns
+        -------
+        prop : BoundProperty
+            The handle for the CONFIG_PROCESS property.
+        """
+        return self.define_switch(
+            CONFIG_PROCESS,
+            [
+                Switch(name=CONFIG_LOAD, label="Load"),
+                Switch(name=CONFIG_SAVE, label="Save"),
+                Switch(name=CONFIG_PURGE, label="Purge"),
+            ],
+            rule=ISRule.AT_MOST_ONE,
+            label=label,
+            group=group,
+        )
+
+    async def on_config_loaded(self, names: list[str]) -> None:
+        """React to a configuration that has just been restored.
+
+        Called by :meth:`load_config` after the values are in the properties and
+        on the wire, with the properties it actually applied to. The default
+        does nothing, which is right for a driver whose configuration is only
+        read when it is used.
+
+        Override it when a restored value has to *become* true of the hardware -
+        a focuser that must physically move to the position it was saved at, a
+        filter wheel that must turn. The shape that works is to keep the body of
+        the corresponding ``@on_new`` handler in a method of its own and call it
+        from both places, so the restore does exactly what a client write would
+        do; ``examples/openmeteo_device.py`` is the worked version.
+
+        Parameters
+        ----------
+        names : list of str
+            The properties the load applied values to.
+        """
+
+    async def load_config(self) -> None:
+        """Restore this device's saved configuration and apply it.
+
+        Reads the file, merges it into the device's configuration, publishes a
+        ``set`` for every persisted property that is defined right now, and then
+        calls :meth:`on_config_loaded`. Properties defined afterwards pick their
+        values up as they are defined.
+
+        Raises
+        ------
+        ConfigError
+            Raised if there is nothing saved, or the configuration cannot be
+            located or read. Also an OSError. A first run has nothing saved, so
+            a :meth:`setup` that calls this handles the failure rather than
+            letting it roll the whole attempt back.
+        """
+        path = self._config_file()
+        document = await self.off_thread(read_document, path)
+        self._config_values.update(document.properties)
+        applied: list[str] = []
+        rejected: list[str] = []
+        for name, values in document.properties.items():
+            prop = self._properties.get(name)
+            if prop is None or not prop.persist:
+                # A property this version of the driver no longer publishes, or
+                # one that is not defined yet. Its values stay in the map, so a
+                # later define_* still restores them and a Save keeps them.
+                continue
+            refused = prop._restore(values)
+            applied.append(name)
+            rejected += [f"{name}.{element}" for element in refused]
+        self.message(self._loaded_message(applied, rejected))
+        await self.on_config_loaded(applied)
+
+    def _loaded_message(self, applied: list[str], rejected: list[str]) -> str:
+        """Return the client-facing summary of one completed load.
+
+        Parameters
+        ----------
+        applied : list of str
+            The properties the load wrote values into.
+        rejected : list of str
+            Qualified element names whose saved value would not take.
+
+        Returns
+        -------
+        text : str
+            One sentence, naming the rejected elements when there are any -
+            they are the half a reader has to act on.
+        """
+        if applied:
+            text = f"Restored {len(applied)} propert{'y' if len(applied) == 1 else 'ies'}."
+        else:
+            # A load written *before* the persisted define_* calls, which is the
+            # order that announces each property once. Nothing has been applied
+            # yet, and nothing has gone wrong.
+            text = "Configuration loaded; its values apply as the properties are defined."
+        if rejected:
+            text += f" These saved values were refused: {', '.join(rejected)}."
+        return text
+
+    async def save_config(self) -> None:
+        """Write this device's current configuration to disk.
+
+        Every persisted property that is defined right now is read into the
+        device's configuration first, and then the whole configuration is
+        written - including properties that are not defined at the moment,
+        whose values were captured when they were withdrawn. That is what makes
+        a Save taken while the instrument is disconnected preserve the
+        connect-time properties instead of erasing them.
+
+        The file is replaced whole, so there is no read-modify-write to lose an
+        update to a second process.
+
+        Raises
+        ------
+        ConfigError
+            Raised if the configuration cannot be located or written. Also an
+            OSError.
+        """
+        path = self._config_file()
+        for name, prop in self._properties.items():
+            if prop.persist:
+                self._config_values[name] = values_of(prop.vector)
+        document = ConfigDocument(device=self._device, properties=dict(self._config_values))
+        await self.off_thread(write_document, path, document)
+        self.message("Configuration saved.")
+
+    async def purge_config(self) -> None:
+        """Delete this device's saved configuration file.
+
+        Purging what is not there succeeds: the operator asked for there to be
+        no saved configuration, and afterwards there is none.
+
+        The device's *live* configuration is untouched, deliberately. Purge says
+        "forget the file", not "forget the values the properties are holding",
+        and clearing the map would throw away the last known values of any
+        property that happens to be withdrawn right now.
+
+        Raises
+        ------
+        ConfigError
+            Raised if the configuration cannot be located, or a file is there
+            and cannot be removed. Also an OSError.
+        """
+        path = self._config_file()
+        await self.off_thread(remove_document, path)
+        self.message("Saved configuration purged.")
+
+    def _config_file(self) -> Path:
+        """Return the file this device's configuration lives in.
+
+        Returns
+        -------
+        path : Path
+            The configuration file, which need not exist.
+
+        Raises
+        ------
+        ConfigError
+            Raised if no configuration directory could be resolved, or the
+            device name cannot be a filename. Also an OSError.
+        """
+        if self._config_dir is None:
+            raise ConfigError(
+                f"{self._device} has nowhere to keep its configuration; set INDI_NEXUS_CONFIG_DIR"
+            )
+        return config_path(self._config_dir, self._device)
+
+    @on_new(CONFIG_PROCESS)
+    async def _on_config_write(self, vector: SwitchVector) -> None:
+        """Run the configuration action a client selected (built-in handler).
+
+        Reports the way :meth:`_on_connection_write` does - ``Busy``, act, then
+        ``Ok`` or ``Alert`` with the reason - and then differs from it in one
+        way that matters: **every member is reset to Off**. ``CONNECTION`` is
+        state, so it leaves a member on; ``CONFIG_PROCESS`` is a momentary
+        action, and under ``AtMostOne`` a member left on stays selected forever,
+        which a panel renders as a button stuck in its pressed position.
+        libindi calls ``IUResetSwitch`` here for the same reason.
+
+        The failure it catches is therefore **any** failure, not just
+        :class:`~indi_nexus.ConfigError`. The likeliest one is not the
+        filesystem at all: :meth:`on_config_loaded` is a documented extension
+        point, so an exception out of a driver author's override is expected
+        rather than exceptional here - and letting it past would skip the reset
+        and leave exactly the stuck button this handler exists to prevent.
+        """
+        if CONFIG_PROCESS not in self:
+            await self.on_new_default(vector)
+            return
+        prop = self._properties[CONFIG_PROCESS]
+        action = vector.selected()
+        if action not in _CONFIG_ACTIONS:
+            # No member selected (AtMostOne permits it), or one this SDK does
+            # not implement. There is nothing to do and nothing to report.
+            prop.set_all(ISState.OFF, state=IPState.IDLE)
+            return
+        prop.set({action: ISState.ON}, state=IPState.BUSY)
+        try:
+            # Each action reports its own outcome, because each knows something
+            # different worth saying - how much was restored, that nothing was
+            # saved yet. All that is left here is the state of the switch.
+            await _CONFIG_ACTIONS[action](self)
+        except Exception as exc:  # noqa: BLE001 - reported to the client below
+            prop.set_all(ISState.OFF, state=IPState.ALERT)
+            self.log_error(f"{_CONFIG_LABELS[action]} failed: {exc}")
+            return
+        prop.set_all(ISState.OFF, state=IPState.OK)
+
     # -- property definition ---------------------------------------------- #
     def define[VectorT: Vector](
-        self, vector: VectorT, *, emit: EmitPolicy = "always"
+        self, vector: VectorT, *, emit: EmitPolicy = "always", persist: bool = False
     ) -> BoundProperty[VectorT]:
         """Register a property vector, emit its ``def``, and return its handle.
+
+        A ``persist=True`` property is restored from the device's saved
+        configuration **before** its ``def`` goes out, so a driver that comes up
+        with a configuration on disk announces the saved values directly rather
+        than announcing a default and correcting it a moment later. The order is
+        the point: two frames would leave every client briefly holding a value
+        the operator replaced weeks ago, and a panel showing it.
 
         Parameters
         ----------
@@ -267,19 +592,55 @@ class Device:
         emit : str, optional
             When later ``set`` calls reach the wire; see
             `~indi_nexus.driver.property.EmitPolicy`.
+        persist : bool, optional
+            Whether this property's element values belong in the device's saved
+            configuration; see :meth:`define_config`.
 
         Returns
         -------
         prop : BoundProperty
             The handle used to push later updates for this property, typed by
             the vector kind that was defined.
+
+        Raises
+        ------
+        ValueError
+            Raised if ``persist=True`` is asked for on a light or BLOB vector.
         """
         if not vector.device:
             vector.device = self._device
-        prop = BoundProperty(vector, self._send, policy=emit, owner=self)
+        if persist and isinstance(vector, _UNPERSISTABLE):
+            raise ValueError(
+                f"{self._device}.{vector.name} is a {type(vector).__name__} and cannot be "
+                "persisted: a light is a judgement the driver recomputes and a BLOB is not "
+                "configuration"
+            )
+        prop = BoundProperty(vector, self._send, policy=emit, owner=self, persist=persist)
         self._properties[vector.name] = prop
+        if persist:
+            self._restore(prop)
         prop._announce()
         return prop
+
+    def _restore(self, prop: BoundProperty[Any]) -> None:
+        """Write any configured values into a property that is about to be announced.
+
+        Parameters
+        ----------
+        prop : BoundProperty
+            The freshly registered handle, not yet announced.
+        """
+        values = self._config_values.get(prop.name)
+        if not values:
+            return
+        rejected = prop._apply_values(values)
+        if rejected:
+            logger.warning(
+                "%s.%s: saved values for %s were refused and left at their defaults",
+                self._device,
+                prop.name,
+                ", ".join(rejected),
+            )
 
     def define_number(
         self,
@@ -292,6 +653,7 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
         emit: EmitPolicy = "always",
+        persist: bool = False,
     ) -> BoundProperty[NumberVector]:
         """Define a number vector property.
 
@@ -314,6 +676,9 @@ class Device:
         emit : str, optional
             When later ``set`` calls reach the wire; see
             `~indi_nexus.driver.property.EmitPolicy`.
+        persist : bool, optional
+            Whether this property's element values belong in the device's saved
+            configuration; see :meth:`define_config`.
 
         Returns
         -------
@@ -332,6 +697,7 @@ class Device:
                 elements=elements,
             ),
             emit=emit,
+            persist=persist,
         )
 
     def define_text(
@@ -345,6 +711,7 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
         emit: EmitPolicy = "always",
+        persist: bool = False,
     ) -> BoundProperty[TextVector]:
         """Define a text vector property.
 
@@ -367,6 +734,9 @@ class Device:
         emit : str, optional
             When later ``set`` calls reach the wire; see
             `~indi_nexus.driver.property.EmitPolicy`.
+        persist : bool, optional
+            Whether this property's element values belong in the device's saved
+            configuration; see :meth:`define_config`.
 
         Returns
         -------
@@ -385,6 +755,7 @@ class Device:
                 elements=elements,
             ),
             emit=emit,
+            persist=persist,
         )
 
     def define_switch(
@@ -399,6 +770,7 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
         emit: EmitPolicy = "always",
+        persist: bool = False,
     ) -> BoundProperty[SwitchVector]:
         """Define a switch vector property.
 
@@ -423,6 +795,9 @@ class Device:
         emit : str, optional
             When later ``set`` calls reach the wire; see
             `~indi_nexus.driver.property.EmitPolicy`.
+        persist : bool, optional
+            Whether this property's element values belong in the device's saved
+            configuration; see :meth:`define_config`.
 
         Returns
         -------
@@ -442,6 +817,7 @@ class Device:
                 elements=elements,
             ),
             emit=emit,
+            persist=persist,
         )
 
     def define_light(
@@ -453,6 +829,7 @@ class Device:
         group: str | None = None,
         state: IPState = IPState.IDLE,
         emit: EmitPolicy = "always",
+        persist: bool = False,
     ) -> BoundProperty[LightVector]:
         """Define a light vector property.
 
@@ -473,6 +850,9 @@ class Device:
         emit : str, optional
             When later ``set`` calls reach the wire; see
             `~indi_nexus.driver.property.EmitPolicy`.
+        persist : bool, optional
+            Whether this property's element values belong in the device's saved
+            configuration; see :meth:`define_config`.
 
         Returns
         -------
@@ -489,6 +869,7 @@ class Device:
                 elements=elements,
             ),
             emit=emit,
+            persist=persist,
         )
 
     def define_blob(
@@ -502,6 +883,7 @@ class Device:
         perm: IPerm = IPerm.RW,
         timeout: float | None = None,
         emit: EmitPolicy = "always",
+        persist: bool = False,
     ) -> BoundProperty[BLOBVector]:
         """Define a BLOB vector property.
 
@@ -524,6 +906,9 @@ class Device:
         emit : str, optional
             When later ``set`` calls reach the wire; see
             `~indi_nexus.driver.property.EmitPolicy`.
+        persist : bool, optional
+            Whether this property's element values belong in the device's saved
+            configuration; see :meth:`define_config`.
 
         Returns
         -------
@@ -542,6 +927,7 @@ class Device:
                 elements=elements,
             ),
             emit=emit,
+            persist=persist,
         )
 
     def delete_property(self, name: str, message: str | None = None) -> None:
@@ -589,6 +975,13 @@ class Device:
     def _forget(self, prop: BoundProperty[Any]) -> bool:
         """Drop one handle's property from the registry, reporting whether it did.
 
+        A persisted property's current values are captured into the device's
+        configuration on the way out, which is what makes the ordinary
+        connect/disconnect cycle behave: the property comes back on the next
+        connect holding what the operator last set it to, not what happened to
+        be on disk when the driver started, and a Save taken while it is
+        withdrawn still writes it.
+
         Called by :meth:`BoundProperty.delete` so that removal and announcement
         stay in one place, and so the announcement can follow the removal rather
         than assume it. Identity decides, not the name: a property redefined
@@ -610,6 +1003,8 @@ class Device:
         """
         if self._properties.get(prop.name) is not prop:
             return False
+        if prop.persist:
+            self._config_values[prop.name] = values_of(prop.vector)
         del self._properties[prop.name]
         return True
 
@@ -868,15 +1263,24 @@ class Device:
             return contextlib.nullcontext()
         return self._dispatch_lock
 
-    def _bind(self, emit: Emit) -> None:
+    def _bind(self, emit: Emit, *, config_dir: Path | None = None) -> None:
         """Attach the runtime's outbound-message callback to this device.
+
+        The configuration directory arrives the same way and for the same
+        reason: it is a property of whatever is serving the device, resolved
+        once at the process entrypoint, and a device that read it for itself
+        would put ambient environment inside a library object.
 
         Parameters
         ----------
         emit : Callable
             Callback the device uses to queue outbound messages.
+        config_dir : Path or None, optional
+            Where this device's saved configuration lives. `None` leaves the
+            persistence methods raising :class:`~indi_nexus.ConfigError`.
         """
         self._emit = emit
+        self._config_dir = config_dir
 
     def _send(self, msg: IndiMessage) -> None:
         """Queue one outbound message, requiring an attached runtime.
@@ -1038,3 +1442,21 @@ class Device:
         from indi_nexus.driver.runtime import run
 
         run(cls(name=name))
+
+
+#: What each ``CONFIG_PROCESS`` member does. Declared after the class because
+#: the values are its own unbound methods, and kept as a table rather than a
+#: chain of ``if``\ s so the membership test and the dispatch cannot disagree
+#: about which actions exist.
+_CONFIG_ACTIONS: dict[str, Callable[[Device], Coroutine[Any, Any, None]]] = {
+    CONFIG_LOAD: Device.load_config,
+    CONFIG_SAVE: Device.save_config,
+    CONFIG_PURGE: Device.purge_config,
+}
+
+#: How each action is named when it fails, for the client-facing error.
+_CONFIG_LABELS = {
+    CONFIG_LOAD: "Loading the configuration",
+    CONFIG_SAVE: "Saving the configuration",
+    CONFIG_PURGE: "Purging the configuration",
+}

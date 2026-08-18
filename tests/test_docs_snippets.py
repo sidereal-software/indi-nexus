@@ -189,6 +189,18 @@ CLAIMS = [
     ),
     Claim(
         "docs/guides/writing-drivers.md",
+        "await self.load_config()",
+        EXCERPT,
+        "examples/openmeteo_device.py",
+    ),
+    Claim(
+        "docs/guides/writing-drivers.md",
+        "async def on_config_loaded",
+        EXCERPT,
+        "examples/openmeteo_device.py",
+    ),
+    Claim(
+        "docs/guides/writing-drivers.md",
         "Light.from_labels",
         RUNS,
         "test_driver_guide_lights_shortcut_runs",

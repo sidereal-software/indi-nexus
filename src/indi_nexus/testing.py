@@ -33,6 +33,7 @@ For coverage of the wire itself (framing, chunk boundaries, the codec), drive a
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 from typing import Any, cast
 
 from indi_nexus.driver.device import Device
@@ -105,19 +106,45 @@ class DeviceHarness:
     device : Device
         The device under test. It is bound to this harness on construction, so
         ``define_*`` and ``set`` work immediately.
+    config_dir : Path or None, optional
+        Where the device saves and loads its configuration, standing in for
+        what the runtime would inject. Pass pytest's ``tmp_path`` to exercise
+        ``CONFIG_PROCESS``; leave it out and the persistence methods raise
+        :class:`~indi_nexus.ConfigError`, which is a real driver on a machine
+        with nowhere to save.
     """
 
-    def __init__(self, device: Device) -> None:
+    def __init__(self, device: Device, *, config_dir: Path | None = None) -> None:
         """Attach to ``device`` and start recording what it emits."""
         self._device = device
         self._emitted: list[IndiMessage] = []
-        device._bind(self._emitted.append)
+        device._bind(self._emitted.append, config_dir=config_dir)
 
     # -- driving ----------------------------------------------------------- #
     @property
     def device(self) -> Device:
         """The device under test."""
         return self._device
+
+    @property
+    def config_path(self) -> Path:
+        """The file this device's configuration is saved to.
+
+        It need not exist: before a save there is nothing there, and asserting
+        that is most of what a persistence test does.
+
+        Returns
+        -------
+        path : Path
+            ``<config_dir>/<device>.json``.
+
+        Raises
+        ------
+        ConfigError
+            Raised if the harness was built without a ``config_dir``. Also an
+            OSError.
+        """
+        return self._device._config_file()
 
     async def setup(self) -> None:
         """Send a ``getProperties``, running the device's :meth:`Device.setup`.

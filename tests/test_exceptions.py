@@ -15,6 +15,7 @@ import asyncio
 import pytest
 
 from indi_nexus import (
+    ConfigError,
     DeviceNotServing,
     IndiError,
     NotConnectedError,
@@ -38,6 +39,7 @@ _TYPES = [
     (DeviceNotServing, RuntimeError),
     (NotConnectedError, ConnectionError),
     (SendQueueFull, RuntimeError),
+    (ConfigError, OSError),
 ]
 
 
@@ -164,5 +166,23 @@ def test_disconnected_send_is_a_connection_error():
             await client.get_properties()
         with pytest.raises(OSError):
             await client.get_properties()
+
+    asyncio.run(scenario())
+
+
+def test_missing_config_directory_is_still_an_os_error():
+    """A device with nowhere to save raises the OSError-compatible type.
+
+    ``except OSError`` around a driver is the shape somebody already has - it is
+    what a filesystem call raises - so persistence must not slip past it.
+    """
+
+    async def scenario() -> None:
+        harness = DeviceHarness(_Probe())  # no config_dir
+        await harness.setup()
+        with pytest.raises(ConfigError):
+            await harness.device.save_config()
+        with pytest.raises(OSError):
+            await harness.device.save_config()
 
     asyncio.run(scenario())

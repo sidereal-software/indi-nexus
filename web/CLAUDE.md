@@ -197,6 +197,11 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
   `DeviceConfigCard` rather than leaving it visible only in tests. It answers every action
   with all members **Off**, because `CONFIG_PROCESS` is a momentary action and not state: a
   member left On renders as a button stuck in its pressed position.
+  - It carries **four** members where `openmeteo_device.py`'s `define_config()` publishes
+    three: the SDK does not implement `CONFIG_DEFAULT`, and libindi does. That is the one
+    deliberate divergence from the driver it mirrors, and it is the right way round - the
+    panel meets libindi drivers far more often than ours, so the demo is what proves the
+    card renders a four-member property. Do not "fix" it by dropping the member.
 - **Every simulator has a `CONNECTION` property**, for the same reason every example driver
   does (see `src/indi_nexus/CLAUDE.md`): it is the first thing a client looks for, and a demo
   without one shows visitors a device shape that does not exist in the field. It has to
