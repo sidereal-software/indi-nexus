@@ -641,6 +641,37 @@ def test_a_non_finite_number_is_refused_at_the_call_site(value: float) -> None:
     assert prop.value("ra") == 1.0
 
 
+def test_a_number_that_is_not_a_number_is_refused_at_the_call_site() -> None:
+    """A value ``float()`` cannot read fails here, and leaves the element alone.
+
+    The same argument as the non-finite case above, one step earlier: assignment
+    skips the model's own validation, so a string reaching a number element used
+    to sit there looking like a reading until the writer loop met it. Now the
+    element keeps its last good value and the raise names it.
+    """
+    prop, emitted = _numbers()
+
+    with pytest.raises(ProtocolError, match="Dev.coords.ra"):
+        prop.set(ra="not a number")
+
+    assert emitted == []
+    assert prop.value("ra") == 1.0
+
+
+def test_a_numeric_string_is_read_as_the_number_it_spells() -> None:
+    """Coercion, not refusal, for a value that is a number written as text.
+
+    A vendor library that hands back strings is ordinary, and the text elements
+    have coerced since the beginning; refusing here would be the odd one out.
+    """
+    prop, emitted = _numbers()
+
+    prop.set(ra="2.5")
+
+    assert prop.value("ra") == 2.5
+    assert emitted[0].vector.get("ra") == 2.5
+
+
 # --------------------------------------------------------------------------- #
 # Retraction                                                                   #
 # --------------------------------------------------------------------------- #

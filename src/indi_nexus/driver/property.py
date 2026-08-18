@@ -94,6 +94,9 @@ class BoundProperty[VectorT: Vector]:
         remove it there rather than only announcing its removal. `None` for a
         handle built outside a device (a unit test over a bare vector), which
         makes :meth:`delete` announce-only.
+    persist : bool, optional
+        Whether this property's element values belong in the device's saved
+        configuration; see `~indi_nexus.driver.device.Device.define_config`.
     """
 
     def __init__(
@@ -103,12 +106,14 @@ class BoundProperty[VectorT: Vector]:
         *,
         policy: EmitPolicy = "always",
         owner: Device | None = None,
+        persist: bool = False,
     ) -> None:
         """Wrap ``vector`` with the runtime's outbound-message callback."""
         self._vector = vector
         self._emit = emit
         self._policy: EmitPolicy = policy
         self._owner = owner
+        self._persist = persist
         # Set by delete(): the client has been told this property is gone, so
         # anything published through this handle afterwards contradicts that.
         self._retracted = False
@@ -127,6 +132,11 @@ class BoundProperty[VectorT: Vector]:
     def state(self) -> IPState:
         """The property's current vector state."""
         return self._vector.state
+
+    @property
+    def persist(self) -> bool:
+        """Whether this property's values belong in the saved configuration."""
+        return self._persist
 
     def __getitem__(self, name: str) -> Element:
         """Return element ``name`` (raises :class:`PropertyNotFound` if absent)."""
@@ -214,11 +224,7 @@ class BoundProperty[VectorT: Vector]:
             Raised if the property has been retracted (see :meth:`delete`).
             Also a RuntimeError.
         """
-        if self._retracted:
-            raise PropertyRetracted(
-                f"{self._vector.device}.{self._vector.name} was retracted with a delProperty; "
-                "this handle is dead. Define the property again and use the handle that returns."
-            )
+        self._require_live()
         merged = {**(values or {}), **kwargs}
         before = self._snapshot()
         for elem_name, val in merged.items():
@@ -227,14 +233,7 @@ class BoundProperty[VectorT: Vector]:
             self._vector.state = state
         if message is not None:
             self._vector.message = message
-        if not force and self._policy == "on_change" and self._snapshot() == before:
-            return
-        # Normalise the argument, not just the default: assigning to a model
-        # attribute skips the field validator that would otherwise do it, so a
-        # caller's naive datetime would reach JSON unlabelled while the XML for
-        # the same emission called it UTC.
-        self._vector.timestamp = as_utc(timestamp) if timestamp is not None else indi_now()
-        self._emit(SetVector(vector=self._detached()))
+        self._publish(before, force=force, timestamp=timestamp)
 
     def set_all(
         self,
@@ -391,6 +390,130 @@ class BoundProperty[VectorT: Vector]:
             )
         )
 
+    def _apply_values(self, values: dict[str, Any]) -> list[str]:
+        """Write saved element values into the vector, emitting nothing.
+
+        The restore half of persistence, and deliberately **tolerant** where
+        :meth:`set` is strict, because its input is a file rather than a call
+        site: a configuration written by an older version of the driver names
+        elements this one no longer has, and a hand-edited one carries values
+        that will not take. Neither is a reason to abandon the rest of the
+        property, so an element the vector does not have is ignored and one that
+        refuses its value is dropped and named, while every other element
+        applies.
+
+        Nothing goes on the wire and the timestamp is untouched, so a caller can
+        restore into a vector *before* its ``def`` is announced and put one
+        frame on the wire instead of a default followed by a correction.
+
+        Parameters
+        ----------
+        values : dict
+            Element values keyed by name, as read from the saved configuration.
+
+        Returns
+        -------
+        rejected : list of str
+            The elements whose saved value the vector refused, in the order
+            they were tried. Empty when everything applied.
+
+        Raises
+        ------
+        PropertyRetracted
+            Raised if the property has been retracted. Also a RuntimeError.
+        """
+        self._require_live()
+        rejected: list[str] = []
+        for name, value in values.items():
+            if name not in self:
+                continue
+            try:
+                self._assign(name, value)
+            except (ValueError, TypeError):
+                # ProtocolError (a non-finite number) is a ValueError, and a
+                # switch value that is not a wire token comes out of
+                # coerce_switch as one too. PropertyNotFound cannot reach here:
+                # the membership check above already ruled it out.
+                rejected.append(name)
+        return rejected
+
+    def _restore(self, values: dict[str, Any]) -> list[str]:
+        """Apply saved values to a live property and publish the result.
+
+        The mid-session half of :meth:`_apply_values`: the property has already
+        been announced, so the client has to be told what it now holds. One
+        ``set`` carries the whole vector, and the emit policy applies exactly as
+        it does to any other update - an ``"on_change"`` property restored to
+        the values it already had says nothing.
+
+        The values arrive as a mapping and stay one. Splatting them as keyword
+        arguments would work until a saved element name is not a Python
+        identifier, which the protocol permits and real drivers use.
+
+        Parameters
+        ----------
+        values : dict
+            Element values keyed by name, as read from the saved configuration.
+
+        Returns
+        -------
+        rejected : list of str
+            The elements whose saved value the vector refused.
+
+        Raises
+        ------
+        PropertyRetracted
+            Raised if the property has been retracted. Also a RuntimeError.
+        """
+        before = self._snapshot()
+        rejected = self._apply_values(values)
+        self._publish(before, force=False)
+        return rejected
+
+    def _publish(
+        self,
+        before: tuple[dict[str, Any], IPState, str | None],
+        *,
+        force: bool,
+        timestamp: dt.datetime | None = None,
+    ) -> None:
+        """Emit the ``set`` for changes already written, under the emit policy.
+
+        The tail every mutating call shares, so "when does an update reach the
+        wire" has one implementation rather than one per caller.
+
+        Parameters
+        ----------
+        before : tuple
+            The :meth:`_snapshot` taken before the values were written.
+        force : bool
+            Emit even under ``"on_change"`` when nothing differs.
+        timestamp : datetime, optional
+            Update timestamp; defaults to now.
+        """
+        if not force and self._policy == "on_change" and self._snapshot() == before:
+            return
+        # Normalise the argument, not just the default: assigning to a model
+        # attribute skips the field validator that would otherwise do it, so a
+        # caller's naive datetime would reach JSON unlabelled while the XML for
+        # the same emission called it UTC.
+        self._vector.timestamp = as_utc(timestamp) if timestamp is not None else indi_now()
+        self._emit(SetVector(vector=self._detached()))
+
+    def _require_live(self) -> None:
+        """Refuse to publish through a handle whose property has been retracted.
+
+        Raises
+        ------
+        PropertyRetracted
+            Raised if :meth:`delete` has already run. Also a RuntimeError.
+        """
+        if self._retracted:
+            raise PropertyRetracted(
+                f"{self._vector.device}.{self._vector.name} was retracted with a delProperty; "
+                "this handle is dead. Define the property again and use the handle that returns."
+            )
+
     def _announce(self) -> None:
         """Emit this property's ``def``, describing it as it stands right now.
 
@@ -505,11 +628,22 @@ class BoundProperty[VectorT: Vector]:
             # inside the writer loop, a long way from the call that caused it.
             el.value = val if isinstance(val, str) else str(val)
             return
-        if isinstance(el, Number) and isinstance(val, float) and not math.isfinite(val):
-            # Same reasoning as the Text coercion above, and the same reason
-            # Number.value forbids it on the model: assigning to a model
-            # attribute skips validation, so a NaN read off a sulking sensor
-            # would sail through here and only fail in the writer loop - or,
-            # worse, reach a browser as a JSON `null` that cannot be read back.
-            raise ProtocolError(f"{vec.device}.{vec.name}.{name} cannot be set to {val!r}")
-        el.value = val  # Number(float) | Light(IPState)
+        if isinstance(el, Number):
+            # Coerced and checked here for the same reason as the Text above,
+            # and the same reason Number.value forbids a non-finite value on the
+            # model: assigning to a model attribute skips validation entirely,
+            # so a NaN off a sulking sensor - or a string out of a saved
+            # configuration - would sail through here and fail in the writer
+            # loop instead, or reach a browser as a JSON `null` that cannot be
+            # read back. Failing at the call site is what names the element.
+            try:
+                number = float(val)
+            except (TypeError, ValueError):
+                raise ProtocolError(
+                    f"{vec.device}.{vec.name}.{name} cannot be set to {val!r}"
+                ) from None
+            if not math.isfinite(number):
+                raise ProtocolError(f"{vec.device}.{vec.name}.{name} cannot be set to {val!r}")
+            el.value = number
+            return
+        el.value = val  # Light(IPState)
