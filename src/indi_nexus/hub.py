@@ -20,6 +20,15 @@ anywhere in the process.
 This is a convenience for development and for trying a driver out, not a replacement
 for ``indiserver``: it serves exactly one client, has no access control, and dies
 with the process. Point a real observatory at the real hub.
+
+**There is no ``enableBLOB`` gate here**, and nothing below implements one: every
+driver message reaches the client whether or not it asked for BLOBs. A real
+``indiserver`` forwards no BLOB until the client sends ``enableBLOB``, and does so
+silently. So a test running over this hub proves that a BLOB payload round-trips and
+**cannot** prove that a client's :meth:`~indi_nexus.client.IndiClient.enable_blob`
+call was needed - the call looks removable here and is not. That is exactly the
+lesson ``examples/blob_receiver.py`` exists to teach, so do not delete it from that
+example, or from its test, on the strength of a green suite.
 """
 
 from __future__ import annotations

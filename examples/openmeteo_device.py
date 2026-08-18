@@ -442,7 +442,14 @@ class OpenMeteo(Device):
     # -- client writes ------------------------------------------------------ #
     @on_new("GEOGRAPHIC_COORD")
     async def _move_site(self, vector: NumberVector) -> None:
-        """Point the driver at a different site and refetch immediately."""
+        """Point the driver at a different site and refetch immediately.
+
+        The sanctioned exception to "every handler opens with
+        ``require_connected()``": the site is the driver's own configuration
+        rather than a command to hardware, so an operator may move it while
+        disconnected. The connection is still checked - below, and only around
+        the part that actually goes out to the network.
+        """
         self._latitude = vector.get("LAT", self._latitude)
         self._longitude = vector.get("LONG", self._longitude)
         site = self["GEOGRAPHIC_COORD"]
