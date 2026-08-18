@@ -107,7 +107,7 @@
   "IndiMessage": {
     "$defs": {
       "BLOB": {
-        "description": "A single BLOB element (``defBLOB`` / ``oneBLOB``).\n\n``data`` holds the decoded binary payload; the base64/size framing lives in\nthe codec, not the model.",
+        "description": "A single BLOB element (``defBLOB`` / ``oneBLOB``).\n\n``data`` holds the decoded binary payload; the base64/size framing lives in\nthe codec, not the model.\n\nIn JSON the payload is **standard** base64 (RFC 4648 section 4, the\n``+``/``/`` alphabet); validation accepts the URL-safe alphabet as well.",
         "properties": {
           "data": {
             "anyOf": [
@@ -1278,7 +1278,7 @@
   "Vector": {
     "$defs": {
       "BLOB": {
-        "description": "A single BLOB element (``defBLOB`` / ``oneBLOB``).\n\n``data`` holds the decoded binary payload; the base64/size framing lives in\nthe codec, not the model.",
+        "description": "A single BLOB element (``defBLOB`` / ``oneBLOB``).\n\n``data`` holds the decoded binary payload; the base64/size framing lives in\nthe codec, not the model.\n\nIn JSON the payload is **standard** base64 (RFC 4648 section 4, the\n``+``/``/`` alphabet); validation accepts the URL-safe alphabet as well.",
         "properties": {
           "data": {
             "anyOf": [

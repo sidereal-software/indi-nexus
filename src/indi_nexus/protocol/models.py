@@ -25,11 +25,12 @@ Design notes
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 from collections.abc import Callable, Iterable
 from typing import Annotated, Any, Literal, Self, cast
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_serializer
 
 from indi_nexus.exceptions import PropertyNotFound
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
@@ -113,7 +114,14 @@ class _Model(BaseModel):
         use_enum_values=False,
         # BLOB payloads are binary; encode/decode them as base64 in JSON so the
         # browser wire contract stays valid JSON (the XML codec base64s too).
+        # `ser_json_bytes` emits the *URL-safe* alphabet, which is not what the
+        # contract says and not what a browser can decode, so BLOB.data
+        # overrides it with a field serializer; the argument is written there.
+        # It stays set all the same: without it pydantic writes a bytes field as
+        # UTF-8 text, which is not a lie any binary payload survives.
         ser_json_bytes="base64",
+        # Accepts both alphabets, which is the half that should stay permissive:
+        # a peer that has been sending URL-safe payloads keeps working.
         val_json_bytes="base64",
     )
 
@@ -202,12 +210,47 @@ class BLOB(_Element):
 
     ``data`` holds the decoded binary payload; the base64/size framing lives in
     the codec, not the model.
+
+    In JSON the payload is **standard** base64 (RFC 4648 section 4, the
+    ``+``/``/`` alphabet); validation accepts the URL-safe alphabet as well.
     """
 
     kind: Literal["blob"] = "blob"
     format: str | None = None
     size: int | None = None
     data: bytes | None = None
+
+    @field_serializer("data", when_used="json")
+    def _serialize_data(self, data: bytes | None) -> str | None:
+        """Encode the payload with the standard base64 alphabet.
+
+        Pydantic's ``ser_json_bytes="base64"`` emits the **URL-safe** alphabet,
+        which is not what the browser contract documents and not what a consumer
+        can use: ``atob`` and a ``data:...;base64,`` URL are both defined over
+        forgiving-base64, which *rejects* ``-`` and ``_``. A real image has a few
+        percent of its characters in that set, so every download link the panel
+        built was refused by the browser. Correcting it at the codec rather than
+        in the one React component that noticed keeps every consumer right,
+        including ``atob`` in code this project does not own.
+
+        A field serializer rather than a config change because pydantic offers
+        no standard-alphabet ``ser_json_bytes``, and this is the only ``bytes``
+        field on the wire. **Validation is deliberately untouched**: it still
+        takes either alphabet, so a peer already sending URL-safe payloads keeps
+        working.
+
+        Parameters
+        ----------
+        data : bytes or None
+            The decoded payload, or `None` on a ``def``/``one`` that carries no
+            bytes.
+
+        Returns
+        -------
+        encoded : str or None
+            The payload as standard base64, or `None` when there is none.
+        """
+        return None if data is None else base64.b64encode(data).decode("ascii")
 
 
 Element = Annotated[

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 
 import pytest
@@ -82,6 +83,138 @@ def test_blob_payload_is_base64_in_json():
     back = from_json(text)
     assert isinstance(back, SetVector)
     assert back.vector.element("image").data == payload
+
+
+def test_a_blob_with_no_payload_is_null_in_json_and_stays_null():
+    """A ``defBLOBVector`` carries metadata and no bytes; base64 must not invent any."""
+    vec = BLOBVector(device="CCD", name="CCD1", elements=[BLOB(name="image", format=".fits")])
+
+    obj = json.loads(to_json(DefVector(vector=vec)))
+    back = _roundtrip(DefVector(vector=vec))
+
+    assert obj["vector"]["elements"][0]["data"] is None
+    assert back.vector.element("image").data is None
+    assert back.vector.element("image").format == ".fits"
+
+
+def test_a_blob_payload_uses_the_standard_base64_alphabet():
+    """The wire alphabet is ``+``/``/``, never the URL-safe ``-``/``_``.
+
+    Not a stylistic preference: ``atob`` and a ``data:...;base64,`` URL are both
+    defined over forgiving-base64, which **rejects** ``-`` and ``_``, and the
+    panel builds exactly such a URL for its download link. Pydantic's
+    ``ser_json_bytes="base64"`` emits the URL-safe alphabet, so this passed only
+    because our own validator happens to accept both and no consumer in the
+    round-trip ever ran the browser's decoder.
+
+    The payload is chosen so its standard encoding contains both characters.
+    """
+    payload = b"\xff\xfe\xfd\x03\xe0"
+    assert base64.b64encode(payload) == b"//79A+A="
+
+    vec = BLOBVector(device="CCD", name="CCD1", elements=[BLOB(name="image", data=payload)])
+    data = json.loads(to_json(SetVector(vector=vec)))["vector"]["elements"][0]["data"]
+
+    assert data == "//79A+A="
+    assert "-" not in data and "_" not in data
+    # The strict decoder every browser consumer effectively runs.
+    assert base64.b64decode(data, validate=True) == payload
+
+
+def test_a_blob_payload_is_accepted_in_either_base64_alphabet():
+    """Emitting standard base64 must not narrow what we *accept*.
+
+    A peer that has been sending URL-safe payloads - anything written against
+    what this codec used to emit - keeps working, because the fix is to the
+    serializer alone and ``val_json_bytes="base64"`` takes both alphabets.
+    """
+    payload = b"\xff\xfe\xfd\x03\xe0"
+    for encode in (base64.b64encode, base64.urlsafe_b64encode):
+        frame = json.dumps(
+            {
+                "tag": "new",
+                "vector": {
+                    "kind": "blob",
+                    "device": "CCD",
+                    "name": "UPLOAD",
+                    "elements": [
+                        {"kind": "blob", "name": "image", "data": encode(payload).decode()}
+                    ],
+                },
+            }
+        )
+
+        msg = from_json(frame)
+
+        assert isinstance(msg, NewVector)
+        assert msg.vector.element("image").data == payload
+
+
+def test_a_blob_payload_stays_bytes_outside_json():
+    """The serializer is JSON-only; ``model_dump()`` still hands back bytes.
+
+    Python-mode dumps feed application code, not the wire, and turning the
+    payload into a string there would break every caller reading ``.data``.
+    """
+    vec = BLOBVector(device="CCD", name="CCD1", elements=[BLOB(name="image", data=b"\xff\xfe")])
+
+    assert vec.model_dump()["elements"][0]["data"] == b"\xff\xfe"
+    assert vec.model_dump(mode="json")["elements"][0]["data"] == "//4="
+
+
+def test_a_browser_authored_blob_frame_decodes_its_base64():
+    """A frame a browser wrote by hand arrives as bytes, not as the base64 string.
+
+    This is the direction the panel writes in (an upload), and the only place the
+    JSON codec has to *decode* rather than encode.
+    """
+    frame = (
+        '{"tag":"new","vector":{"kind":"blob","device":"CCD","name":"UPLOAD",'
+        '"elements":[{"kind":"blob","name":"image","format":".fits",'
+        '"size":5,"data":"YXN0cm8="}]}}'
+    )
+
+    msg = from_json(frame)
+
+    assert isinstance(msg, NewVector)
+    assert msg.vector.element("image").data == b"astro"
+    assert msg.vector.element("image").size == 5
+
+
+def test_a_browser_blob_frame_with_broken_base64_is_refused():
+    """Bad base64 fails validation rather than decoding to fewer bytes.
+
+    The XML side already refuses a payload it cannot decode instead of silently
+    discarding the offending characters; the browser side has to agree, or the
+    two codecs disagree about what a valid frame is.
+    """
+    frame = (
+        '{"tag":"new","vector":{"kind":"blob","device":"CCD","name":"UPLOAD",'
+        '"elements":[{"kind":"blob","name":"image","data":"not base64!!"}]}}'
+    )
+
+    with pytest.raises(ValidationError):
+        from_json(frame)
+
+
+def test_a_blob_keeps_its_size_and_format_through_json():
+    """The two fields a browser needs to label a download survive the trip.
+
+    ``size`` is the uncompressed length the driver declared, which is not the
+    length of the bytes when the format says compressed, so it cannot be
+    reconstructed on the far side and has to travel.
+    """
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".fits.fz", size=11_520, data=b"tile-compressed")],
+    )
+
+    back = _roundtrip(SetVector(vector=vec))
+
+    assert back.vector.element("image").size == 11_520
+    assert back.vector.element("image").format == ".fits.fz"
+    assert back.vector.element("image").data == b"tile-compressed"
 
 
 def test_browser_new_frame_parses_to_new_vector():

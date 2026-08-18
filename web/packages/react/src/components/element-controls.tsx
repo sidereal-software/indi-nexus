@@ -264,6 +264,10 @@ export function BlobVectorControl({ vector }: { vector: BlobVector }) {
             <span>{element.format ?? "-"}</span>
             <span className="tabular-nums">{formatBytes(element.size)}</span>
             {element.data ? (
+              // A `data:` URL is decoded with forgiving-base64, which rejects the
+              // URL-safe alphabet, so this link works only because the bridge pins
+              // the standard one (see BLOB in protocol/models.py). Do not "fix" a
+              // broken download by rewriting the payload here.
               <a
                 className="text-primary underline underline-offset-2"
                 download={`${element.name}${element.format ?? ""}`}

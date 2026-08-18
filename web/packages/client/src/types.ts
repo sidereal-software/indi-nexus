@@ -14,8 +14,11 @@
  * - Element metadata (a number's `min`/`max`/`format`, a switch vector's `rule`)
  *   is only present on a `def`; a `set`/`new` carries just `name` + value. That is
  *   why those fields are optional here.
- * - BLOB payloads travel as base64 `string` (the Python base model sets
- *   `ser_json_bytes="base64"`).
+ * - BLOB payloads travel as a base64 `string` in the **standard** alphabet
+ *   (RFC 4648 section 4, `+` and `/`), which the Python `BLOB` model pins with a
+ *   field serializer. That is the alphabet `atob` and a `data:...;base64,` URL
+ *   accept; the URL-safe one they reject outright, which is what a download link
+ *   built from `data` depends on.
  */
 
 import type { BLOBPolicy, IPerm, IPState, ISRule, ISState } from "./enums";
@@ -62,7 +65,7 @@ export interface LightElement {
   value: IPState;
 }
 
-/** A single BLOB element (`defBLOB` / `oneBLOB`); `data` is base64. */
+/** A single BLOB element (`defBLOB` / `oneBLOB`); `data` is standard base64. */
 export interface BlobElement {
   kind: "blob";
   name: string;
