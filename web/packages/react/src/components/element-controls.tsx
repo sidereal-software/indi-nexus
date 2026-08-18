@@ -16,6 +16,7 @@
 
 import {
   type BlobVector,
+  displayLabel,
   formatNumber,
   isWritable,
   type LightVector,
@@ -76,9 +77,7 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
       <FieldGroup className="gap-2">
         {elements.map((element) => (
           <Field key={element.name} orientation="horizontal">
-            <FieldLabel className="text-muted-foreground">
-              {element.label ?? element.name}
-            </FieldLabel>
+            <FieldLabel className="text-muted-foreground">{displayLabel(element)}</FieldLabel>
             <span className="ml-auto truncate font-mono text-sm tabular-nums">
               {currentValue(element)}
             </span>
@@ -122,7 +121,7 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
             <Field key={element.name} className="gap-1.5">
               <div className="flex items-baseline justify-between gap-3">
                 <FieldLabel htmlFor={id} className="shrink-0 text-muted-foreground">
-                  {element.label ?? element.name}
+                  {displayLabel(element)}
                 </FieldLabel>
                 <span
                   title="Current value"
@@ -174,7 +173,7 @@ export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
       value={element.name}
       className="px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground"
     >
-      {element.label ?? element.name}
+      {displayLabel(element)}
     </ToggleGroupItem>
   ));
 
@@ -242,7 +241,7 @@ export function LightVectorControl({ vector }: { vector: LightVector }) {
     <FieldGroup className="gap-2">
       {vector.elements.map((element) => (
         <Field key={element.name} orientation="horizontal">
-          <FieldLabel className="text-muted-foreground">{element.label ?? element.name}</FieldLabel>
+          <FieldLabel className="text-muted-foreground">{displayLabel(element)}</FieldLabel>
           <span className="ml-auto flex items-center gap-2 text-sm">
             <StateDot state={element.value} />
             {element.value}
@@ -259,7 +258,7 @@ export function BlobVectorControl({ vector }: { vector: BlobVector }) {
     <FieldGroup className="gap-2">
       {vector.elements.map((element) => (
         <Field key={element.name} orientation="horizontal">
-          <FieldLabel className="text-muted-foreground">{element.label ?? element.name}</FieldLabel>
+          <FieldLabel className="text-muted-foreground">{displayLabel(element)}</FieldLabel>
           <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
             <span>{element.format ?? "-"}</span>
             <span className="tabular-nums">{formatBytes(element.size)}</span>

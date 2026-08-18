@@ -98,4 +98,9 @@ describe("PropertyVectorCard", () => {
     expect(frame.tag).toBe("new");
     expect(frame.vector.elements).toContainEqual({ kind: "switch", name: "on", value: "On" });
   });
+
+  it("titles a vector whose label is the empty string with its name", () => {
+    renderConnected(<PropertyVectorCard vector={{ ...switchVec, label: "" }} />);
+    expect(screen.getByText("power")).toBeInTheDocument();
+  });
 });

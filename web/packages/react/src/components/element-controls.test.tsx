@@ -314,3 +314,38 @@ describe("VectorControl", () => {
     expect(screen.getByText("1.50")).toBeInTheDocument();
   });
 });
+
+describe("empty labels", () => {
+  it("falls back to the element name when the label is the empty string", () => {
+    // libindi publishes DEVICE_BAUD_RATE with empty element labels, so a
+    // `label ?? name` fallback renders a row of blank buttons.
+    renderConnected(
+      <SwitchVectorControl
+        vector={{
+          ...switchVec("OneOfMany", ["9600"]),
+          name: "DEVICE_BAUD_RATE",
+          elements: ["9600", "19200"].map((name) => ({
+            kind: "switch" as const,
+            name,
+            label: "",
+            value: name === "9600" ? ("On" as const) : ("Off" as const),
+          })),
+        }}
+      />,
+    );
+    expect(screen.getByText("9600")).toBeInTheDocument();
+    expect(screen.getByText("19200")).toBeInTheDocument();
+  });
+
+  it("falls back to the element name for a read-only value row", () => {
+    renderConnected(
+      <ValueVectorControl
+        vector={numberVec({
+          perm: "ro",
+          elements: [{ kind: "number", name: "secs", label: "", value: 1.5 }],
+        })}
+      />,
+    );
+    expect(screen.getByText("secs")).toBeInTheDocument();
+  });
+});

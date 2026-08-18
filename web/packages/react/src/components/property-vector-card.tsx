@@ -1,6 +1,6 @@
 /** A card presenting one INDI property vector: header + kind-specific control. */
 
-import type { Vector } from "@indi-nexus/client";
+import { displayLabel, type Vector } from "@indi-nexus/client";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useDisplaySettings } from "../display-settings";
@@ -32,7 +32,7 @@ export function PropertyVectorCard({ vector, className }: PropertyVectorCardProp
       <CardHeader className="gap-0.5 px-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="truncate text-sm">{vector.label ?? vector.name}</CardTitle>
+            <CardTitle className="truncate text-sm">{displayLabel(vector)}</CardTitle>
             {showDebug ? (
               <CardDescription className="truncate font-mono text-xs">
                 {vector.name}

@@ -1,7 +1,13 @@
 /**
- * Number formatting per INDI printf-style `format` strings.
+ * Display helpers: what to call a property or element, and how to print a number.
  *
- * A hand-authored mirror of `indi_nexus.protocol.xml.format_number`: it handles
+ * {@link displayLabel} is the one every UI needs, because INDI's `label` is
+ * optional in practice as well as in the schema - libindi drivers ship elements
+ * whose label is the empty string (`DEVICE_BAUD_RATE` is the one everybody
+ * meets), and `label ?? name` renders those as nothing at all.
+ *
+ * {@link formatNumber} is a hand-authored mirror of
+ * `indi_nexus.protocol.xml.format_number`: it handles
  * the INDI `%m` sexagesimal form (e.g. `%9.6m`, field-width padded like
  * libindi's `fs_sexa`) plus the printf conversions elements actually use
  * (`%g` - the default for a Number element - along with `%f`, `%e` and
@@ -14,6 +20,23 @@
  * value while `toFixed` rounds half-up: `"%.0f" % 2.5` is `'2'` on both sides
  * only if the rounding agrees.
  */
+
+/**
+ * The text to show for a labelled INDI thing: its label, or its name.
+ *
+ * Takes the label only when it carries something, so an element or vector whose
+ * label is absent, empty, or nothing but whitespace falls back to the wire name
+ * rather than rendering as a blank control. Pass the whole element or vector
+ * rather than the two fields, so a caller cannot pair one thing's label with
+ * another's name.
+ *
+ * @param labelled - Anything carrying an INDI `name` and optional `label`.
+ * @returns The label when it is non-empty, otherwise the name.
+ */
+export function displayLabel(labelled: { name: string; label?: string | null }): string {
+  const label = labelled.label;
+  return label != null && label.trim() !== "" ? label : labelled.name;
+}
 
 /** Fraction denominators per `%m` precision digit (libindi's fs_sexa bases). */
 const FRACBASES: Record<number, number> = { 9: 360000, 8: 36000, 6: 3600, 5: 600 };

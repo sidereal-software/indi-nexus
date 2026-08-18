@@ -139,7 +139,7 @@ export const MANIFEST = [
       {
         name: "tutorial-use-alerting",
         match: "function useAlerting(): string[] {",
-        imports: ['import { useProperty } from "@indi-nexus/react";'],
+        imports: ['import { displayLabel, useProperty } from "@indi-nexus/react";'],
       },
       {
         name: "tutorial-live",

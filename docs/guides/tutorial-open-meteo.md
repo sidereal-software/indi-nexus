@@ -268,11 +268,13 @@ Alert.
 function useAlerting(): string[] {
   const status = useProperty("Open-Meteo", "WEATHER_STATUS");
   if (status?.kind !== "light") return [];
-  return status.elements
-    .filter((light) => light.value === "Alert")
-    .map((light) => light.label ?? light.name);
+  return status.elements.filter((light) => light.value === "Alert").map(displayLabel);
 }
 ```
+
+`displayLabel` is what gives an element a name to show. INDI's `label` is
+optional, and libindi drivers really do publish elements whose label is the empty
+string, so `label ?? name` prints a blank where a reading should be.
 
 The board then reads **HOLD** / *Humidity · Cloud cover*.
 

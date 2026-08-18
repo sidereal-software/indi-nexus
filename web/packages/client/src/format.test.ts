@@ -1,5 +1,5 @@
 /**
- * Tests for the INDI number formatter.
+ * Tests for the display helpers: the label fallback and the number formatter.
  *
  * Every expectation here is what Python prints for the same value and format:
  * the sexagesimal cases mirror `tests/test_protocol.py::test_format_number`, and
@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { formatNumber } from "./format";
+import { displayLabel, formatNumber } from "./format";
 
 describe("formatNumber sexagesimal", () => {
   it.each([
@@ -115,5 +115,22 @@ describe("formatNumber fallbacks", () => {
   it("falls back for values JSON cannot carry", () => {
     expect(formatNumber(Number.NaN, "%g")).toBe("NaN");
     expect(formatNumber(Number.POSITIVE_INFINITY, "%.2f")).toBe("Infinity");
+  });
+});
+
+describe("displayLabel", () => {
+  it("prefers the label when it carries something", () => {
+    expect(displayLabel({ name: "CONNECT", label: "Connect" })).toBe("Connect");
+  });
+
+  it.each([
+    ["absent", undefined],
+    ["null", null],
+    ["empty", ""],
+    ["blank", "   "],
+  ])("falls back to the name when the label is %s", (_case, label) => {
+    // libindi ships DEVICE_BAUD_RATE with empty element labels, so this is the
+    // real driver behaviour rather than a defensive branch.
+    expect(displayLabel({ name: "9600", label })).toBe("9600");
   });
 });

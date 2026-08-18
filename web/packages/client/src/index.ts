@@ -28,8 +28,8 @@ export type {
 export { ReconnectingConnection } from "./connection";
 // Enums (values + their string-literal types) and helpers.
 export { BLOBPolicy, IPerm, IPState, ISRule, ISState, isWritable } from "./enums";
-// INDI printf/sexagesimal number formatting.
-export { formatNumber } from "./format";
+// Display helpers: label fallback, INDI printf/sexagesimal number formatting.
+export { displayLabel, formatNumber } from "./format";
 export type {
   DeviceSnapshot,
   EventType,
