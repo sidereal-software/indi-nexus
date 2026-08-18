@@ -285,6 +285,25 @@ def test_serve_help_still_lists_the_access_control_flags():
         assert variable in output
 
 
+def test_the_help_reads_the_same_on_a_narrow_ci_terminal(monkeypatch):
+    """The assertions above must not depend on how wide the developer's shell is.
+
+    Typer sizes its help from the terminal and colours it whenever it believes it
+    is on CI, and neither shows up locally. Wrapping splits a long flag mid-name
+    and colour splits even a short one into escape-separated runs, so every
+    assertion matching on rendered CLI output silently stops checking anything.
+    A narrow width and CI's own marker together are the environment that broke it.
+    """
+    monkeypatch.setenv("COLUMNS", "40")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+
+    output = runner.invoke(app, ["serve", "--help"]).output
+
+    assert "\x1b" not in output, "Typer coloured its help into a pipe with no terminal"
+    for flag in ("--token", "--allow-origin", "--allow-insecure-bind"):
+        assert flag in output, f"{flag} was wrapped or styled apart"
+
+
 def test_a_token_from_the_environment_satisfies_the_security_refusal(monkeypatch):
     """The refusal is a security control, and it now has a second way in.
 
