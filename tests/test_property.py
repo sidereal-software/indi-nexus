@@ -13,6 +13,8 @@ import pytest
 
 from indi_nexus.driver.property import BoundProperty
 from indi_nexus.protocol import (
+    BLOB,
+    BLOBVector,
     DelProperty,
     IndiMessage,
     IPState,
@@ -53,6 +55,17 @@ def _numbers(policy: str = "always") -> tuple[BoundProperty[NumberVector], list[
         device="Dev",
         name="coords",
         elements=[Number(name="ra", value=1.0), Number(name="dec", value=2.0)],
+    )
+    emitted: list[IndiMessage] = []
+    return BoundProperty(vector, emitted.append, policy=policy), emitted  # type: ignore[arg-type]
+
+
+def _blobs(policy: str = "always") -> tuple[BoundProperty[BLOBVector], list[IndiMessage]]:
+    """Return a one-element BLOB property under ``policy``, plus its outbox."""
+    vector = BLOBVector(
+        device="Dev",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".fits")],
     )
     emitted: list[IndiMessage] = []
     return BoundProperty(vector, emitted.append, policy=policy), emitted  # type: ignore[arg-type]
@@ -218,6 +231,89 @@ def test_on_change_policy_still_writes_the_values() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# BLOB payloads                                                                #
+# --------------------------------------------------------------------------- #
+def test_publishing_a_blob_stores_the_bytes_and_their_length() -> None:
+    """``size`` is derived on assignment, so a driver never has to keep it in step."""
+    prop, emitted = _blobs()
+
+    prop.set(image=b"\x00FITS\xff", state=IPState.OK)
+
+    element = prop.vector.element("image")
+    assert element.data == b"\x00FITS\xff"
+    assert element.size == 6
+    assert prop.value("image") == b"\x00FITS\xff"
+    (msg,) = emitted
+    assert isinstance(msg, SetVector)
+    assert msg.vector.get("image") == b"\x00FITS\xff"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [bytearray(b"frame"), memoryview(b"frame"), b"frame"],
+    ids=["bytearray", "memoryview", "bytes"],
+)
+def test_a_blob_payload_is_copied_into_immutable_bytes(payload) -> None:
+    """A driver hands over the buffer it just read; the handle must not alias it.
+
+    A camera SDK reads into one reusable buffer per exposure. Stored by
+    reference, the next exposure would rewrite the payload of a message already
+    queued for the client - a frame that is neither the one announced nor
+    detectably wrong.
+    """
+    prop, emitted = _blobs()
+
+    prop.set(image=payload)
+    if isinstance(payload, bytearray):
+        payload[0:5] = b"XXXXX"  # the driver reusing its buffer
+
+    assert prop.value("image") == b"frame"
+    assert isinstance(prop.value("image"), bytes)
+    assert emitted[0].vector.get("image") == b"frame"  # type: ignore[union-attr]
+
+
+def test_on_change_policy_suppresses_a_repeated_identical_frame() -> None:
+    """The policy compares payloads, so a static scene does not re-send its image.
+
+    Worth pinning because the comparison runs over whole frames: an
+    implementation that compared object identity instead would emit every time,
+    and one that compared only element *names* would never emit again.
+    """
+    prop, emitted = _blobs("on_change")
+
+    prop.set(image=b"same-frame")
+    prop.set(image=b"same-frame")
+
+    assert len(emitted) == 1
+
+
+def test_on_change_policy_emits_when_the_frame_changes() -> None:
+    """A new image is news even when everything around it is unchanged."""
+    prop, emitted = _blobs("on_change")
+
+    prop.set(image=b"frame-one")
+    prop.set(image=b"frame-two")
+
+    assert len(emitted) == 2
+    assert emitted[1].vector.get("image") == b"frame-two"  # type: ignore[union-attr]
+
+
+def test_on_change_policy_emits_when_only_the_state_moves_for_a_blob() -> None:
+    """Exposure done with the same frame still has to reach the client.
+
+    The state is what an imaging client waits on, so suppressing this would hang
+    a caller that is watching for the vector to leave Busy.
+    """
+    prop, emitted = _blobs("on_change")
+
+    prop.set(image=b"frame", state=IPState.BUSY)
+    prop.set(image=b"frame", state=IPState.OK)
+
+    assert len(emitted) == 2
+    assert emitted[1].vector.state is IPState.OK
+
+
+# --------------------------------------------------------------------------- #
 # Emissions are values, not views                                              #
 # --------------------------------------------------------------------------- #
 def test_an_emitted_set_is_detached_from_the_live_vector() -> None:
@@ -247,6 +343,24 @@ def test_an_emitted_vector_survives_a_later_element_write() -> None:
     prop.vector.element("ra").value = 42.0  # the driver, mutating its own model
 
     assert emitted[0].vector.get("ra") == 1.0  # type: ignore[union-attr]
+
+
+def test_an_emitted_blob_payload_survives_the_next_frame() -> None:
+    """A camera reuses one handle for every frame, so the copy has to reach the bytes.
+
+    ``detached`` copies elements but relies on every element field being an
+    immutable scalar rebound on assignment. That is true of `bytes` today and is
+    the assumption a mutable payload buffer would break, publishing frame two
+    inside the message announcing frame one.
+    """
+    prop, emitted = _blobs()
+
+    prop.set(image=b"frame-one")
+    prop.set(image=b"frame-two")
+
+    first, second = emitted
+    assert first.vector.get("image") == b"frame-one"  # type: ignore[union-attr]
+    assert second.vector.get("image") == b"frame-two"  # type: ignore[union-attr]
 
 
 def test_an_emitted_vector_keeps_its_own_element_list() -> None:

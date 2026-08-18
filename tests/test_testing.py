@@ -190,6 +190,33 @@ async def test_latest_survives_a_clear(harness) -> None:
     assert harness.latest("coords").get("ra") == 1.0
 
 
+async def test_latest_reports_a_published_blob_payload(harness) -> None:
+    """A driver author asserting "the exposure produced this image" reads it here.
+
+    The payload is the one thing the harness reports that is not a scalar, and it
+    has to come back as the bytes that were published rather than as their
+    length or their base64.
+    """
+    harness.device["frame"].set(image=b"\x00FITS\xff", state=IPState.OK)
+
+    latest = harness.latest("frame")
+    assert latest.get("image") == b"\x00FITS\xff"
+    assert latest.element("image").size == 6
+    assert latest.state is IPState.OK
+
+
+async def test_each_recorded_blob_holds_the_frame_it_was_published_with(harness) -> None:
+    """Two exposures leave two distinct images in the history, not the last one twice.
+
+    A recorded emission is a value, and the handle publishing frame two must not
+    reach back into the message that announced frame one.
+    """
+    harness.device["frame"].set(image=b"frame-one")
+    harness.device["frame"].set(image=b"frame-two")
+
+    assert [v.get("image") for v in harness.sets("frame")] == [b"frame-one", b"frame-two"]
+
+
 async def test_sets_can_be_filtered_by_property(harness) -> None:
     """sets(name) narrows to one property; sets() returns everything."""
     await harness.tick("poll")

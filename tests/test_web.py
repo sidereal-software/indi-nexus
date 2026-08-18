@@ -8,6 +8,7 @@ pattern from ``tests/test_client.py``), and the app is exercised through FastAPI
 from __future__ import annotations
 
 import asyncio
+import base64
 import datetime as dt
 import inspect
 import json
@@ -24,6 +25,8 @@ import indi_nexus.web.app as app_module
 from indi_nexus.client import IndiClient
 from indi_nexus.exceptions import SendQueueFull
 from indi_nexus.protocol import (
+    BLOB,
+    BLOBVector,
     DefVector,
     DelProperty,
     IPState,
@@ -83,6 +86,54 @@ def _numvec(value: float = 1.0, state: IPState = IPState.IDLE) -> NumberVector:
         group="Main",
         state=state,
         elements=[Number(name="secs", format="%.2f", value=value)],
+    )
+
+
+def _decode_wire_base64(text: str) -> bytes:
+    """Decode a base64 payload from a browser frame, strictly.
+
+    This used to accept the URL-safe alphabet too, because which one the codec
+    emitted was nobody's decision. It is now :class:`~indi_nexus.protocol.BLOB`'s
+    (standard, so ``atob`` and a ``data:`` URL work), pinned by
+    ``tests/test_json.py``, and a permissive decoder here would hide a
+    regression rather than duplicate a check: these two call sites are the
+    **other** serializer invocations - the WebSocket pump and FastAPI
+    re-validating a response through the ``Vector`` annotation - and a codec
+    test says nothing about either.
+
+    Parameters
+    ----------
+    text : str
+        The ``data`` field as it arrived in JSON.
+
+    Returns
+    -------
+    payload : bytes
+        The decoded bytes.
+
+    Raises
+    ------
+    binascii.Error
+        If the payload is not standard-alphabet base64.
+    """
+    return base64.b64decode(text, validate=True)
+
+
+def _blobvec(payload: bytes | None = None, state: IPState = IPState.IDLE) -> BLOBVector:
+    """Build a one-element CCD image vector, with or without a payload."""
+    return BLOBVector(
+        device="CCD",
+        name="CCD1",
+        group="Data",
+        state=state,
+        elements=[
+            BLOB(
+                name="image",
+                format=".fits",
+                data=payload,
+                size=None if payload is None else len(payload),
+            )
+        ],
     )
 
 
@@ -316,6 +367,121 @@ def test_ws_forwards_browser_writes_upstream():
         joined = b"".join(server.written)
         assert b"newNumberVector" in joined
         assert b"3" in joined
+
+
+def test_ws_delivers_a_blob_payload_to_a_browser_as_base64():
+    """The one message the JSON wire cannot carry verbatim reaches a browser intact.
+
+    Everything else on this socket is a number, a string or an enum. A BLOB is
+    raw bytes, and JSON has no representation for them, so the base64 in the
+    model config is the only thing standing between a browser and a frame that
+    either fails to encode or arrives corrupted.
+    """
+    payload = bytes(range(256))
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        server.feed(DefVector(vector=_blobvec()))
+        _wait_until(lambda: tc.get("/api/devices").json() == ["CCD"])
+
+        with tc.websocket_connect("/ws") as ws:
+            _drain_until_tag(ws, "def")
+            server.feed(SetVector(vector=_blobvec(payload, IPState.OK)))
+            frame = _drain_until_tag(ws, "set")
+
+    element = frame["vector"]["elements"][0]
+    assert isinstance(element["data"], str), "raw bytes cannot travel in JSON"
+    assert _decode_wire_base64(element["data"]) == payload
+    assert element["size"] == len(payload)
+    assert element["format"] == ".fits"
+
+
+def test_the_rest_snapshot_carries_a_blob_as_base64():
+    """The snapshot serialises through the same schema, and bytes are not JSON.
+
+    FastAPI re-validates the response through the ``Vector`` annotation, so this
+    path encodes the payload separately from the WebSocket's. Without the model's
+    base64 setting, pydantic's JSON mode decodes bytes as UTF-8 and a binary
+    frame makes the endpoint raise rather than answer.
+    """
+    payload = b"\x00\x01\x02\xff\xfe"
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        server.feed(DefVector(vector=_blobvec()))
+        server.feed(SetVector(vector=_blobvec(payload, IPState.OK)))
+        _wait_until(lambda: tc.get("/api/devices/CCD").json().get("CCD1") is not None)
+
+        body = tc.get("/api/devices/CCD/CCD1")
+
+    assert body.status_code == 200
+    element = body.json()["elements"][0]
+    assert _decode_wire_base64(element["data"]) == payload
+
+
+def test_a_browser_enable_blob_reaches_the_upstream_server():
+    """A browser asking for BLOBs has to make indiserver open the gate.
+
+    ``indiserver`` sends no BLOB to a client that never sent ``enableBLOB``, and
+    says nothing about it, so a bridge that dropped or mistranslated this frame
+    leaves a panel showing an exposure that completes and no image, with nothing
+    anywhere to explain it.
+    """
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        _wait_connected(tc)
+        with tc.websocket_connect("/ws") as ws:
+            ws.send_text(json.dumps({"tag": "enableBLOB", "device": "CCD", "policy": "Only"}))
+            _wait_until(lambda: any(b"enableBLOB" in w for w in server.written))
+
+    joined = b"".join(server.written)
+    assert b'<enableBLOB device="CCD">Only</enableBLOB>' in joined
+
+
+def test_a_browser_enable_blob_is_replayed_after_an_upstream_restart():
+    """The policy is a standing preference, not a one-off frame.
+
+    The bridge routes it through ``enable_blob`` rather than ``send`` precisely
+    so the client records it; if it ever went through ``send``, a browser's BLOBs
+    would stop arriving the first time indiserver restarted and never resume.
+    """
+    app, server = _app_and_server()
+    with TestClient(app) as tc:
+        _wait_connected(tc)
+        with tc.websocket_connect("/ws") as ws:
+            ws.send_text(json.dumps({"tag": "enableBLOB", "device": "CCD"}))
+            _wait_until(lambda: any(b"enableBLOB" in w for w in server.written))
+            server.written.clear()
+
+            server.disconnect()
+            # Generous, because it waits out a real reconnect through the client's
+            # own loop. It is still a condition rather than a sleep, so the budget
+            # is only spent when the replay genuinely does not happen.
+            _wait_until(lambda: tc.get("/health").json()["connected"] is True, timeout=5.0)
+            _wait_until(lambda: any(b"enableBLOB" in w for w in server.written), timeout=5.0)
+
+    assert any(b"enableBLOB" in w for w in server.written)
+
+
+def test_a_browser_enable_blob_with_the_upstream_down_is_stored_and_reported():
+    """The browser is told the policy was kept, not that the write vanished.
+
+    Every other frame that misses the upstream is simply lost, and the bridge
+    says so. This one is not: the client holds the policy and replays it on the
+    next connection, and a UI that reported it as a failed write would tell the
+    user to press the button again.
+    """
+
+    async def _refuse() -> tuple[object, object, object]:
+        """Fail every connection attempt, as a down indiserver would."""
+        raise OSError("connection refused")
+
+    app = create_app(client=IndiClient(connect=_refuse, reconnect_delay=0.05))
+    with TestClient(app) as tc, tc.websocket_connect("/ws") as ws:
+        ws.send_text(json.dumps({"tag": "enableBLOB", "device": "CCD"}))
+        error = _drain_until_event(ws, "error")
+
+    assert error["code"] == "not_connected"
+    assert error["tag"] == "enableBLOB"
+    assert "will apply on reconnect" in error["message"]
 
 
 def test_index_falls_back_to_debug_page_without_panel(monkeypatch):
@@ -560,6 +726,156 @@ async def test_queued_sets_for_one_property_coalesce():
     finally:
         wedged.gate.set()
         await sub.aclose()
+
+
+def _queued_sets(sub) -> list[dict]:
+    """Return every queued ``set`` frame, decoded, in queue order.
+
+    A subscription's queue also holds ``def`` frames and the bridge's own
+    control frames, and neither coalesces, so a test about coalescing has to
+    look past them.
+    """
+    frames = [json.loads(slot.frame) for slot in sub.queue]
+    return [frame for frame in frames if frame.get("tag") == "set"]
+
+
+def _queued_set_kinds(sub) -> list[str]:
+    """Return the vector kind of every queued ``set`` frame, in queue order."""
+    return [frame["vector"]["kind"] for frame in _queued_sets(sub)]
+
+
+def _queued_blob_payloads(sub) -> list[bytes]:
+    """Return the payload of every queued ``setBLOBVector`` frame, in order."""
+    return [
+        _decode_wire_base64(frame["vector"]["elements"][0]["data"])
+        for frame in _queued_sets(sub)
+        if frame["vector"]["kind"] == "blob"
+    ]
+
+
+async def test_a_queued_blob_is_replaced_by_the_next_exposure():
+    """A browser too slow for the camera gets the latest image, not every image.
+
+    Driven through the real upstream path rather than by handing ``_broadcast``
+    a string, because the thing under test is ``_on_event`` deriving the
+    ``(device, name)`` key for a BLOB vector - the step that decides an image
+    coalesces at all.
+
+    Losing the first exposure is the accepted behaviour and cannot be fixed by
+    queueing both: the property store has already overwritten the payload in
+    place, so there is nothing behind the queue to replay, and a queue of whole
+    images has no memory bound. It is counted instead.
+    """
+    bridge, server = _bridge()
+    client = bridge.client
+    wedged = _WedgedSink()
+    await bridge.start()
+    sub = bridge.attach(wedged)
+    try:
+        server.feed(DefVector(vector=_blobvec()))
+        server.feed(SetVector(vector=_blobvec(b"first-exposure", IPState.OK)))
+        server.feed(SetVector(vector=_blobvec(b"second-exposure", IPState.OK)))
+
+        await _until(
+            lambda: (
+                (vec := client.get("CCD", "CCD1")) is not None
+                and vec.elements[0].data == b"second-exposure"
+            )
+        )
+
+        assert _queued_blob_payloads(sub) == [b"second-exposure"]
+        assert bridge.coalesced_blobs == 1
+
+        wedged.gate.set()
+        await _until(lambda: any('"tag":"set"' in frame for frame in wedged.delivered))
+        arrived = [
+            _decode_wire_base64(json.loads(frame)["vector"]["elements"][0]["data"])
+            for frame in wedged.delivered
+            if json.loads(frame).get("tag") == "set"
+        ]
+        assert arrived == [b"second-exposure"]
+    finally:
+        wedged.gate.set()
+        await sub.aclose()
+        await bridge.aclose()
+
+
+async def test_the_queue_holds_one_image_per_blob_property():
+    """However many exposures pile up, a BLOB property costs one slot.
+
+    This is what makes ``_MAX_BACKLOG`` a memory bound at all: it counts frames,
+    so without this a browser at the cap would be holding hundreds of whole
+    images and the process would die before ``dropped_slow_sinks`` ever moved.
+    """
+    bridge, server = _bridge()
+    client = bridge.client
+    wedged = _WedgedSink()
+    await bridge.start()
+    sub = bridge.attach(wedged)
+    try:
+        server.feed(DefVector(vector=_blobvec()))
+        for generation in range(20):
+            server.feed(SetVector(vector=_blobvec(f"frame-{generation}".encode(), IPState.OK)))
+
+        await _until(
+            lambda: (
+                (vec := client.get("CCD", "CCD1")) is not None
+                and vec.elements[0].data == b"frame-19"
+            )
+        )
+
+        assert _queued_blob_payloads(sub) == [b"frame-19"]
+        assert bridge.coalesced_blobs == 19
+        assert bridge.dropped_slow_sinks == 0
+    finally:
+        wedged.gate.set()
+        await sub.aclose()
+        await bridge.aclose()
+
+
+async def test_only_blob_coalescing_is_counted():
+    """A coalesced number is not an incident; a coalesced image is.
+
+    A readout publishing at 10 Hz coalesces constantly and by design, so a
+    counter over every frame kind would run away in the first minute and tell an
+    operator nothing about the one case where a browser really did lose data.
+    """
+    bridge, server = _bridge()
+    client = bridge.client
+    wedged = _WedgedSink()
+    await bridge.start()
+    sub = bridge.attach(wedged)
+    try:
+        server.feed(DefVector(vector=_numvec(0.0)))
+        for value in range(1, 6):
+            server.feed(SetVector(vector=_numvec(float(value))))
+        await _until(
+            lambda: (
+                (vec := client.get("CCD", "EXPOSURE")) is not None and vec.elements[0].value == 5.0
+            )
+        )
+        # Five sets folded into one queued frame: the numbers really did
+        # coalesce, so the zero below is the counter declining to record it
+        # rather than nothing having happened.
+        assert _queued_set_kinds(sub) == ["number"]
+        assert bridge.coalesced_blobs == 0
+
+        server.feed(DefVector(vector=_blobvec()))
+        for generation in range(3):
+            server.feed(SetVector(vector=_blobvec(f"img-{generation}".encode(), IPState.OK)))
+        await _until(
+            lambda: (
+                (vec := client.get("CCD", "CCD1")) is not None and vec.elements[0].data == b"img-2"
+            )
+        )
+
+        # Three images queued into one slot: two replacements, and none of the
+        # four number replacements before them.
+        assert bridge.coalesced_blobs == 2
+    finally:
+        wedged.gate.set()
+        await sub.aclose()
+        await bridge.aclose()
 
 
 async def test_a_def_after_a_queued_set_is_not_overtaken():
@@ -978,6 +1294,25 @@ def test_health_keeps_its_original_three_keys_at_the_top_level():
         assert isinstance(body["connected"], bool)
         assert body["dropped_slow_sinks"] == 0
         assert body["protocol"] == BRIDGE_PROTOCOL_VERSION
+
+
+def test_health_reports_coalesced_blobs():
+    """Skipped exposures are readable from outside, beside the dropped browsers.
+
+    The bridge delivers the latest image rather than every image, and nothing
+    else says so: the browser sees a gap it cannot distinguish from the camera
+    idling, and the log line for it would be per frame and therefore absent.
+    The counter is set here rather than driven through a socket because
+    ``TestClient`` drains its WebSocket promptly, which is the case that does
+    *not* coalesce; the counting itself is covered against a wedged sink above.
+    """
+    app, _ = _app_and_server()
+    with TestClient(app) as tc:
+        assert tc.get("/health").json()["coalesced_blobs"] == 0
+
+        app.state.bridge._coalesced_blobs = 3
+
+        assert tc.get("/health").json()["coalesced_blobs"] == 3
 
 
 def test_health_carries_no_release_version_and_no_addresses():

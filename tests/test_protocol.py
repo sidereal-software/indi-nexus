@@ -373,6 +373,151 @@ def test_a_corrupt_blob_payload_is_dropped_rather_than_quietly_repaired():
     assert parser.dropped == 1
 
 
+def test_a_blob_vector_carries_every_element_it_was_given():
+    """A camera sends image and thumbnail in one vector; both payloads survive.
+
+    A codec that reached for ``elements[0]``, or that keyed the decoded payloads
+    by anything but element name, delivers one frame twice and loses the other.
+    """
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[
+            BLOB(name="image", format=".fits", data=b"\x00image\xff"),
+            BLOB(name="thumb", format=".jpg", data=b"\x89thumb"),
+        ],
+    )
+
+    back = _reparse(SetVector(vector=vec))
+
+    assert [el.name for el in back.vector.elements] == ["image", "thumb"]
+    assert back.vector["image"].data == b"\x00image\xff"
+    assert back.vector["thumb"].data == b"\x89thumb"
+    assert back.vector["thumb"].format == ".jpg"
+
+
+def test_an_empty_blob_payload_arrives_as_no_payload():
+    """Zero bytes and "no payload" are the same thing on the wire, and stay so.
+
+    ``oneBLOB`` carries its payload as element text, and an empty text node is
+    indistinguishable from an absent one, so an empty `bytes` cannot survive as
+    `bytes`. Pinning it matters because the alternative failure is worse: a
+    consumer that treats the round trip as lossless would read ``data`` on the
+    far side and get `None` where it expected ``b""``.
+    """
+    vec = BLOBVector(device="CCD", name="CCD1", elements=[BLOB(name="image", data=b"")])
+
+    xml = to_xml(SetVector(vector=vec)).decode()
+    back = _reparse(SetVector(vector=vec))
+
+    assert 'size="0"' in xml, "an empty payload still declares its length"
+    assert back.vector["image"].data is None
+    assert back.vector["image"].size == 0
+
+
+def test_a_blob_with_no_payload_serialises_without_size_or_text():
+    """A ``def``-shaped BLOB in a ``set`` writes no framing it has no data for."""
+    vec = BLOBVector(device="CCD", name="CCD1", elements=[BLOB(name="image", format=".fits")])
+
+    xml = to_xml(SetVector(vector=vec)).decode()
+
+    assert "size=" not in xml
+    assert "enclen=" not in xml
+    assert _reparse(SetVector(vector=vec)).vector["image"].data is None
+
+
+def test_a_declared_blob_size_is_carried_verbatim_and_not_recomputed():
+    """``size`` is the driver's number, which is not always the decoded length.
+
+    INDI's ``size`` is the *uncompressed* length. libindi's CCD driver sends a
+    tile-compressed frame with ``format=".fits.fz"``, ``size`` the original FITS
+    length and a payload of some other length entirely, so a codec that helpfully
+    replaced ``size`` with ``len(data)`` would destroy the only number telling a
+    client how big the frame really is.
+    """
+    payload = b"compressed-bytes"
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".fits.fz", size=99_999, data=payload)],
+    )
+
+    xml = to_xml(SetVector(vector=vec)).decode()
+    back = _reparse(SetVector(vector=vec))
+
+    assert 'size="99999"' in xml
+    assert back.vector["image"].size == 99_999
+    assert back.vector["image"].data == payload
+
+
+@pytest.mark.parametrize("fmt", [".fits.z", ".fits.fz", ".stream.z"])
+def test_a_compressed_blob_format_reaches_the_caller_untouched(fmt):
+    """The codec decodes base64 and stops; the payload stays as the driver sent it.
+
+    INDI's convention is that a ``format`` ending in ``.z`` means the payload is
+    zlib-compressed (``.fz`` is FITS tile compression, self-describing inside the
+    file). This package implements neither, so ``format`` is the *only* signal a
+    caller has that the bytes it just received are not the image. It has to
+    arrive intact and unnormalised for that to be actionable.
+    """
+    payload = b"\x78\x9c-not-really-deflate"
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=fmt, data=payload)],
+    )
+
+    back = _reparse(SetVector(vector=vec))
+
+    assert back.vector["image"].format == fmt
+    assert back.vector["image"].data == payload
+
+
+@pytest.mark.parametrize("size", [1, 3, 17, 256])
+def test_a_blob_payload_split_across_reads_decodes_to_the_same_bytes(size):
+    """A payload is the longest stretch a stream parser sees with no event to emit.
+
+    Every other element is a few bytes of text; a frame is megabytes in one text
+    node, so a parser that decoded what it had so far, or that dropped its buffer
+    while waiting, breaks here and nowhere else.
+    """
+    payload = bytes(range(256)) * 6
+    encoded = base64.encodebytes(payload).decode("ascii")
+    wire = (
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        f"<oneBLOB name='image' size='{len(payload)}' format='.fits'>{encoded}</oneBLOB>"
+        "</setBLOBVector>"
+    ).encode()
+
+    parser = XMLStreamParser()
+    got = []
+    for start in range(0, len(wire), size):
+        got.extend(parser.feed(wire[start : start + size]))
+
+    assert len(got) == 1, f"chunking at {size} bytes yielded {len(got)} messages"
+    assert got[0].vector["image"].data == payload
+    assert parser.dropped == 0
+    assert parser.resets == 0
+
+
+def test_a_blob_payload_padded_with_whitespace_still_decodes():
+    """Real traffic surrounds the payload with newlines and indentation.
+
+    The recorded corpus has exactly this shape, so a decoder that trimmed only
+    the ends, or that treated indentation as payload, drops every real frame.
+    """
+    payload = b"astro"
+    encoded = base64.b64encode(payload).decode("ascii")
+
+    (msg,) = parse_indi(
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        f"<oneBLOB name='image' size='5'>\n    {encoded}\n</oneBLOB>"
+        "</setBLOBVector>"
+    )
+
+    assert msg.vector["image"].data == payload
+
+
 # --------------------------------------------------------------------------- #
 # Non-finite numbers: both codecs refuse what neither can carry                #
 # --------------------------------------------------------------------------- #

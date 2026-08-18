@@ -2,7 +2,14 @@
 
 import { describe, expect, it } from "vitest";
 import { type PropertyEvent, PropertyStore } from "./store";
-import type { DefVector, DelProperty, NumberVector, SetVector } from "./types";
+import type {
+  BlobVector,
+  DefVector,
+  DelProperty,
+  IndiElement,
+  NumberVector,
+  SetVector,
+} from "./types";
 
 function numVec(value = 1.0, state: NumberVector["state"] = "Idle"): NumberVector {
   return {
@@ -189,6 +196,124 @@ describe("PropertyStore immutability (for React referential stability)", () => {
     const store = new PropertyStore();
     expect(store.device("nope")).toBe(store.device("nope"));
     expect(store.device("nope")).toEqual({});
+  });
+});
+
+describe("PropertyStore BLOB merging", () => {
+  /**
+   * A CCD image vector, with or without a payload, as the bridge sends it.
+   *
+   * A `def` declares the format and carries no bytes; a `set` carries the bytes
+   * and usually no format, which is what makes the merge worth testing.
+   */
+  function blobVec(
+    data: string | null = null,
+    state: BlobVector["state"] = "Idle",
+    format: string | null = null,
+  ): BlobVector {
+    return {
+      kind: "blob",
+      device: "CCD",
+      name: "CCD1",
+      state,
+      perm: "ro",
+      elements: [
+        {
+          kind: "blob",
+          name: "image",
+          format: data === null ? ".fits" : format,
+          size: data === null ? null : 5,
+          data,
+        },
+      ],
+    };
+  }
+
+  const defBlob = (vector: BlobVector): DefVector => ({ tag: "def", vector });
+  const setBlob = (vector: BlobVector): SetVector => ({ tag: "set", vector });
+
+  it("merges a payload onto the definition and keeps the defined format", () => {
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+
+    // A setBLOBVector carries the payload; the format was declared on the def.
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok")));
+
+    const cached = store.get("CCD", "CCD1") as BlobVector;
+    expect(cached.elements[0]?.data).toBe("YXN0cm8=");
+    expect(cached.elements[0]?.size).toBe(5);
+    expect(cached.elements[0]?.format).toBe(".fits");
+    expect(cached.state).toBe("Ok");
+  });
+
+  it("leaves the payload as base64 rather than decoding it", () => {
+    // The store is a cache, not a decoder: a `data:` URL and `atob` both want
+    // the string, and decoding here would make every frame cost a copy nobody
+    // asked for. Pinned because it is the contract the React components read.
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok")));
+
+    const cached = store.get("CCD", "CCD1") as BlobVector;
+    expect(typeof cached.elements[0]?.data).toBe("string");
+  });
+
+  it("takes a later frame's format when the driver changes it", () => {
+    // A CCD switches between .fits and .fits.fz when compression is toggled, and
+    // the format is the only thing telling a browser what it just received.
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok")));
+
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok", ".fits.fz")));
+
+    expect((store.get("CCD", "CCD1") as BlobVector).elements[0]?.format).toBe(".fits.fz");
+  });
+
+  it("replaces the cached frame rather than accumulating frames", () => {
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+    store.apply(setBlob(blobVec("Zmlyc3Q=", "Ok")));
+    store.apply(setBlob(blobVec("c2Vjb25k", "Ok")));
+
+    const cached = store.get("CCD", "CCD1") as BlobVector;
+    expect(cached.elements).toHaveLength(1);
+    expect(cached.elements[0]?.data).toBe("c2Vjb25k");
+  });
+
+  it("returns a new vector so a re-render is triggered by the new frame", () => {
+    // The whole store is immutable by design: React subscribers re-render on
+    // reference change, so merging a frame in place would deliver an image no
+    // component ever noticed had arrived.
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+    const before = store.get("CCD", "CCD1");
+
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok")));
+
+    const after = store.get("CCD", "CCD1") as BlobVector;
+    expect(after).not.toBe(before);
+    expect((before as BlobVector).elements[0]?.data).toBeNull();
+  });
+
+  it("ignores a set whose element is not a BLOB", () => {
+    // Kind confusion between a def and a set is a bridge bug, and taking the
+    // value would leave `data` holding a number for every later reader.
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+
+    const wrong = blobVec("YXN0cm8=", "Ok");
+    (wrong.elements as unknown as IndiElement[])[0] = {
+      kind: "number",
+      name: "image",
+      format: "%g",
+      value: 7,
+    };
+    store.apply(setBlob(wrong));
+
+    const cached = store.get("CCD", "CCD1") as BlobVector;
+    expect(cached.elements[0]?.kind).toBe("blob");
+    expect(cached.elements[0]?.data).toBeNull();
   });
 });
 

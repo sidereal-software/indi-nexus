@@ -45,7 +45,7 @@ that is missing.
 | `test_reverse_interop.py` | libindi's own clients can read and drive *our* drivers. |
 | `test_corpus.py` | Our parser handles every simulator libindi ships. |
 | `test_differential.py` | Our reading of a server matches `indi_getprop`'s. |
-| `test_blob.py` | `enableBLOB` negotiation, and FITS bytes surviving intact. |
+| `test_blob.py` | `enableBLOB` negotiation, the three policies, and FITS bytes surviving intact. |
 | `test_reconnect.py` | Recovery from a real socket dropping, not a queue sentinel. |
 | `test_panel_e2e.py` | A browser drives a real C++ driver through the whole stack. |
 | `test_capture_corpus.py` | Records real traffic into a fixture the fast suite replays. |
@@ -54,11 +54,17 @@ that is missing.
 example covers, exercised against a real hub. Anything meant to be read as a model driver
 belongs in `examples/` instead, which is where `test_reverse_interop.py` gets the rest.
 
-## Refreshing the recorded corpus
+## Refreshing the recorded corpora
 
-`tests/data/interop_corpus.xml` is real traffic, replayed by
-`tests/test_protocol_corpus.py` in the fast suite so pull requests get the benefit
-without libindi. Refresh it when libindi gains drivers or changes what it emits:
+Two files of real traffic, both replayed by `tests/test_protocol_corpus.py` in the fast
+suite so pull requests get the benefit without libindi:
+
+| Fixture | What it holds |
+|---|---|
+| `tests/data/interop_corpus.xml` | Breadth: every simulator's definitions, from one `getProperties`. |
+| `tests/data/interop_blob_corpus.xml` | Depth: one CCD driven through connect, a 64x64 sub-frame, `enableBLOB` and an exposure - so `set` vectors, driver messages and a real FITS payload libindi base64-encoded. |
+
+Refresh them when libindi gains drivers or changes what it emits:
 
 ```bash
 INDI_CAPTURE_CORPUS=1 uv run pytest tests/interop/test_capture_corpus.py
