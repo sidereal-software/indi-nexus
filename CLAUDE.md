@@ -11,6 +11,14 @@ of them.
 | the Python package: protocol, driver SDK, client, web bridge, CLI | `src/indi_nexus/CLAUDE.md` |
 | the TypeScript workspace: libraries, panel, doc demos | `web/CLAUDE.md` |
 | commands and workflows | `DEVELOPMENT.md` (keep it in step when either changes) |
+| anything already known to be wrong or deferred | `CONCERNS.md` (read before starting, prune when you fix one) |
+
+`CONCERNS.md` is the register of what is known to be broken, unfinished or deliberately
+deferred. **Read it before starting work** - the thing you are about to investigate may
+already be in there with the reason. **When you resolve one, delete the entry** in the same
+commit that resolves it, rather than marking it done: git remembers, and a register that
+accumulates history is one nobody trusts. Add an entry when you leave something undone on
+purpose, and say what resolving it would look like.
 
 ## Project overview
 
