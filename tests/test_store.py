@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import zlib
 
 from indi_nexus.client.store import PropertyEvent, PropertyStore
 from indi_nexus.protocol import (
@@ -20,6 +21,7 @@ from indi_nexus.protocol import (
     Switch,
     SwitchVector,
     parse_indi,
+    to_xml,
 )
 
 
@@ -124,6 +126,128 @@ def test_set_merges_blob_payload_onto_def():
     )
     assert cached.element("image").format == ".fits"
     assert cached.element("image").data == b"x"
+
+
+def _blob_frame(fmt: str, data: bytes, size: int) -> BLOBVector:
+    """Build the ``set`` a camera sends for one frame.
+
+    Parameters
+    ----------
+    fmt : str
+        The element's ``format`` suffix chain, e.g. ``.fits`` or ``.fits.fz``.
+    data : bytes
+        The payload exactly as it goes on the wire.
+    size : int
+        The declared *uncompressed* length.
+
+    Returns
+    -------
+    vector : BLOBVector
+        A one-element CCD1 vector ready to be wrapped in a ``SetVector``.
+    """
+    return BLOBVector(
+        device="CCD",
+        name="CCD1",
+        state=IPState.OK,
+        elements=[BLOB(name="image", format=fmt, data=data, size=size)],
+    )
+
+
+def _deliver(store: PropertyStore, vector: BLOBVector) -> BLOB:
+    """Serialise one ``set``, parse it back, fold it in, and return the cached element.
+
+    The round trip is the point: inflation happens in the codec and the merge
+    happens here, so a format that survives a toggle can only be caught with
+    both halves in the same pipeline.
+
+    Parameters
+    ----------
+    store : PropertyStore
+        The cache to fold the message into.
+    vector : BLOBVector
+        The vector to send as a ``set``.
+
+    Returns
+    -------
+    element : BLOB
+        The cached ``image`` element after the merge.
+    """
+    (msg,) = parse_indi(to_xml(SetVector(vector=vector)))
+    store.apply(msg)
+    cached = store.get("CCD", "CCD1")
+    assert cached is not None
+    element = cached.element("image")
+    assert isinstance(element, BLOB)
+    return element
+
+
+def test_a_blob_format_toggles_both_ways_and_does_not_stick():
+    """Turning ``CCD_COMPRESSION`` on and off again returns the cached format to ``.fits``.
+
+    Every other BLOB test here moves in one direction, so a merge that latched a
+    format - took the first one and kept it, or took a new one and never let it
+    go - would pass all of them. This is the fast mirror of the toggle in
+    ``tests/interop/test_blob.py``: a client that flips compression on and off
+    mid-session and must be told, each time, what it has just been handed.
+    ``.fz`` is the honest carrier for it, because it is what libindi's own
+    simulator emits and, unlike ``.z``, it reaches the cache unaltered.
+    """
+    store = PropertyStore()
+    store.apply(
+        DefVector(
+            vector=BLOBVector(
+                device="CCD", name="CCD1", elements=[BLOB(name="image", format=".fits")]
+            )
+        )
+    )
+    plain, packed = b"SIMPLE  = plain", b"SIMPLE  = fpacked"
+
+    first = _deliver(store, _blob_frame(".fits", plain, len(plain)))
+    assert first.format == ".fits"
+    assert first.data == plain
+
+    # Compression on: fpack output, with `size` still the uncompressed length.
+    second = _deliver(store, _blob_frame(".fits.fz", packed, len(plain)))
+    assert second.format == ".fits.fz"
+    assert second.data == packed
+    assert second.size == len(plain)
+
+    # And off again. This is the assertion that bites: a stale `.fits.fz` here
+    # tells a browser to hand raw FITS to an fpack decoder.
+    third = _deliver(store, _blob_frame(".fits", plain, len(plain)))
+    assert third.format == ".fits", "the compressed format outlived the compression"
+    assert third.data == plain
+    assert third.size == len(plain)
+
+
+def test_an_inflated_set_caches_the_stripped_format_and_the_inflated_payload():
+    """A ``.z`` frame reaches the cache as ``.fits``, and the next plain frame stays plain.
+
+    The ``.z`` half of the toggle above, where the codec and the merge both act
+    on the same element: :func:`inflate_blob` rewrites ``format``, ``data`` and
+    ``size`` in place on the parsed message, and the merge is what carries all
+    three onto the cached definition. A merge that dropped any of them would
+    leave the cache describing a frame nobody sent.
+    """
+    store = PropertyStore()
+    store.apply(
+        DefVector(
+            vector=BLOBVector(
+                device="CCD", name="CCD1", elements=[BLOB(name="image", format=".fits")]
+            )
+        )
+    )
+    frame = b"SIMPLE  =" + b" " * 200
+
+    compressed = _deliver(store, _blob_frame(".fits.z", zlib.compress(frame), len(frame)))
+    assert compressed.format == ".fits", "the .z suffix reached the cache"
+    assert compressed.data == frame, "the cache holds deflated bytes"
+    assert compressed.size == len(frame)
+
+    plain = _deliver(store, _blob_frame(".fits", frame, len(frame)))
+    assert plain.format == ".fits"
+    assert plain.data == frame
+    assert plain.size == len(frame)
 
 
 def test_set_carries_timeout_and_message():

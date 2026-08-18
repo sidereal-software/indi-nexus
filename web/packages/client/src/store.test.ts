@@ -270,6 +270,22 @@ describe("PropertyStore BLOB merging", () => {
     expect((store.get("CCD", "CCD1") as BlobVector).elements[0]?.format).toBe(".fits.fz");
   });
 
+  it("returns to the plain format when compression is turned back off", () => {
+    // The other direction, which the test above cannot state: compression is a
+    // switch a client flips both ways mid-session, and a cached `.fits.fz` left
+    // over from when it was on tells the browser to hand an ordinary FITS frame
+    // to an fpack decoder. Every frame carries its own format, so the last one
+    // always wins - including when the last one is the plain format again.
+    const store = new PropertyStore();
+    store.apply(defBlob(blobVec()));
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok", ".fits")));
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok", ".fits.fz")));
+
+    store.apply(setBlob(blobVec("YXN0cm8=", "Ok", ".fits")));
+
+    expect((store.get("CCD", "CCD1") as BlobVector).elements[0]?.format).toBe(".fits");
+  });
+
   it("replaces the cached frame rather than accumulating frames", () => {
     const store = new PropertyStore();
     store.apply(defBlob(blobVec()));

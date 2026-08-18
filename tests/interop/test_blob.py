@@ -27,7 +27,7 @@ import pytest
 from drivers.zlib_blob_driver import FRAME
 
 from indi_nexus.client import IndiClient
-from indi_nexus.protocol import BLOBPolicy, BLOBVector, IPState
+from indi_nexus.protocol import BLOB, BLOBPolicy, BLOBVector, IPState
 
 DEVICE = "CCD Simulator"
 
@@ -309,6 +309,167 @@ async def test_the_native_transfer_format_is_not_compressed_at_all(indi_server):
     assert element.format == ".bin", f"expected the native format, got {element.format!r}"
     assert element.data is not None
     assert element.size == len(element.data)
+
+
+async def _set_compression(client: IndiClient, *, enabled: bool) -> None:
+    """Flip ``CCD_COMPRESSION`` and wait until the simulator confirms the new setting.
+
+    Waiting for the read-back matters more here than it usually does: the switch
+    decides how the *next* frame is encoded, so exposing before the driver has
+    acknowledged it would race the whole point of the test.
+
+    Parameters
+    ----------
+    client : IndiClient
+        A connected client.
+    enabled : bool
+        Whether to turn compression on.
+    """
+    wanted = "INDI_ENABLED" if enabled else "INDI_DISABLED"
+    await client.wait_for(DEVICE, "CCD_COMPRESSION", timeout=25)
+    await client.set_switch(DEVICE, "CCD_COMPRESSION", {wanted: True})
+    await client.wait_for(
+        DEVICE,
+        "CCD_COMPRESSION",
+        lambda v: v.get(wanted) == "On",
+        timeout=25,
+    )
+
+
+async def _use_a_small_frame(client: IndiClient) -> None:
+    """Shrink the sensor's region of interest so a capture costs a moment, not a minute.
+
+    The simulator's default frame is 1280x1024, and with compression on it goes
+    through fpack. A test that captures three of them in sequence pays that
+    three times over for nothing: what it is checking is the ``format`` on the
+    wire, which a 64x64 sub-frame states exactly as well.
+
+    Parameters
+    ----------
+    client : IndiClient
+        A connected client.
+    """
+    await client.wait_for(DEVICE, "CCD_FRAME", timeout=25)
+    await client.set_number(DEVICE, "CCD_FRAME", {"X": 0, "Y": 0, "WIDTH": 64, "HEIGHT": 64})
+
+
+async def _capture(client: IndiClient, *, seconds: float = 60) -> BLOB:
+    """Expose once and return the *next* image element to arrive.
+
+    :func:`_wait_for_frame` cannot be reused across captures in one session: its
+    predicate is satisfied the instant it is called by the frame already sitting
+    in the cache, so the second capture would assert against the first. This
+    subscribes first and waits for an arrival instead, and hands back a copy
+    because the store overwrites the cached payload in place.
+
+    Parameters
+    ----------
+    client : IndiClient
+        A connected client that has asked for BLOBs.
+    seconds : float, optional
+        How long to wait for the frame.
+
+    Returns
+    -------
+    element : BLOB
+        The image element as delivered, detached from the cache.
+    """
+    arrived: asyncio.Queue[BLOB] = asyncio.Queue()
+
+    def record(event) -> None:
+        """Queue each image payload as it lands."""
+        vector = event.vector
+        if isinstance(vector, BLOBVector) and vector.elements and vector.elements[0].data:
+            arrived.put_nowait(vector.elements[0].model_copy(deep=True))
+
+    unsubscribe = client.store.subscribe(record, device=DEVICE, name="CCD1")
+    try:
+        await _expose(client, seconds=0.1)
+        async with asyncio.timeout(seconds):
+            return await arrived.get()
+    finally:
+        unsubscribe()
+
+
+async def test_compression_disabled_delivers_a_plain_fits_frame(indi_server):
+    """``INDI_DISABLED`` is stated, not inherited from a default that could move.
+
+    Every other uncompressed case here simply never touches the switch, so all
+    of them would keep passing if libindi ever shipped a build with compression
+    on by default - and would then be testing the compressed path under names
+    saying otherwise. Asking for it explicitly is what makes the ``.fits.fz``
+    test above readable as a contrast.
+    """
+    server = indi_server("indi_simulator_ccd")
+    client = await _connected_client(server.port)
+    try:
+        await _set_compression(client, enabled=False)
+        await client.enable_blob(DEVICE, policy=BLOBPolicy.ALSO)
+        await _expose(client)
+        frame = await _wait_for_frame(client, seconds=90)
+    finally:
+        await client.aclose()
+
+    element = frame.elements[0]
+    assert element.format == ".fits", f"expected a plain frame, got {element.format!r}"
+    assert element.data is not None
+    assert element.data[:9] == b"SIMPLE  =", f"not FITS: {element.data[:32]!r}"
+    # A plain FITS frame is not fpacked and not deflated: the declared length is
+    # the payload's own, and there is nothing to inflate.
+    assert element.size == len(element.data)
+    with pytest.raises(zlib.error):
+        zlib.decompress(element.data)
+
+
+async def test_compression_toggles_both_ways_on_one_connection(indi_server):
+    """The scenario a user actually hits: compression flipped on and off mid-session.
+
+    Every other test in this file starts a fresh server and moves in one
+    direction, which leaves the state that carries *between* frames untested.
+    One connection, one ``CCD1`` property, three captures: the format has to
+    change each way and, above all, must not stick. A client told ``.fits.fz``
+    for a frame libindi sent as plain FITS will hand ordinary bytes to an fpack
+    decoder, and nothing on the wire would say why.
+
+    Cheap by construction: a 64x64 sub-frame and a 0.1 s exposure, on the server
+    and the client this test already has running.
+    """
+    server = indi_server("indi_simulator_ccd")
+    client = await _connected_client(server.port)
+    try:
+        await client.enable_blob(DEVICE, policy=BLOBPolicy.ALSO)
+        await _use_a_small_frame(client)
+
+        await _set_compression(client, enabled=False)
+        first = await _capture(client)
+
+        await _set_compression(client, enabled=True)
+        second = await _capture(client)
+
+        await _set_compression(client, enabled=False)
+        third = await _capture(client)
+    finally:
+        await client.aclose()
+
+    assert first.format == ".fits", f"expected a plain frame, got {first.format!r}"
+    assert first.data is not None and first.data[:9] == b"SIMPLE  ="
+    assert first.size == len(first.data)
+
+    assert second.format == ".fits.fz", f"compression did not take: {second.format!r}"
+    assert second.data is not None
+    # fpack output is still a FITS file - what it is not is inflatable. How its
+    # `size` relates to its length is the full-frame test's subject and not this
+    # one's: at 64x64 the tile overhead cancels the saving out entirely.
+    assert second.data[:9] == b"SIMPLE  =", f"not FITS: {second.data[:32]!r}"
+    assert second.size is not None
+    with pytest.raises(zlib.error):
+        zlib.decompress(second.data)
+
+    assert third.format == ".fits", f"the compressed format stuck: {third.format!r}"
+    assert third.data is not None and third.data[:9] == b"SIMPLE  ="
+    assert third.size == len(third.data), "the compressed frame's size outlived it"
+    with pytest.raises(zlib.error):
+        zlib.decompress(third.data)
 
 
 async def test_a_zlib_compressed_frame_arrives_inflated_through_a_real_server(

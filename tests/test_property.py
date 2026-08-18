@@ -289,6 +289,73 @@ def test_a_compressed_element_with_no_declared_size_fails_loudly_at_the_codec() 
         to_xml(emitted[0])
 
 
+def test_size_derivation_follows_the_format_as_it_flips_both_ways() -> None:
+    """A camera toggling compression crosses the ``.z`` branch in both directions.
+
+    ``size`` is derived for an ordinary payload and left alone for a compressed
+    one, and every other test here stays on one side of that branch. A driver
+    whose ``CCD_COMPRESSION`` gets switched on and then off again crosses it
+    twice on one element, so the derivation has to stop *and start again*: a
+    branch that latched on the first ``.z`` it ever saw would publish the
+    compressed length for every frame afterwards, silently, because it is a
+    plausible integer.
+    """
+    prop, _ = _blobs()
+    element = prop.vector.element("image")
+    plain = b"SIMPLE  =" + b" " * 2871
+    deflated = zlib.compress(plain)
+
+    # Compression off: the payload's own length is the right answer.
+    prop.set(image=plain, state=IPState.OK)
+    assert element.size == len(plain)
+
+    # On. The driver states the uncompressed length, and publishing keeps it.
+    element.format = ".fits.z"
+    element.size = len(plain)
+    prop.set(image=deflated, state=IPState.OK)
+    assert element.data == deflated
+    assert element.size == len(plain), "the compressed length overwrote the declared one"
+
+    # Off again: derivation resumes, so a shorter frame reports its own length
+    # rather than the number the compressed frame left behind.
+    shorter = plain[:1440]
+    element.format = ".fits"
+    prop.set(image=shorter, state=IPState.OK)
+    assert element.format == ".fits"
+    assert element.size == len(shorter), "the declared size outlived the compression"
+
+
+def test_the_format_has_to_be_flipped_before_the_payload_is_published() -> None:
+    """``size`` is derived against the format at assignment time, so order is contract.
+
+    ``set(IMAGE=...)`` reads the element's ``format`` to decide whether to derive
+    ``size``, which makes "flip the format, then publish" the only order that
+    works when a driver names the element. Publishing first records deflate's
+    output length, and nothing downstream can tell: the format that would have
+    made it wrong is not set yet, so ``require_declared_size`` sees a satisfied
+    ``.z`` element and both codecs emit the number happily. The guide's idiom
+    writes ``data``/``size``/``format`` by hand and then emits a ``set`` naming
+    no element, which sidesteps this entirely; this test is why it is written
+    that way.
+    """
+    plain = b"SIMPLE  =" + b" " * 2871
+    deflated = zlib.compress(plain)
+
+    ordered, _ = _blobs()
+    ordered.vector.element("image").format = ".fits.z"
+    ordered.vector.element("image").size = len(plain)
+    ordered.set(image=deflated, state=IPState.OK)
+    assert ordered.vector.element("image").size == len(plain)
+
+    reversed_, _ = _blobs()
+    reversed_.vector.element("image").size = len(plain)
+    reversed_.set(image=deflated, state=IPState.OK)
+    reversed_.vector.element("image").format = ".fits.z"
+    assert reversed_.vector.element("image").size == len(deflated), (
+        "the reverse order has to be caught here, since no codec can catch it"
+    )
+
+
 @pytest.mark.parametrize(
     "payload",
     [bytearray(b"frame"), memoryview(b"frame"), b"frame"],
