@@ -281,6 +281,40 @@ Only the blocking call goes to the thread. Keep `set()` where it is, on the main
 `examples/weather_device.py` is built this way from end to end, including what to do when
 the instrument stops answering.
 
+## Publishing an image
+
+A BLOB element carries bytes plus a `format`: the file-name suffix chain telling a client
+what it is receiving, `.fits` for a FITS frame. Publishing one is an ordinary `set` -
+`self["IMAGE"].set(IMAGE=frame, state=IPState.OK)` - which writes the payload and fills in
+`size` from it. `examples/ccd_device.py` is a worked camera.
+
+`size` is where compression comes in. INDI defines it as the **uncompressed** length, so
+`len(data)` is right only for a payload that is not compressed. If you want to deflate a
+frame for the wire - the `.z` convention the
+[protocol guide](protocol.md#compressed-payloads) describes - INDINexus will not do it for
+you, and `set()` cannot supply a `size` it would have to inflate the bytes to learn. Write
+the three fields yourself, then emit a `set` that names no element:
+
+```python
+async def publish_frame(self, frame: bytes) -> None:
+    element = self.blob("IMAGE").vector.element("IMAGE")
+    element.data = zlib.compress(frame)
+    element.size = len(frame)               # the uncompressed length, by definition
+    element.format = ".fits.z"
+    self.blob("IMAGE").set(state=IPState.OK)  # names no element, so size stands
+```
+
+That needs `import zlib`. Naming the element works too - `set(IMAGE=zlib.compress(frame))`
+is fine once `size` has been declared - because `set()` leaves a compressed element's
+`size` alone rather than deriving it, which on a `.z` element would record deflate's output
+length under an attribute the specification defines as the uncompressed one. What it cannot
+do is invent that number, so a `.z` format with no `size` at all is refused outright: both
+`to_xml` and `to_json` raise `ProtocolError` rather than write the wrong length.
+
+Clients inflate on the way in, so nothing downstream ever sees the `.z`. Most drivers
+should not bother - libindi's `CCD_COMPRESSION` defaults to off - and `.fits.fz` (fpack,
+compression inside the FITS container) passes through untouched if that suits you better.
+
 ## Handy shortcuts
 
 A bank of lights with exactly one lit is the commonest shape in status reporting.

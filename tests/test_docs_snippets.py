@@ -42,6 +42,7 @@ import re
 import sys
 import textwrap
 import urllib.parse
+import zlib
 from dataclasses import dataclass
 from typing import Any
 
@@ -53,7 +54,7 @@ from typer.testing import CliRunner
 from indi_nexus.cli import app, load_device
 from indi_nexus.driver import Device
 from indi_nexus.exceptions import ProtocolError
-from indi_nexus.protocol import IPState, ISState
+from indi_nexus.protocol import BLOB, IPerm, IPState, ISState, SetVector, parse_indi, to_xml
 from indi_nexus.settings import Settings
 from indi_nexus.testing import DeviceHarness
 from tests.docs_fences import REPO_ROOT, Fence, contains_snippet, fences, python_fences
@@ -179,6 +180,12 @@ CLAIMS = [
         "self._station.read_all)     # DO",
         RUNS,
         "test_driver_guide_off_thread_snippet_runs",
+    ),
+    Claim(
+        "docs/guides/writing-drivers.md",
+        'element.format = ".fits.z"',
+        RUNS,
+        "test_driver_guide_compressed_blob_snippet_runs",
     ),
     Claim(
         "docs/guides/writing-drivers.md",
@@ -758,6 +765,44 @@ async def test_driver_guide_off_thread_snippet_runs() -> None:
     await harness.write("CONNECTION", CONNECT=True)
     await harness.tick("poll")
     assert harness.latest("WEATHER_PARAMETERS").get("TEMPERATURE") == pytest.approx(11.5)
+
+
+async def test_driver_guide_compressed_blob_snippet_runs() -> None:
+    """Publish the guide's deflated frame and check every claim the page makes.
+
+    The page makes three: the emitted ``size`` is the *uncompressed* length
+    rather than the payload's, a ``set`` naming no element leaves it that way,
+    and a client inflating on the way in gets the frame back under ``.fits``.
+    The last one is the whole point of the shape, so it is asserted through the
+    real codec rather than off the model.
+    """
+    code = snippet("docs/guides/writing-drivers.md", 'element.format = ".fits.z"')
+    cls = in_device(code, name="Camera", context={"zlib": zlib})
+
+    class _Camera(cls):  # type: ignore[misc, valid-type]
+        """The snippet's device, with the property it publishes to."""
+
+        async def setup(self) -> None:
+            """Define the image BLOB the snippet reaches for by name."""
+            self.define_blob("IMAGE", [BLOB(name="IMAGE", format=".fits")], perm=IPerm.RO)
+
+    device = _Camera()
+    harness = DeviceHarness(device)
+    await harness.setup()
+
+    frame = (b"SIMPLE  =                    T").ljust(2880, b" ")
+    await device.publish_frame(frame)
+
+    published = harness.latest("IMAGE").element("IMAGE")
+    assert published.data == zlib.compress(frame)
+    assert published.size == len(frame)
+    assert published.format == ".fits.z"
+
+    # The serialiser accepts it because the size is explicit, and the parser -
+    # the same one a client runs - hands the frame back with the .z gone.
+    wire = to_xml(SetVector(vector=harness.sets()[-1]))
+    received = parse_indi(wire)[0].vector.element("IMAGE")
+    assert (received.data, received.size, received.format) == (frame, len(frame), ".fits")
 
 
 async def test_driver_guide_lights_shortcut_runs() -> None:

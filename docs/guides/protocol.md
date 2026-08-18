@@ -103,6 +103,40 @@ Python and TypeScript clients both expose this as `enable_blob` / `enableBlob`.
 In JSON the payload is a base64 string in the **standard** alphabet (`+` and `/`), so
 `atob` and a `data:application/octet-stream;base64,...` URL both accept it as it arrives.
 
+### Compressed payloads
+
+A BLOB's `format` is a chain of file-name suffixes saying what the bytes are. A trailing
+`.z` is not part of that: it says the payload was deflated (zlib, RFC 1950) for the wire.
+
+**INDINexus inflates those on receipt**, in both codecs. By the time a payload reaches you -
+a Python `IndiClient` subscriber, a driver's `@on_new`, or a browser over the WebSocket -
+it is the file itself: the `.z` is gone from `format`, and `size` is the inflated length.
+A consumer sees `.fits`, never `.fits.z`. libindi inflates in every client built on it, so
+code written against KStars behaviour sees the same thing here.
+
+| `format` on the wire | What a consumer gets |
+|---|---|
+| `.fits` | `.fits`, untouched |
+| `.fits.z` | `.fits`, inflated, `size` set to the inflated length |
+| `.fits.fz` | `.fits.fz`, byte-identical |
+
+A bare `.z` describes the encoding and nothing else, so it arrives with no `format` at all
+rather than an empty one.
+
+**`.fits.fz` is deliberately left alone.** That suffix is fpack, FITS *tile* compression:
+an astronomy format living inside the FITS container, not a transport encoding. No libindi
+client undoes it, undoing it would need cfitsio, and a FITS reader handles it natively.
+
+A payload that declares `.z` and will not inflate **costs the message**. It is dropped and
+counted like any other malformed leaf value, the same as a `oneNumber` full of junk. The
+compressed bytes are never delivered instead - a caller that asked for a `.fits` would hand
+them to a FITS reader.
+
+Compressing on **send** is not implemented, and that is deliberate: it is the driver
+author's decision, as it is in libindi, whose `CCD_COMPRESSION` switch defaults to off. A
+driver that wants to publish deflated bytes sets `format`, `data` and an explicit `size`
+itself; see [publishing an image](writing-drivers.md#publishing-an-image).
+
 ### The bridge delivers the latest image, not every image
 
 A browser that takes frames more slowly than the camera produces them does **not** build up
