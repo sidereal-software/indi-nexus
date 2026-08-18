@@ -16,6 +16,10 @@ Pydantic models that serialize to both INDI XML (for `indiserver`) and JSON
 
 ::: indi_nexus.protocol.numbers
 
+## Compression
+
+::: indi_nexus.protocol.compression
+
 ## XML codec
 
 ::: indi_nexus.protocol.xml

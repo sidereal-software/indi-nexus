@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import time
+import zlib
 
 import pytest
 from lxml import etree
@@ -450,27 +451,219 @@ def test_a_declared_blob_size_is_carried_verbatim_and_not_recomputed():
     assert back.vector["image"].data == payload
 
 
-@pytest.mark.parametrize("fmt", [".fits.z", ".fits.fz", ".stream.z"])
-def test_a_compressed_blob_format_reaches_the_caller_untouched(fmt):
-    """The codec decodes base64 and stops; the payload stays as the driver sent it.
+def _compressed_blob_xml(fmt, raw, *, size=None, extra=""):
+    """Build a ``setBLOBVector`` carrying a zlib-compressed payload.
 
-    INDI's convention is that a ``format`` ending in ``.z`` means the payload is
-    zlib-compressed (``.fz`` is FITS tile compression, self-describing inside the
-    file). This package implements neither, so ``format`` is the *only* signal a
-    caller has that the bytes it just received are not the image. It has to
-    arrive intact and unnormalised for that to be actionable.
+    Parameters
+    ----------
+    fmt : str
+        The ``format`` attribute to declare.
+    raw : bytes
+        The uncompressed payload; it is deflated into the element text.
+    size : int or None, optional
+        The ``size`` attribute to declare; the true uncompressed length when
+        omitted.
+    extra : str, optional
+        Extra attribute text spliced into the ``oneBLOB`` start tag.
+
+    Returns
+    -------
+    wire : bytes
+        The XML a driver compressing its payload would put on the wire.
     """
-    payload = b"\x78\x9c-not-really-deflate"
+    encoded = base64.b64encode(zlib.compress(raw)).decode("ascii")
+    declared = len(raw) if size is None else size
+    return (
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        f"<oneBLOB name='image' size='{declared}' format='{fmt}'{extra}>{encoded}</oneBLOB>"
+        "</setBLOBVector>"
+    ).encode()
+
+
+def test_a_zlib_compressed_blob_is_inflated_before_the_caller_sees_it():
+    """``.fits.z`` is a transport encoding, and the caller is owed the FITS file.
+
+    The whitepaper defines a trailing ``.z`` as zlib compression, and every
+    libindi-based client inflates it in ``BaseDevicePrivate::setBLOB`` before the
+    application ever sees the property. Handing over deflated bytes instead - next
+    to a ``size`` describing data we did not deliver - is what a consumer written
+    against KStars cannot survive, because nothing in its world produces a ``.z``.
+    """
+    raw = b"SIMPLE  =                    T" + b" " * 500
+
+    back = parse_indi(_compressed_blob_xml(".fits.z", raw))[0]
+
+    element = back.vector["image"]
+    assert element.data == raw
+    assert element.format == ".fits", "the .z suffix describes bytes we no longer hold"
+    assert element.size == len(raw)
+
+
+def test_fits_tile_compression_is_not_a_transport_encoding():
+    """``.fits.fz`` passes through byte-identical, suffix intact.
+
+    The regression test that stops the suffix check being "simplified" to
+    ``endswith("z")``. fpack tile compression is an astronomy container format:
+    no libindi client undoes it, undoing it needs cfitsio, and inflating those
+    bytes as zlib would corrupt every fpacked frame in the field.
+    """
+    payload = b"\x78\x9c-fpacked-not-deflate"
     vec = BLOBVector(
         device="CCD",
         name="CCD1",
-        elements=[BLOB(name="image", format=fmt, data=payload)],
+        elements=[BLOB(name="image", format=".fits.fz", size=99_999, data=payload)],
     )
 
     back = _reparse(SetVector(vector=vec))
 
-    assert back.vector["image"].format == fmt
+    assert back.vector["image"].format == ".fits.fz"
     assert back.vector["image"].data == payload
+    assert back.vector["image"].size == 99_999
+
+
+@pytest.mark.parametrize(
+    ("fmt", "expected"),
+    [(".ser.fits.z", ".ser.fits"), (".tar.gz.z", ".tar.gz"), (".z", None)],
+)
+def test_only_the_final_z_leaves_the_suffix_chain(fmt, expected):
+    """``format`` is a chain, and exactly one link is ours to remove.
+
+    A bare ``.z`` describes the encoding and nothing about the content, so what
+    is left is an absent format rather than an empty one.
+    """
+    raw = b"payload" * 40
+
+    back = parse_indi(_compressed_blob_xml(fmt, raw))[0]
+
+    assert back.vector["image"].format == expected
+    assert back.vector["image"].data == raw
+
+
+def test_a_corrupt_compressed_blob_costs_the_message_and_is_counted():
+    """A payload that will not inflate is dropped loudly, never delivered raw.
+
+    The element declares a ``.fits.z``, so the caller is expecting a FITS file;
+    handing it deflate that failed to inflate would send it to a FITS reader.
+    ``data`` is not nullable in any useful sense here - there is no degraded value
+    to fall back to - so the message goes the way a junk ``oneNumber`` goes, and
+    the stream parser's ``dropped`` counter is how a caller finds out.
+    """
+    encoded = base64.b64encode(b"\x78\x9cnot-actually-deflate").decode("ascii")
+    wire = (
+        "<setBLOBVector device='CCD' name='CCD1'>"
+        f"<oneBLOB name='image' size='512' format='.fits.z'>{encoded}</oneBLOB>"
+        "</setBLOBVector>"
+    ).encode()
+
+    parser = XMLStreamParser()
+    got = list(parser.feed(wire))
+
+    assert got == []
+    assert parser.dropped == 1
+
+
+def test_a_declared_size_that_disagrees_loses_to_the_payload(caplog):
+    """``size`` is a cross-check, never the truth and never an allocation bound.
+
+    zlib grows its own buffer, so a sender's miscount cannot be a limit; and a
+    frame that inflated perfectly must not be lost over an attribute. It is worth
+    a log line, because the disagreement means somebody's driver is wrong.
+    """
+    raw = b"astro" * 100
+
+    with caplog.at_level(logging.WARNING):
+        back = parse_indi(_compressed_blob_xml(".fits.z", raw, size=1))[0]
+
+    assert back.vector["image"].data == raw
+    assert back.vector["image"].size == len(raw)
+    assert "inflated" in caplog.text
+
+
+def test_a_len_attribute_from_a_shared_buffer_hub_is_ignored():
+    """Real ``indiserver`` traffic carries a ``len`` this codec has no use for.
+
+    Neither ``len`` nor ``enclen`` is in the 1.7 DTD; both are libindi
+    extensions with different meanings and they are mutually exclusive at the
+    driver. A hub re-serialising a shared-buffer BLOB for a plain TCP client
+    strips ``attached`` and ``enclen`` and leaves the driver's ``len`` behind, so
+    an ordinary frame arrives carrying one. An unknown attribute must never cost
+    the element.
+    """
+    raw = b"leftover-len-attribute"
+
+    back = parse_indi(_compressed_blob_xml(".fits.z", raw, extra=" len='999'"))[0]
+
+    assert back.vector["image"].data == raw
+    assert back.vector["image"].format == ".fits"
+
+
+def test_a_compressed_blob_must_declare_its_uncompressed_size_in_both_codecs():
+    """``size`` is the *uncompressed* length, which a deflated payload cannot supply.
+
+    Defaulting it to ``len(data)`` would put a spec-violating number on the wire
+    for the one driver that opts into compression, and every client reading it
+    would size its buffer from deflate's output. Refusing is contained: the
+    runtime's writer reports an unserialisable message and drops it.
+    """
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".fits.z", data=zlib.compress(b"frame" * 50))],
+    )
+
+    with pytest.raises(ProtocolError, match="uncompressed length"):
+        to_xml(SetVector(vector=vec))
+
+    # The rule is the protocol's, not XML's, so the browser codec refuses the
+    # same model. Two codecs over one set of models disagreeing about which
+    # frames are emittable is exactly the drift they are kept in step to avoid.
+    with pytest.raises(ProtocolError, match="uncompressed length"):
+        to_json(SetVector(vector=vec))
+
+
+def test_a_driver_may_still_send_a_compressed_payload_it_declares_fully():
+    """Compression on send stays the driver's decision, and we serialise it faithfully.
+
+    libindi makes it an opt-in ``CCD_COMPRESSION`` switch that defaults to off,
+    so nothing here automates it - but a driver that deflates its own frame and
+    declares the uncompressed length gets exactly the wire it asked for, and our
+    own parser inflates it back.
+    """
+    raw = b"SIMPLE  =                    T" + b" " * 200
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[
+            BLOB(name="image", format=".fits.z", size=len(raw), data=zlib.compress(raw)),
+        ],
+    )
+
+    xml = to_xml(SetVector(vector=vec)).decode()
+
+    assert f'size="{len(raw)}"' in xml
+    assert 'format=".fits.z"' in xml
+    assert parse_indi(xml)[0].vector["image"].data == raw
+
+
+def test_enclen_counts_the_base64_characters_of_one_unwrapped_line():
+    """``enclen`` is a character count, and the single line is what keeps it honest.
+
+    libindi writes what ``to64frombits_s`` returns, which excludes newlines, and
+    its decoder skips at most one newline per 4-character group. We emit one
+    unwrapped line, so both hold trivially - but only while nothing wraps.
+    """
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".bin", data=b"eleven byte")],
+    )
+
+    xml = to_xml(SetVector(vector=vec)).decode()
+    payload = xml.split(">", 2)[2].split("<")[0]
+
+    assert 'enclen="16"' in xml
+    assert len(payload) == 16
+    assert "\n" not in payload
 
 
 @pytest.mark.parametrize("size", [1, 3, 17, 256])

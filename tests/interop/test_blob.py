@@ -7,6 +7,11 @@ and no image arrive, with nothing in the logs to say why.
 Our client replays its BLOB policies on every reconnect, which is only meaningfully
 tested against a server that actually enforces the rule.
 
+The compression cases are here for the same reason. What a payload's ``format``
+means - ``.z`` is a transport encoding to inflate, ``.fz`` is a container format
+to leave alone - is only settled by what real libindi puts on the wire, and the
+answer turned out to be that its CCD simulator emits ``.fz`` and never ``.z``.
+
 **None of this can move to the fast suite.** ``InProcessHub`` has no ``enableBLOB``
 gate (see :mod:`indi_nexus.hub`), so every driver frame reaches a client there whether
 or not it asked, and the three policies are indistinguishable. A real ``indiserver``
@@ -16,6 +21,10 @@ is the only thing that enforces them, so these tests run in Docker or not at all
 from __future__ import annotations
 
 import asyncio
+import zlib
+
+import pytest
+from drivers.zlib_blob_driver import FRAME
 
 from indi_nexus.client import IndiClient
 from indi_nexus.protocol import BLOBPolicy, BLOBVector, IPState
@@ -235,16 +244,17 @@ async def test_a_full_frame_exposure_arrives_whole(indi_server):
     assert len(element.data) % 2880 == 0
 
 
-async def test_a_compressed_frame_keeps_the_format_that_explains_it(indi_server):
-    """The payload is delivered as sent, so ``format`` is what makes it readable.
+async def test_a_tile_compressed_frame_is_delivered_exactly_as_libindi_sent_it(indi_server):
+    """``CCD_COMPRESSION`` on the FITS path means fpack, and fpack is not ours to undo.
 
-    With compression on, libindi sends ``.fits.fz`` (FITS tile compression) and
-    ``size`` is the *uncompressed* length, so the bytes and the number disagree by
-    design. This package does not decompress anything - not ``.fz``, and not the
-    ``.z`` zlib convention in the INDI spec either - so a caller has only the
-    format string to tell it what it is holding. If that were normalised away, or
-    if ``size`` were rewritten to match the payload, an image would silently
-    become unopenable bytes.
+    What real libindi 2.2.4 actually does with ``CCD_COMPRESSION`` enabled: the
+    FITS path goes through fpack and arrives as ``.fits.fz`` with ``size`` the
+    *uncompressed* FITS length, so the bytes and the number disagree by design.
+    FITS tile compression is an astronomy container format rather than a
+    transport encoding - no libindi client undoes it, and undoing it needs
+    cfitsio - so the payload, the ``.fz`` suffix and the declared ``size`` all
+    have to reach the caller untouched. This is the frame that a ``.z`` check
+    written as ``endswith("z")`` would silently corrupt.
     """
     server = indi_server("indi_simulator_ccd")
     client = await _connected_client(server.port)
@@ -264,7 +274,82 @@ async def test_a_compressed_frame_keeps_the_format_that_explains_it(indi_server)
         await client.aclose()
 
     element = frame.elements[0]
-    assert element.format is not None
-    assert element.format.endswith(".fz"), f"expected a compressed format, got {element.format!r}"
+    assert element.format == ".fits.fz", f"expected fpack, got {element.format!r}"
     assert element.data is not None
-    assert element.size is not None and element.size > 0
+    # fpack output is still a FITS file; what it is not is inflatable.
+    assert element.data[:9] == b"SIMPLE  =", f"not FITS: {element.data[:32]!r}"
+    with pytest.raises(zlib.error):
+        zlib.decompress(element.data)
+    assert element.size is not None and element.size > len(element.data)
+
+
+async def test_the_native_transfer_format_is_not_compressed_at_all(indi_server):
+    """The other half of what libindi really does, pinned so the first half is readable.
+
+    With ``CCD_COMPRESSION`` on and the transfer format set to native, libindi
+    2.2.4 sends ``.bin`` with ``size`` equal to the payload length: the switch
+    does nothing here. Between this and the ``.fz`` case above, the CCD simulator
+    has no path that emits the spec's ``.z`` at all, which is why the zlib case
+    is covered by a driver of ours below rather than by the simulator.
+    """
+    server = indi_server("indi_simulator_ccd")
+    client = await _connected_client(server.port)
+    try:
+        await client.wait_for(DEVICE, "CCD_TRANSFER_FORMAT", timeout=25)
+        await client.set_switch(DEVICE, "CCD_TRANSFER_FORMAT", {"FORMAT_NATIVE": True})
+        await client.wait_for(DEVICE, "CCD_COMPRESSION", timeout=25)
+        await client.set_switch(DEVICE, "CCD_COMPRESSION", {"INDI_ENABLED": True})
+        await client.enable_blob(DEVICE, policy=BLOBPolicy.ALSO)
+        await _expose(client)
+        frame = await _wait_for_frame(client, seconds=90)
+    finally:
+        await client.aclose()
+
+    element = frame.elements[0]
+    assert element.format == ".bin", f"expected the native format, got {element.format!r}"
+    assert element.data is not None
+    assert element.size == len(element.data)
+
+
+async def test_a_zlib_compressed_frame_arrives_inflated_through_a_real_server(
+    indi_server, python_driver
+):
+    """The spec's ``.z`` path, end to end over a real ``indiserver``.
+
+    A driver of ours publishes a deflated payload as ``.fits.z`` with the
+    uncompressed ``size``, because libindi's simulator never produces one (see
+    the two tests above). Everything between is real: ``indiserver`` re-serialises
+    the BLOB for a plain TCP client, and our client is what has to inflate it and
+    strip the suffix, exactly as ``BaseDevicePrivate::setBLOB`` does for every
+    libindi-based client. An application asked for a FITS file and gets one.
+    """
+    server = indi_server(python_driver("tests/interop/drivers/zlib_blob_driver.py"))
+    device = "Deflater"
+    client = IndiClient("127.0.0.1", server.port)
+    try:
+        await client.start()
+        await client.wait_for(device, "CONNECTION", timeout=25)
+        await client.set_switch(device, "CONNECTION", {"CONNECT": True})
+        await client.wait_for(
+            device,
+            "CONNECTION",
+            lambda v: v.get("CONNECT") == "On",
+            timeout=25,
+        )
+        await client.enable_blob(device, policy=BLOBPolicy.ALSO)
+        await client.wait_for(device, "IMAGE", timeout=25)
+        await client.set_switch(device, "CAPTURE", {"GO": True})
+        frame = await client.wait_for(
+            device,
+            "IMAGE",
+            lambda v: isinstance(v, BLOBVector) and bool(v.elements) and bool(v.elements[0].data),
+            timeout=60,
+        )
+    finally:
+        await client.aclose()
+
+    assert isinstance(frame, BLOBVector)
+    element = frame.elements[0]
+    assert element.format == ".fits", f"the .z suffix survived: {element.format!r}"
+    assert element.data == FRAME
+    assert element.size == len(FRAME)

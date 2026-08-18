@@ -200,6 +200,36 @@ streaming parser (no runtime DTD reflection, no "accumulate stdin and retry
     apart, not together. `parse_number` is a deliberate **superset** of `f_scansexa`: it
     reads sexagesimal on the `set` path too, where libindi uses `std::stod` and would read
     `10:30:00` as `10.0`. Keep it; matching libindi there is a data-corruption bug.
+- `compression.py` - the INDI `.z` rule, applied on **receive only**. A `format` ending in
+  `.z` means the payload was deflated for the wire, so `inflate_blob` inflates it, strips
+  the suffix (`.fits.z` -> `.fits`) and sets `size` to the inflated length, which is what
+  libindi's `BaseDevicePrivate::setBLOB` does for every client built on it. It is not an XML
+  concern - the same models reach a browser as JSON, and a browser has no zlib - so **both
+  codecs call it on the way in** and neither one's consumer ever meets a deflated payload.
+  Three things about it are load-bearing.
+  - **It is RFC 1950, not raw deflate.** The whitepaper's footnote cites RFC 1951, but
+    libindi calls zlib's `compress2`/`uncompress`, which carry the 2-byte header and the
+    Adler-32 trailer: `zlib.decompress(data)`, never `wbits=-15`.
+  - **`.fz` is not `.z`.** FITS tile compression is an astronomy container format, not a
+    transport encoding; nothing in the ecosystem un-fpacks it and undoing it needs cfitsio.
+    The check is `endswith(".z")` for that reason and `endswith("z")` would corrupt every
+    fpacked frame. Real libindi 2.2.4 sends `.fits.fz` under `CCD_COMPRESSION` and `.bin`
+    uncompressed on the native path, so its CCD simulator emits no `.z` at all -
+    `tests/interop/drivers/zlib_blob_driver.py` is what exercises that path over a real
+    `indiserver`.
+  - **A payload that will not inflate costs the message.** `ProtocolError` (a `ValueError`),
+    so the stream parser's drop-and-count path applies. Delivering the compressed bytes
+    instead would hand a caller that asked for `.fits` something it will feed to a FITS
+    reader.
+  - Compressing on **send** stays the driver author's decision, as it is in libindi (an
+    opt-in switch, default off). What `require_declared_size` enforces is that a `.z`
+    format carries an explicit `size`: INDI's `size` is the *uncompressed* length, so the
+    `len(data)` default is right only for a payload that is neither encoded nor
+    compressed. **Both codecs call it**, and that is the point - they serialize the same
+    models, so a frame `to_xml` refuses and `to_json` emits is drift between two
+    descriptions of one contract, which is the thing the root `CLAUDE.md` keeps them in
+    step to avoid. The same rule reaches back into the SDK: `BoundProperty._assign` leaves
+    a `.z` element's `size` alone (see `property.py` below).
 - `xml.py` - `to_xml(msg)` serializes; `parse_indi(data)` parses a complete chunk;
   `XMLStreamParser` is the incremental parser for a stream (synthetic root, emits depth-1
   elements as they complete, clears consumed nodes so memory stays flat). Number text goes
@@ -220,6 +250,17 @@ streaming parser (no runtime DTD reflection, no "accumulate stdin and retry
     because real traffic carries the base64 across lines, and validated after, because a
     decoder that silently discards non-alphabet characters turns a corrupt frame into a
     plausible one.
+  - **`enclen` is right and `len` is somebody else's leftover.** Neither is in the 1.7 DTD;
+    both are libindi extensions with different meanings, written on mutually exclusive
+    paths by `IUUserIOBLOBContextOne`: `enclen` is the base64 *character* count on the
+    normal inline path, `len` the raw pre-encoding *byte* count on the shared-memory
+    attached path. A recording showing `len` on an ordinary frame is `indiserver`'s doing -
+    `SerializedMsgWithoutSharedBuffer` strips `attached` and `enclen` when it re-serialises
+    for a plain TCP client and never removes the driver's `len`. We emit `enclen` and read
+    neither, so an unknown attribute costs nothing. Do not rename it or add `len`. The
+    value must exclude newlines, and anything that ever wraps the base64 has to wrap at a
+    multiple of 4: libindi's `from64tobits_fast` skips at most one newline per 4-character
+    group. We emit one unwrapped line, which satisfies both for free.
   - **Non-finite numbers are refused, in both codecs.** JSON has no literal for NaN or
     the infinities, so `to_json` wrote `null` and `from_json` then rejected its own
     output. `Number.value` forbids them (`allow_inf_nan=False`), `parse_number` raises on
@@ -309,6 +350,14 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
   - A `Text` element coerces a non-string at assignment rather than at serialisation, and a
     `Number` refuses a non-finite value there, so a bad publish fails at the call site,
     never inside the writer loop.
+  - A **BLOB** gets its `size` derived from the payload - except on a `.z` element, where
+    the payload is deflated and `len(data)` would put the compressed length under an
+    attribute INDI defines as the uncompressed one. That was silent: a plausible integer
+    nothing downstream questions. Leaving it alone means the driver states it (once at
+    define time - how well a frame compressed does not change how big it is), and a driver
+    that states nothing gets `require_declared_size`'s refusal out of the codec instead of
+    a wrong frame. `tests/interop/drivers/zlib_blob_driver.py` publishes exactly this way
+    against a real `indiserver`.
   - The `emit` policy chosen at `define_*` time is enforced here: under `"on_change"` values
     are still written but nothing goes on the wire (and the timestamp is untouched) when the
     result matches what clients were last told. `force=True` overrides.

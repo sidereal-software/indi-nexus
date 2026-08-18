@@ -53,6 +53,7 @@ from indi_nexus.protocol import (
     coerce_switch,
     format_number,
     indi_now,
+    zlib_encoded,
 )
 
 if TYPE_CHECKING:
@@ -484,7 +485,18 @@ class BoundProperty[VectorT: Vector]:
         if isinstance(el, BLOB):
             data = bytes(val)
             el.data = data
-            el.size = len(data)
+            # INDI's `size` is the decoded *and uncompressed* length, so the
+            # payload's own length answers it only for a payload that is
+            # neither. A `.z` element is handed bytes the driver deflated, and
+            # writing len(data) there put the *compressed* length on the wire
+            # under an attribute the spec defines as the other number - silently,
+            # since it is a plausible integer. Leaving it alone means the driver
+            # states it (once at define time for a fixed frame, or per frame
+            # beside the compression), and a driver that states nothing gets a
+            # loud refusal out of the codec instead of a wrong frame: see
+            # indi_nexus.protocol.compression.require_declared_size.
+            if not zlib_encoded(el.format):
+                el.size = len(data)
             return
         if isinstance(el, Text):
             # Coerce here rather than at serialisation: a text element handed a

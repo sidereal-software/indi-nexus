@@ -12,6 +12,7 @@ The number text a codec puts on the wire is its own concern:
 interop turns on them.
 """
 
+from indi_nexus.protocol.compression import zlib_encoded
 from indi_nexus.protocol.enums import (
     BLOBPolicy,
     IPerm,
@@ -95,4 +96,6 @@ __all__ = [
     # number text
     "format_number",
     "parse_number",
+    # BLOB compression
+    "zlib_encoded",
 ]

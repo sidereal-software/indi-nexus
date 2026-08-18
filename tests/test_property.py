@@ -8,10 +8,12 @@ runtime or transport in the way.
 from __future__ import annotations
 
 import datetime as dt
+import zlib
 
 import pytest
 
 from indi_nexus.driver.property import BoundProperty
+from indi_nexus.exceptions import ProtocolError
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -246,6 +248,45 @@ def test_publishing_a_blob_stores_the_bytes_and_their_length() -> None:
     (msg,) = emitted
     assert isinstance(msg, SetVector)
     assert msg.vector.get("image") == b"\x00FITS\xff"
+
+
+def test_a_compressed_element_keeps_the_size_its_driver_declared() -> None:
+    """For a ``.z`` payload, ``len(data)`` is the wrong number and the driver knows it.
+
+    INDI's ``size`` is the decoded *and uncompressed* length. Deriving it from
+    the bytes is right for the ordinary frame above and silently wrong here: it
+    would put deflate's output length on the wire under an attribute defined as
+    the other number, and it is a plausible integer, so nothing downstream would
+    question it. The driver states it once - the uncompressed length of a frame
+    does not change with how well it compressed - and publishing keeps it.
+    """
+    prop, emitted = _blobs()
+    element = prop.vector.element("image")
+    element.format = ".fits.z"
+    element.size = 9000
+
+    prop.set(image=zlib.compress(b"FITS" * 2250), state=IPState.OK)
+
+    assert element.size == 9000
+    assert to_xml(emitted[0]).count(b'size="9000"') == 1
+
+
+def test_a_compressed_element_with_no_declared_size_fails_loudly_at_the_codec() -> None:
+    """The driver that says nothing gets an error, not a wrong frame.
+
+    The counterpart to the test above: with ``size`` left unwritten there is no
+    number to put on the wire, so the refusal happens where the frame would have
+    been serialised - which the runtime's writer reports and drops, rather than
+    emitting a spec-violating ``size`` nothing would ever notice.
+    """
+    prop, emitted = _blobs()
+    prop.vector.element("image").format = ".fits.z"
+
+    prop.set(image=zlib.compress(b"FITS" * 2250), state=IPState.OK)
+
+    assert prop.vector.element("image").size is None
+    with pytest.raises(ProtocolError, match="uncompressed length"):
+        to_xml(emitted[0])
 
 
 @pytest.mark.parametrize(

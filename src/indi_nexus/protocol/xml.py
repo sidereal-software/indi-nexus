@@ -38,6 +38,7 @@ from typing import cast
 from lxml import etree
 
 from indi_nexus.exceptions import ProtocolError
+from indi_nexus.protocol.compression import inflate_blob, require_declared_size
 from indi_nexus.protocol.enums import BLOBPolicy, IPerm, IPState, ISRule, ISState
 from indi_nexus.protocol.models import (
     BLOB,
@@ -150,6 +151,10 @@ def _element_xml(el: object, mode: str) -> etree._Element:
     ------
     TypeError
         Raised if ``el`` is not a known element type.
+    ProtocolError
+        Raised if a BLOB declares a ``.z`` format and no ``size``, where the
+        uncompressed length the attribute has to carry is unknowable here. Also
+        a ValueError.
     """
     prefix = "def" if mode == "def" else "one"
 
@@ -190,6 +195,13 @@ def _element_xml(el: object, mode: str) -> etree._Element:
         return node
 
     if isinstance(el, BLOB):
+        # Before anything is written, and outside the `one*` branch below on
+        # purpose: the rule is about the model, not about which shape of node
+        # this happens to be building, and the JSON codec applies the same one
+        # to the same model. A `def` carrying a payload it cannot describe is
+        # refused here too, rather than silently serialising to XML and then
+        # failing on the way to a browser.
+        require_declared_size(el)
         node = etree.Element(prefix + "BLOB")
         _set(node, "name", el.name)
         if mode == "def":
@@ -198,8 +210,19 @@ def _element_xml(el: object, mode: str) -> etree._Element:
         else:
             _set(node, "format", el.format)
             if el.data is not None:
+                # len(data) is the right default only for a payload that is
+                # neither encoded nor compressed; require_declared_size above
+                # has already refused the one case where it would be a lie.
                 encoded = base64.b64encode(el.data)
                 _set(node, "size", el.size if el.size is not None else len(el.data))
+                # `enclen` is libindi's count of base64 *characters* and must
+                # exclude newlines (indiuserio.c writes what to64frombits_s
+                # returns, for a single unwrapped line). We emit one line, so
+                # this holds trivially. Anyone adding line wrapping has to wrap
+                # at a multiple of 4 and keep the newlines out of this count:
+                # libindi's from64tobits_fast skips at most one newline per
+                # 4-character group, so a wrap anywhere else desynchronises its
+                # decoder mid-frame.
                 _set(node, "enclen", len(encoded))
                 node.text = encoded.decode("ascii")
         return node
@@ -312,6 +335,13 @@ def to_xml(msg: IndiMessage, *, pretty: bool = False) -> bytes:
     -------
     xml : bytes
         The encoded XML.
+
+    Raises
+    ------
+    ProtocolError
+        Raised if a BLOB declares a compressed ``format`` without the
+        uncompressed ``size`` the wire attribute is defined as. Also a
+        ValueError.
     """
     return etree.tostring(_message_xml(msg), pretty_print=pretty)
 
@@ -338,7 +368,11 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
     Raises
     ------
     ProtocolError
-        Raised if ``kind`` is not a known element kind. Also a ValueError.
+        Raised if ``kind`` is not a known element kind, or if a BLOB declaring a
+        ``.z`` format carries a payload that will not inflate. Also a
+        ValueError, so :meth:`XMLStreamParser._convert` drops and counts the
+        message rather than delivering compressed bytes as if they were the
+        image.
     """
     name = node.get("name") or ""
     label = node.get("label")
@@ -361,14 +395,23 @@ def _element_from_xml(node: etree._Element, kind: str) -> object:
     if kind == "light":
         return Light(name=name, label=label, value=IPState(text) if text else IPState.IDLE)
     if kind == "blob":
-        data = _decode_blob(text) if text else None
-        return BLOB(
+        # Attributes we do not read are ignored, which is load-bearing here: a
+        # real indiserver carrying a shared-buffer driver forwards the driver's
+        # `len` (the raw pre-encoding byte count) alongside the payload, because
+        # SerializedMsgWithoutSharedBuffer strips `attached`/`enclen` when it
+        # re-serialises for a plain TCP client and never removes `len`. Neither
+        # attribute is in the 1.7 DTD; both are libindi extensions. `enclen` is
+        # advisory anyway - the cdata is the payload - so nothing here consults
+        # either one, and an unknown attribute never costs the element.
+        blob = BLOB(
             name=name,
             label=label,
             format=node.get("format"),
             size=_optint(node.get("size")),
-            data=data,
+            data=_decode_blob(text) if text else None,
         )
+        inflate_blob(blob)
+        return blob
     raise ProtocolError(f"Unknown element kind {kind!r}")
 
 

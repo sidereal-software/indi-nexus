@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 import json
+import zlib
 
 import pytest
 from pydantic import ValidationError
 
+from indi_nexus.exceptions import ProtocolError
 from indi_nexus.protocol import (
     BLOB,
     BLOBVector,
@@ -215,6 +217,62 @@ def test_a_blob_keeps_its_size_and_format_through_json():
     assert back.vector.element("image").size == 11_520
     assert back.vector.element("image").format == ".fits.fz"
     assert back.vector.element("image").data == b"tile-compressed"
+
+
+def test_the_json_codec_inflates_a_compressed_blob_like_the_xml_one():
+    """Both codecs read the same wire, so both apply the ``.z`` rule.
+
+    The asymmetry is deliberate and is the only one in this codec: a model
+    holding a deflated payload serialises as it stands, because compressing is
+    the driver's decision, and parsing one inflates it, because no consumer of
+    these models - a Python application or a browser with no zlib of its own -
+    should ever meet a payload that is not what ``format`` says it is.
+    """
+    raw = b"SIMPLE  =                    T" + b" " * 300
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".fits.z", size=len(raw), data=zlib.compress(raw))],
+    )
+
+    back = _roundtrip(SetVector(vector=vec))
+
+    element = back.vector.element("image")
+    assert element.data == raw
+    assert element.format == ".fits"
+    assert element.size == len(raw)
+
+
+def test_the_json_codec_leaves_fits_tile_compression_alone():
+    """``.fz`` is a container format, not a transport encoding - in both codecs."""
+    payload = b"\x78\x9c-fpacked-not-deflate"
+    vec = BLOBVector(
+        device="CCD",
+        name="CCD1",
+        elements=[BLOB(name="image", format=".fits.fz", size=99_999, data=payload)],
+    )
+
+    back = _roundtrip(SetVector(vector=vec))
+
+    assert back.vector.element("image").format == ".fits.fz"
+    assert back.vector.element("image").data == payload
+
+
+def test_a_corrupt_compressed_blob_is_refused_by_the_json_codec():
+    """Loud here too, and for the same reason: never deliver the deflate.
+
+    The JSON codec has no drop-and-count path - a browser frame is one message on
+    a socket the bridge answers with an error frame - so the ``ProtocolError``
+    comes out, and it is a `ValueError` like every other refusal here.
+    """
+    frame = (
+        '{"tag":"set","vector":{"kind":"blob","device":"CCD","name":"CCD1",'
+        '"elements":[{"kind":"blob","name":"image","format":".fits.z",'
+        '"size":512,"data":"eJxub3QtZGVmbGF0ZQ=="}]}}'
+    )
+
+    with pytest.raises(ProtocolError):
+        from_json(frame)
 
 
 def test_browser_new_frame_parses_to_new_vector():
