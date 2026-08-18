@@ -517,6 +517,7 @@ name = "indi-nexus"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "fastapi" },
     { name = "lxml" },
     { name = "pydantic" },
@@ -545,6 +546,7 @@ interop = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "lxml", specifier = ">=5.0" },

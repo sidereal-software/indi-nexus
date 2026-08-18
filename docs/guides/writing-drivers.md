@@ -363,8 +363,10 @@ What is written is values, keyed by property, and nothing else:
 ```
 
 Definitions - labels, permissions, limits - stay in the code, which is the only thing that
-knows what this version of the driver publishes. The file lives in
-`$XDG_CONFIG_HOME/indi-nexus`, or wherever `INDI_NEXUS_CONFIG_DIR` says.
+knows what this version of the driver publishes. The file lives in `~/.indi-nexus` - the
+same path on every platform, next to libindi's own `~/.indi` - or wherever
+`INDI_NEXUS_CONFIG_DIR` says. That variable is the only thing that moves it;
+`XDG_CONFIG_HOME` is not consulted.
 
 ### The driver says what Save writes
 

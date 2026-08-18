@@ -140,7 +140,7 @@ through by Docker, so setting one on the service is all it takes:
 | `INDI_NEXUS_TOKEN` | unset (generated in this image) | The shared token `/ws` and `/api` require. In this image, `WEB_TOKEN`. |
 | `INDI_NEXUS_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept. In this image, `WEB_ALLOWED_ORIGINS`. |
 | `INDI_NEXUS_ALLOW_INSECURE_BIND` | unset | Permit the non-loopback bind with no token anyway. It does **not** turn off a token that is set. In this image, `WEB_ALLOW_ANONYMOUS`, which also drops `--token` - see below. |
-| `INDI_NEXUS_CONFIG_DIR` | `$XDG_CONFIG_HOME/indi-nexus`, else `~/.config/indi-nexus`, else nowhere | Where a driver's `CONFIG_PROCESS` saves and loads its properties. **Set it here** - see below. |
+| `INDI_NEXUS_CONFIG_DIR` | `~/.indi-nexus`, else nowhere | Where a driver's `CONFIG_PROCESS` saves and loads its properties. **Set it here** - see below. |
 
 **The last three have two names here, and they are the same setting.** The entrypoint has
 to decide something about them before `serve` runs - it generates a token when none was
@@ -172,9 +172,10 @@ docker run --rm -p 8000:8000 -p 7624:7624 \
 ```
 
 Set it even if you do not care where the file lands. The default is computed rather than
-fixed - `$XDG_CONFIG_HOME/indi-nexus`, else `~/.config/indi-nexus`, else **nothing at
-all** - and a container is exactly where that last case turns up, because `HOME` is
-routinely unset or points somewhere read-only. With nowhere to write, every Save, Load and
+fixed - `~/.indi-nexus`, else **nothing at all** - and a container is exactly where that
+second case turns up, because `HOME` is routinely unset or points somewhere read-only.
+Setting `XDG_CONFIG_HOME` will not move it either; this variable is the only thing that
+does. With nowhere to write, every Save, Load and
 Purge comes back as a `ConfigError` naming `INDI_NEXUS_CONFIG_DIR` as the fix, and the
 panel reports the failure on the property. That is deliberate: the alternative is a
 temporary directory that accepts every Save and loses the lot on restart.

@@ -16,8 +16,8 @@ restoring one would let yesterday's driver decide today's property shapes.
 **JSON, not libindi's XML, and not libindi's directory.** The file is ours: a
 different schema under the same name would put two frameworks in a fight over
 one path with no way for either to tell whose file it found. So the directory is
-``$XDG_CONFIG_HOME/indi-nexus`` (see :class:`~indi_nexus.settings.Settings`),
-never ``~/.indi``.
+``~/.indi-nexus`` (see :class:`~indi_nexus.settings.Settings`) - beside
+``~/.indi``, never in it.
 
 **Whole-document replace, written atomically.** :func:`write_document` renders
 the entire configuration each time, into a temporary file created ``0600`` in

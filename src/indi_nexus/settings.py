@@ -40,11 +40,11 @@ the bridge and every driver at once.
 from __future__ import annotations
 
 import enum
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
+import click
 from pydantic import BeforeValidator, Field
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -107,11 +107,27 @@ def _split_origins(value: object) -> object:
 
 
 def _default_config_dir() -> Path | None:
-    """Return the XDG directory a driver saves its configuration under.
+    """Return the directory a driver saves its configuration under.
 
-    The two variables read here are not ``INDI_NEXUS_*`` and never will be, so
-    this is the one place in the package that reaches outside the prefix - which
-    is exactly why it lives in this module and not in ``driver/``.
+    :func:`click.get_app_dir` decides it, with ``force_posix=True``, so the
+    answer is ``~/.indi-nexus`` on Linux and macOS alike. Click is already a
+    hard dependency through Typer, and where an application's configuration
+    belongs is not a problem worth solving here.
+
+    ``force_posix`` is the whole decision, and it buys two things. An operator
+    administering several machines reads and edits the same path on all of them,
+    rather than ``~/.config`` here and ``~/Library/Application Support`` there.
+    And ``~/.indi-nexus`` sits directly beside libindi's own ``~/.indi``, so both
+    halves of one observatory's configuration are in one place - beside it, not
+    *in* it, because a file of ours under libindi's name would leave two
+    frameworks fighting over one path with different schemas.
+
+    **It costs the XDG variable.** ``force_posix=True`` ignores
+    ``XDG_CONFIG_HOME``, which the previous chain honoured, so a Linux user who
+    sets it is no longer obeyed. ``INDI_NEXUS_CONFIG_DIR`` is the escape hatch
+    and is the supported way to put the directory anywhere else. Windows is the
+    other place the name does not hold: Click resolves an ``indi-nexus`` folder
+    under ``%APPDATA%`` there and never reaches its ``force_posix`` branch.
 
     ``None`` is a real answer, and the important one. A process with no
     resolvable home is how a service manager runs a driver, and both obvious
@@ -121,25 +137,20 @@ def _default_config_dir() -> Path | None:
     without a word. ``None`` makes the persistence methods raise
     :class:`~indi_nexus.ConfigError` naming ``INDI_NEXUS_CONFIG_DIR`` as the fix.
 
-    Not ``~/.indi``: that is libindi's directory, and a file of ours sitting in
-    it under a colliding name would leave two frameworks fighting over one path
-    with different schemas.
-
     Returns
     -------
     directory : Path or None
-        ``$XDG_CONFIG_HOME/indi-nexus``, else ``~/.config/indi-nexus``, else
-        `None` when the home directory cannot be expanded.
+        ``~/.indi-nexus``, or `None` when the home directory cannot be expanded.
     """
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    if xdg:
-        return Path(xdg) / "indi-nexus"
-    # expanduser leaves "~" untouched when there is nothing to expand it with,
-    # which is the signal Path.home() turns into a RuntimeError instead.
-    home = os.path.expanduser("~")  # noqa: PTH111 - Path.home() raises; this reports
-    if home == "~":
+    directory = Path(click.get_app_dir("indi-nexus", force_posix=True))
+    # Click builds that path with os.path.expanduser, which leaves a leading "~"
+    # in place when there is nothing to expand it with rather than raising, so
+    # the result is relative exactly when the home did not resolve. Handing it
+    # back would have a driver save into whatever directory it happened to be
+    # started from - the case the None branch above exists for.
+    if not directory.is_absolute():
         return None
-    return Path(home) / ".config" / "indi-nexus"
+    return directory
 
 
 class Settings(BaseSettings):
@@ -187,8 +198,10 @@ class Settings(BaseSettings):
         Whether ``serve`` may bind a non-loopback host with no token.
     config_dir : Path or None
         ``INDI_NEXUS_CONFIG_DIR``. Where a driver's ``CONFIG_PROCESS`` saves and
-        loads its properties, defaulting per :func:`_default_config_dir`. `None`
-        means there is nowhere to save, and the persistence methods say so.
+        loads its properties, defaulting to ``~/.indi-nexus`` per
+        :func:`_default_config_dir` - which does not consult ``XDG_CONFIG_HOME``,
+        so this variable is how the directory is moved. `None` means there is
+        nowhere to save, and the persistence methods say so.
     """
 
     model_config = SettingsConfigDict(env_prefix="INDI_NEXUS_", extra="ignore")

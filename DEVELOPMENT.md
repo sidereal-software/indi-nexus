@@ -126,8 +126,8 @@ indi-nexus --help                           # all CLI commands and options
 Every knob lives under one prefix, `INDI_NEXUS_`, everything is optional, and
 `indi_nexus.settings.Settings` reads all of it. There is one reader and one story: a
 variable means what the table says wherever INDINexus runs, and no flag carries its own
-environment lookup. One variable outside the prefix is read, `XDG_CONFIG_HOME`, and only
-to compute the last row's default.
+environment lookup. No variable outside the prefix is read at all: the last row's default
+is a path, not another variable.
 
 | Variable | Flag | Default | Effect |
 |---|---|---|---|
@@ -140,15 +140,21 @@ to compute the last row's default.
 | `INDI_NEXUS_TOKEN` | `--token` | unset | See [Access control on `serve`](#access-control-on-serve). |
 | `INDI_NEXUS_ALLOWED_ORIGINS` | `--allow-origin` | unset | Same. **Space separated** in the environment, repeatable as a flag. |
 | `INDI_NEXUS_ALLOW_INSECURE_BIND` | `--allow-insecure-bind` | off | Same. |
-| `INDI_NEXUS_CONFIG_DIR` | - | computed - see below | Where a driver's `CONFIG_PROCESS` saves and loads its properties. |
+| `INDI_NEXUS_CONFIG_DIR` | - | `~/.indi-nexus` - see below | Where a driver's `CONFIG_PROCESS` saves and loads its properties. |
 
-`CONFIG_DIR` is the one default that is computed rather than written down:
-`$XDG_CONFIG_HOME/indi-nexus`, else `~/.config/indi-nexus`, else **nothing at all**.
-`Path.home()` *raises* when there is no home to expand - which is how a service manager
-runs a driver - and a temp directory would accept every Save and lose the lot on reboot,
-so the honest answer is `None`, and every persistence call then raises `ConfigError`
-naming this variable as the fix. Set it wherever the process's home is unset or read-only,
-which in practice means a container: see [docs/docker.md](docs/docker.md).
+`CONFIG_DIR` is the one default that is computed rather than written down. It comes from
+`click.get_app_dir("indi-nexus", force_posix=True)`, which is `~/.indi-nexus` on Linux and
+macOS alike - the same path on every machine an operator administers, and right beside
+libindi's own `~/.indi`, so one observatory's two sets of configuration sit together.
+**`XDG_CONFIG_HOME` is not consulted**, which is what that consistency costs: a Linux user
+who sets it is not obeyed, and `INDI_NEXUS_CONFIG_DIR` is the way to move the directory.
+
+With no home to expand, the default is **nothing at all**. `Path.home()` *raises* there -
+which is how a service manager runs a driver - and a temp directory would accept every Save
+and lose the lot on reboot, so the honest answer is `None`, and every persistence call then
+raises `ConfigError` naming this variable as the fix. Set it wherever the process's home is
+unset or read-only, which in practice means a container: see
+[docs/docker.md](docs/docker.md).
 
 Where a setting has both forms, **the flag wins and its absence defers to the
 environment**. A flag that names a variable has no default of its own - the table's

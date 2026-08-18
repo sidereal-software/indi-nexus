@@ -72,8 +72,8 @@ it off, moves it in and out on its own.
 ### What `DeviceConfigDialog` does and does not promise
 
 `CONFIG_PROCESS` persists a device's settings on the observatory computer - to
-`$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under
-`$XDG_CONFIG_HOME/indi-nexus` for an INDINexus one. `DeviceConfigDialog` is the entry
+`$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under `~/.indi-nexus` for
+an INDINexus one. `DeviceConfigDialog` is the entry
 that offers it: give it the
 selected device and it renders a sidebar item that opens the actions in a modal, or
 nothing at all when no device is selected or the selected one has no `CONFIG_PROCESS`.

@@ -82,8 +82,8 @@ both halves per type, and that is the test that stops the compatibility guarante
 
 ## `settings.py` and `logging_config.py` - configuration and logging
 
-Both sit at the bottom of the graph on purpose: `settings.py` imports **pydantic-settings
-and nothing from `driver/`, `web/` or `client/`**, because both the CLI and `driver.run`
+Both sit at the bottom of the graph on purpose: `settings.py` imports **pydantic-settings,
+click, and nothing from `driver/`, `web/` or `client/`**, because both the CLI and `driver.run`
 import it, and `logging_config.py` imports only `protocol`. Anything more would put an
 edge in the graph `tests/test_layering.py` holds flat.
 
@@ -113,13 +113,21 @@ edge in the graph `tests/test_layering.py` holds flat.
     token off, and `serve`'s non-loopback refusal is checked against the resolved token,
     not the flag.
   - `config_dir` is the one field with a **`default_factory`**, because its default is
-    computed: `INDI_NEXUS_CONFIG_DIR`, else `$XDG_CONFIG_HOME/indi-nexus`, else
-    `~/.config/indi-nexus`, else `None`. `_default_config_dir` is therefore the one place
-    in the package that reads a variable outside the prefix, which is why it lives here.
-    Not `Path.home()`, which **raises** when there is no home - how a service manager runs
-    a driver - and not a temp directory, which would accept every save and lose the lot on
-    reboot. `None` is the honest answer and makes the persistence methods raise
-    `ConfigError` naming the variable as the fix.
+    computed: `INDI_NEXUS_CONFIG_DIR`, else `click.get_app_dir("indi-nexus",
+    force_posix=True)` - `~/.indi-nexus` on Linux and macOS alike - else `None`. Click is
+    already a hard dependency through Typer, and where an application's configuration
+    lives is not a problem to solve here. `force_posix` is the decision: one path on every
+    machine an operator administers, sitting beside libindi's own `~/.indi` rather than
+    in it. It **ignores `XDG_CONFIG_HOME`**, which the old chain honoured, and that cost
+    was taken knowingly - `INDI_NEXUS_CONFIG_DIR` is the escape hatch, and
+    `tests/test_settings.py` asserts the XDG variable is not obeyed so nobody restores it
+    as a bug fix. The `None` branch is load-bearing: not `Path.home()`, which **raises**
+    when there is no home - how a service manager runs a driver - and not a temp
+    directory, which would accept every save and lose the lot on reboot. It needs its own
+    guard, because `os.path.expanduser` leaves `~` in place rather than raising, so an
+    unguarded `get_app_dir` returns the *relative* `~/.indi-nexus` and a driver saves into
+    its working directory. `None` is the honest answer and makes the persistence methods
+    raise `ConfigError` naming the variable as the fix.
   - `allowed_origins` is a `tuple[str, ...]` read **space separated** from the environment,
     which needs `NoDecode` to stop pydantic-settings JSON-decoding a collection field. An
     origin cannot contain whitespace, and it is what Click already did with a repeatable

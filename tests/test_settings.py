@@ -140,23 +140,34 @@ def test_other_prefixed_names_are_ignored(monkeypatch):
 
 
 def test_config_dir_is_taken_from_the_variable_first(monkeypatch, tmp_path):
-    """``INDI_NEXUS_CONFIG_DIR`` wins over every computed default."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
+    """``INDI_NEXUS_CONFIG_DIR`` wins over the computed default."""
+    monkeypatch.setenv("HOME", "/home/observer")
     monkeypatch.setenv("INDI_NEXUS_CONFIG_DIR", str(tmp_path))
     assert Settings().config_dir == tmp_path
 
 
-def test_config_dir_falls_back_to_xdg(monkeypatch):
-    """With no variable of ours, the XDG one decides."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
-    assert Settings().config_dir == Path("/xdg/indi-nexus")
+def test_config_dir_defaults_to_the_posix_app_directory(monkeypatch):
+    """With no variable of ours, it is ``~/.indi-nexus``, expanded from HOME.
 
-
-def test_config_dir_falls_back_to_the_home_directory(monkeypatch):
-    """With neither, it is ``~/.config/indi-nexus``, expanded from HOME."""
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    ``click.get_app_dir(..., force_posix=True)`` gives that answer on Linux and
+    macOS alike, which is the point: one path on every machine an operator
+    administers, and it sits beside libindi's own ``~/.indi``.
+    """
     monkeypatch.setenv("HOME", "/home/observer")
-    assert Settings().config_dir == Path("/home/observer/.config/indi-nexus")
+    assert Settings().config_dir == Path("/home/observer/.indi-nexus")
+
+
+def test_config_dir_ignores_xdg_config_home(monkeypatch):
+    """``XDG_CONFIG_HOME`` is deliberately **not** honoured. Do not "fix" this.
+
+    It is what ``force_posix=True`` costs, and it was taken knowingly: the same
+    path everywhere beats obeying a variable one platform of the three defines.
+    ``INDI_NEXUS_CONFIG_DIR`` is the supported way to move the directory, and it
+    is what the ``ConfigError`` names.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
+    monkeypatch.setenv("HOME", "/home/observer")
+    assert Settings().config_dir == Path("/home/observer/.indi-nexus")
 
 
 def test_config_dir_is_none_when_there_is_no_home(monkeypatch):
@@ -165,15 +176,31 @@ def test_config_dir_is_none_when_there_is_no_home(monkeypatch):
     A service manager runs a driver with no ``HOME``, and both alternatives are
     worse than admitting it: ``Path.home()`` raises there, taking down a driver
     that was never going to save anything, and a temp directory would accept
-    every save and lose the lot at the next reboot without a word.
+    every save and lose the lot at the next reboot without a word. The third
+    wrong answer is the one this default now has to guard against on its own:
+    ``os.path.expanduser`` leaves the ``~`` in place instead of raising, so an
+    unguarded ``click.get_app_dir`` hands back the relative ``~/.indi-nexus``
+    and a driver saves into its working directory.
     """
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("HOME", raising=False)
     monkeypatch.delenv("USERPROFILE", raising=False)
     # expanduser consults the password database when HOME is unset, which on a
     # developer's machine still answers; pwd is where that lookup lands.
     monkeypatch.setattr("pwd.getpwuid", lambda _uid: (_ for _ in ()).throw(KeyError("no such uid")))
     assert Settings().config_dir is None
+
+
+def test_the_config_dir_default_is_not_evaluated_at_import(monkeypatch):
+    """The default is a factory, so the environment is read when the model is.
+
+    A default computed in the field's signature is evaluated at *import* and
+    freezes the first home the process ever saw, which under any in-process
+    runner makes the variable's precedence a lie.
+    """
+    monkeypatch.setenv("HOME", "/home/first")
+    assert Settings().config_dir == Path("/home/first/.indi-nexus")
+    monkeypatch.setenv("HOME", "/home/second")
+    assert Settings().config_dir == Path("/home/second/.indi-nexus")
 
 
 def test_settings_is_read_once(monkeypatch):
