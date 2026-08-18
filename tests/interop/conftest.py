@@ -127,6 +127,16 @@ def indi_server(tmp_path: Path) -> Iterator[Callable[..., Server]]:
         port = free_port()
         log = tmp_path / f"indiserver-{port}.log"
         handle = log.open("wb")
+        # A libindi driver persists some properties the moment a client writes
+        # them - INDI::CCD saves CCD_TRANSFER_FORMAT and CCD_COMPRESSION itself -
+        # into $HOME/.indi/<device>_config.xml, and loads them again at startup.
+        # Shared, that makes one test's write the next test's starting state
+        # across a fresh indiserver and a fresh driver process, which is order
+        # dependence with nothing in either test to point at. A per-test HOME is
+        # what keeps every server here starting from the driver's own defaults.
+        home = tmp_path / f"home-{port}"
+        home.mkdir()
+        env = dict(os.environ, HOME=str(home))
         # -v gives one line per driver event, which is what makes a failure here
         # diagnosable from CI logs alone.
         process = subprocess.Popen(
@@ -134,6 +144,7 @@ def indi_server(tmp_path: Path) -> Iterator[Callable[..., Server]]:
             stdout=handle,
             stderr=subprocess.STDOUT,
             cwd=REPO_ROOT,
+            env=env,
         )
         server = Server(port=port, process=process, log=log)
         servers.append(server)
