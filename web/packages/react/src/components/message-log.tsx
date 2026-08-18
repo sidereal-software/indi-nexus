@@ -26,6 +26,18 @@ export interface MessageLogProps {
  * Follows the log: as entries stream in, the view keeps the newest message in
  * sight, so a permanently docked log behaves like a terminal tail.
  *
+ * The scrolling viewport carries `role="log"` and a tab stop. Both are load
+ * bearing:
+ *
+ * - `log` is the live region for everything arriving over the socket, and it is
+ *   the *right* one: it is polite and announces additions only, so a reader
+ *   hears each new entry once instead of the whole panel re-read. A vector
+ *   entering Alert is not a message, so it is announced separately - see
+ *   {@link AlertAnnouncer}, which is deliberately not this element.
+ * - Without the tab stop the log cannot be scrolled by keyboard at all, and
+ *   since the view follows the newest entry, everything above it is reachable
+ *   only with a wheel or a drag.
+ *
  * @param props - Optional class name and retention limit.
  * @returns The message log element.
  */
@@ -39,7 +51,10 @@ export function MessageLog({ className, limit = 200 }: MessageLogProps) {
     if (end && typeof end.scrollIntoView === "function") end.scrollIntoView({ block: "end" });
   }, [messages]);
   return (
-    <ScrollArea className={cn("h-full", className)}>
+    <ScrollArea
+      className={cn("h-full", className)}
+      viewportProps={{ tabIndex: 0, role: "log", "aria-label": "INDI messages" }}
+    >
       <div className="flex flex-col gap-2.5 p-3 font-mono text-xs">
         {messages.length === 0 ? (
           // Minimal on purpose: this is a docked strip, so the full Empty block with

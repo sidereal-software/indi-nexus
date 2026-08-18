@@ -75,10 +75,39 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
 store), the per-kind value hooks (`useNumber`/`useText`/`useSwitch`/`useLight`, which return
 the value already narrowed - `useElement` hands back the element union, so reading `.value`
 off it does not type-check), and the INDI-aware components (`PropertyVectorCard`,
-`DevicePanel`, `DeviceConfigCard`, per-kind element controls, `StateBadge`,
-`ConnectionStatus`, `MessageLog`).
+`DevicePanel`, `DeviceConfigDialog`, per-kind element controls, `StateBadge`,
+`ConnectionStatus`, `MessageLog`, `AlertAnnouncer`).
 
-`DeviceConfigCard` is the one component that is more than a rendering. `CONFIG_PROCESS` is
+### Two live regions, and why they are two
+
+Everything arriving over the socket used to reach sighted operators only. The page now has
+exactly two announcing surfaces, and the split between them is the whole design:
+
+- **`MessageLog`'s scrolling viewport is `role="log"`** - polite, additions-only - so each
+  new driver message is read once instead of the panel being re-read. That viewport also
+  carries `tabIndex={0}`: it is a scroll container, the view follows the newest entry, and
+  without a tab stop the history above it is reachable only with a wheel.
+- **`AlertAnnouncer` is a separate `role="status"`**, mounted once at the top of the app,
+  and it fires on exactly one thing: a vector *entering* Alert. Volume is the reason it
+  cannot just be more of the log - `set` frames are telemetry, a CCD simulator emits them
+  continuously, and a five-minute poll updating a temperature is not a status message. It
+  keeps the last state per property, so a latched Alert re-emitting (which it does with
+  every subsequent `set`, since a `set` with no `state` leaves the cached one alone) is
+  silent. It watches **every** device on purpose: a fault on the device that is not on
+  screen is the one an operator most needs to be told about, which is why it is mounted
+  page-level and not inside `DevicePanel`.
+
+### The switch control is a group of toggle buttons, not a radio group
+
+`SwitchVectorControl` deliberately does **not** use `ToggleGroup`. `type="single"` is a
+Radix radio group (`role="radiogroup"` with `role="radio"` children), and the ARIA radio
+pattern is selection-follows-focus - so arrowing from Disconnect to Connect told a screen
+reader the selection had moved while nothing had gone on the wire. The two-step behaviour
+is right for a control that connects hardware; the claim was what was wrong. It is now a
+`fieldset` of `Toggle`s (`aria-pressed`, `data-state`), and `SWITCH_MEMBER_CLASSES`
+reproduces the segmented look the primitive used to supply. Do not "simplify" it back.
+
+`DeviceConfigDialog` is the one component that is more than a rendering. `CONFIG_PROCESS` is
 universal in libindi and three of its facts are traps, so the copy **is** the component and
 changing it changes what the panel promises:
 
@@ -89,15 +118,29 @@ changing it changes what the panel promises:
   in libindi - so it is behind an `AlertDialog` that sends **nothing** until confirmed, and
   the confirming button names the consequence ("Delete saved config", never "OK").
 - `CONFIG_SAVE` writes whatever the driver's `saveConfigItems` chose, and a client cannot
-  discover that subset over the wire. The card always carries the line saying so; silence
+  discover that subset over the wire. The dialog always carries the line saying so; silence
   would read as "everything you see".
 
 `CONFIG_LOAD` and `CONFIG_DEFAULT` replay saved values through the driver's handlers, so on
 a connected device they can move hardware: both confirm while `CONNECTION`'s `CONNECT` is
 On, and neither does otherwise (including when the device has no `CONNECTION` at all).
 
-`DevicePanel` pins that card first as a Configuration section and excludes `CONFIG_PROCESS`
-from the generic grid so it is not drawn twice, puts `Main Control` next, then the remaining
+Configuration is **not** a property group: it is a per-device action surface an operator
+visits deliberately and rarely, and one of its members is that unguarded delete, so it does
+not belong permanently on screen beside live instrument readings. It lives in the sidebar,
+which is also what owns device selection, and opens in a `Dialog`. So the component takes
+`device: string | null` and renders **nothing at all** when nothing is selected or the
+selected device has no `CONFIG_PROCESS` - an entry that opens an empty modal is worse than
+no entry. With no `children` the trigger is a `SidebarMenuButton` inside its own
+`SidebarMenuItem` (it brings the `<li>` so it can vanish without leaving a gap in the menu,
+and it therefore needs a `SidebarProvider` and a `TooltipProvider` above it, which its tests
+supply); pass `children` and that element becomes the trigger, for a consumer's own shell.
+The purge confirmation is now an `AlertDialog` **inside** the `Dialog`: Radix stacks
+dismissable layers, so Escape takes the confirmation and leaves the configuration modal
+standing, and a test asserts exactly that in both directions.
+
+`DevicePanel` excludes `CONFIG_PROCESS` from the generic grid entirely, so it is neither
+pinned nor drawn as four anonymous switches, puts `Main Control` first, then the remaining
 groups alphabetically, and folds `DRIVER_MACHINERY` (`components/machinery.ts`, Ekos' own
 skip list) into a collapsed "Driver internals" section. `CONNECTION` is on Ekos' list and
 deliberately **not** on ours: Ekos drives connection from its own toolbar and the panel has
@@ -109,10 +152,39 @@ shadcn/ui primitives live in `src/ui/` (added via the shadcn CLI, `components.js
 re-exported. Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup` and friends per the
 shadcn rules; imports use the standard `@/` alias; **do not hand-edit `src/ui/`.**
 
+Two files break that rule, both to fix something the registry gets wrong and neither
+reachable from outside the file. Each is marked `DEVIATION` in place, and each has to be
+re-applied after a `shadcn add` of that component:
+
+- `scroll-area.tsx` grows a `viewportProps` passthrough. Upstream spreads props onto the
+  Root only, so nothing can reach the scrolling element - and a scroll container outside
+  the tab order cannot be scrolled by keyboard at all. The viewport's class list has
+  carried `focus-visible:ring` since the component was added, so the styling was already
+  waiting for a tabindex nobody could supply.
+- `button.tsx` rings the `destructive` variant at `destructive/50` instead of upstream's
+  `/20` (`/40` in dark), which measured 1.30:1 against a card in light and 1.24:1 in dark -
+  the weakest focus indicator in the theme, on the button that deletes a saved
+  configuration with no undo.
+
 The theme is the shadcn tokens in `src/theme.css` plus `--state-*` for INDI
 Idle/Ok/Busy/Alert. The build emits a prebuilt `dist/styles.css`
 (`@indi-nexus/react/styles.css`, batteries-included) and copies the source `theme.css`
 (`@indi-nexus/react/theme.css`, for consumers running their own Tailwind).
+
+Two things in that file are load bearing and easy to undo by accident:
+
+- **The four `--state-*` fills are tuned for separation, so contrast is fixed on the
+  foreground.** Light mode was white-on-colour and all four failed AA at the badge's 12px.
+  Darkening the fills enough for white text squeezes them into one narrow band of lightness
+  and collapses exactly the separation they were picked for - Busy against Alert fell from
+  CIEDE2000 7.0 to 3.3 under simulated deuteranopia when tried - so the light `-foreground`
+  tokens became near-black instead, as the dark palette already did. Change a foreground,
+  not a fill.
+- **Busy pulses with a ring, not with opacity** (`--animate-state-pulse`). Tailwind's
+  `animate-pulse` fades the element to 0.5, which takes the badge's text down with its
+  fill: 1.75:1 at the dimmest frame, and no fill colour survives that - solid black faded
+  to 0.5 over white reaches only 3.95:1. Ringing the badge leaves its own colours identical
+  at every frame.
 
 The `tsx` fences in this package's `README.md`, in `docs/guides/frontend.md`, in
 `docs/index.md`, in the root `README.md` and in `docs/guides/tutorial-open-meteo.md` are
@@ -168,10 +240,16 @@ tied to the markdown by nothing at all.
 ## `apps/panel/` - the reference panel
 
 Vite + `@tailwindcss/vite`, composed entirely from `@indi-nexus/react`: a device sidebar with
-connection status and a light/dark toggle, a `DevicePanel` per device, and a docked message
-strip. `vite build` emits into `src/indi_nexus/web/static/panel/`, where `web/app.py` serves
+connection status, a `DeviceConfigDialog` entry for the selected device and a light/dark
+toggle, a `DevicePanel` per device, and a docked message strip. `vite build` emits into `src/indi_nexus/web/static/panel/`, where `web/app.py` serves
 it at `/`. The wheel bundles that built panel (`hatch_build.py` build hook plus `artifacts`
 in `pyproject.toml`, which rebuilds it with pnpm when missing), so `pip install` ships the UI.
+
+The shell owns the page's structure, which the primitives cannot: the sidebar's markup is
+all `div`s, so the device menu is wrapped in a `nav aria-label="Devices"` (without it the
+only means of moving between devices sits outside every landmark), and `AlertAnnouncer` is
+mounted here rather than inside `DevicePanel` so it covers every device and not just the
+selected one.
 
 **Tailwind source detection is rooted at the Vite root, not at the CSS file.** The demo
 configs set `root: "demo"`, so without the explicit `@source "./**/*.{ts,tsx}"` in
@@ -194,7 +272,7 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
   change its simulator too, or the demo stops being a demo of anything.
 - **`weather-sim.ts` also carries `CONFIG_PROCESS`**, libindi's universal configuration
   property (four members, AtMostOne, group "Options"), so the published demo exercises
-  `DeviceConfigCard` rather than leaving it visible only in tests. It answers every action
+  `DeviceConfigDialog` rather than leaving it visible only in tests. It answers every action
   with all members **Off**, because `CONFIG_PROCESS` is a momentary action and not state: a
   member left On renders as a button stuck in its pressed position.
   - It carries **four** members where `openmeteo_device.py`'s `define_config()` publishes

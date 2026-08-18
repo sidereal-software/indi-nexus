@@ -40,14 +40,16 @@ Two components do the work. `IndiProvider` opens a WebSocket to the bridge, keep
 
 ### What the panel puts where
 
-Not every property is equally interesting, so three of them come out of the
-alphabetical run of groups.
+Not every property is equally interesting, so three of them are treated differently
+from the alphabetical run of groups.
 
-**Configuration comes first.** Every libindi driver publishes `CONFIG_PROCESS`, and
-`DevicePanel` pins it at the top as its own section, drawn by `DeviceConfigCard`
-rather than as four anonymous buttons.
+**Configuration is not on the panel at all.** Every libindi driver publishes
+`CONFIG_PROCESS`, but it is a set of actions on the device rather than something to
+read, and one of them deletes a file with no undo, so it does not belong beside live
+instrument readings. `DeviceConfigDialog` offers it from the sidebar instead, and
+`DevicePanel` leaves it out rather than drawing it as four anonymous buttons.
 
-**`Main Control` comes next**, because that is where a driver puts the controls an
+**`Main Control` comes first**, because that is where a driver puts the controls an
 operator came for. Everything else follows alphabetically, so the layout is the same
 every time you open the page.
 
@@ -64,27 +66,34 @@ Because the fold is worked out from what the device has right now, a driver that
 defines `DEBUG_LEVEL` when you switch debugging on, and deletes it again when you switch
 it off, moves it in and out on its own.
 
-### What `DeviceConfigCard` does and does not promise
+### What `DeviceConfigDialog` does and does not promise
 
 `CONFIG_PROCESS` persists a device's settings to `$HOME/.indi/<device>_config.xml` on the
-observatory computer. Three things about it are not what the INDI names suggest, and the
-card says so on the card rather than in a manual nobody has open at 2am:
+observatory computer. `DeviceConfigDialog` is the entry that offers it: give it the
+selected device and it renders a sidebar item that opens the actions in a modal, or
+nothing at all when no device is selected or the selected one has no `CONFIG_PROCESS`.
+Give it a child element and that becomes the trigger instead, so a screen with its own
+shell opens the same modal from wherever suits it.
+
+Three things about the property are not what the INDI names suggest, and the dialog says
+so on screen rather than in a manual nobody has open at 2am:
 
 - **"Restore first saved", not "Default".** `CONFIG_DEFAULT` reads a `.default` file,
   which libindi writes as a copy of the *first* configuration ever saved for that device.
   It is not the factory settings, and on a driver that was misconfigured before its first
   save it restores the misconfiguration.
 - **Purging cannot be undone.** `CONFIG_PURGE` is a bare file deletion in libindi, with no
-  backup and no confirmation anywhere in the library. The card puts it behind a dialog that
-  names the device, and sends nothing until you confirm.
+  backup and no confirmation anywhere in the library. It is behind a second confirmation
+  that names the device, and nothing is sent until you confirm. Dismissing that
+  confirmation leaves the configuration modal open and sends nothing.
 - **Save does not necessarily save what you see.** Each driver chooses which properties it
-  persists, and a client cannot ask which ones over the wire. The card says that outright
+  persists, and a client cannot ask which ones over the wire. The dialog says that outright
   instead of letting the screen imply it.
 
 Loading a configuration - `CONFIG_LOAD` or `CONFIG_DEFAULT` - replays every saved value
 through the driver as though it had just been sent, so on a connected instrument it is a
-hardware command and can move the mount, the focuser or the filter wheel. The card confirms
-those while the device is connected, and does not bother you while it is not.
+hardware command and can move the mount, the focuser or the filter wheel. Those confirm
+while the device is connected, and do not bother you while it is not.
 
 Feedback is the property's own Idle/Ok/Busy/Alert state, as everywhere else: the driver
 answering is what says the action happened.
@@ -128,8 +137,9 @@ function Observatory() {
 }
 ```
 
-`ConnectionStatus` and `MessageLog` are the other two pieces the reference panel adds
-around that, and they take no props.
+`ConnectionStatus` and `MessageLog` are two of the pieces the reference panel adds around
+that, and they take no props. The third is `DeviceConfigDialog`, which takes the device
+your own shell has selected.
 
 ## Building your own layout
 
@@ -214,14 +224,27 @@ for scripting a sequence.
 | Component | Renders |
 |---|---|
 | `DevicePanel` | every property of a device, grouped |
-| `DeviceConfigCard` | one device's `CONFIG_PROCESS`, with the guards libindi lacks |
+| `DeviceConfigDialog` | a sidebar entry opening one device's `CONFIG_PROCESS`, with the guards libindi lacks |
 | `PropertyVectorCard` | one property, with the right control for its kind |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |
 | `ConnectionStatus` | both connection states, plus a badge when the bridge announces a [protocol version](protocol.md#versioning-the-browser-contract) this build was not written against |
 | `MessageLog` | the rolling INDI message log, **and the bridge's write rejections** |
+| `AlertAnnouncer` | announces a property entering `Alert` to a screen reader |
 
 Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,
 hand-built widgets around them.
+
+!!! important "`AlertAnnouncer` is the only thing that speaks"
+
+    Everything on this page arrives over a socket, and a screen reader announces none of
+    it on its own: a property going `Ok` to `Alert` redraws a badge and says nothing.
+    `AlertAnnouncer` is the live region that fixes that. Render it once, anywhere.
+
+    It deliberately announces **only** a transition into `Alert`, not every value. A
+    driver polling once a second would otherwise talk over itself continuously, and a
+    temperature changing is not a status message while an instrument faulting is. A UI
+    that leaves it out is silent for a blind operator, which is the failure mode with no
+    workaround: there is nothing to click and nothing to re-read.
 
 !!! important "`MessageLog` is where a refused write shows up"
 

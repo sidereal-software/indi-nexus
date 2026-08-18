@@ -1,6 +1,7 @@
 /** A card presenting one INDI property vector: header + kind-specific control. */
 
 import { displayLabel, type Vector } from "@indi-nexus/client";
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useDisplaySettings } from "../display-settings";
@@ -21,18 +22,34 @@ export interface PropertyVectorCardProps {
  * when the surrounding `DisplaySettingsProvider` enables debug info; operators
  * see just the human label by default.
  *
+ * The card is a labelled group and its title is a level-3 heading, which is what
+ * makes a panel of thirty cards navigable without a mouse: the heading list is
+ * the property list. The group's name is the title *and* the state badge, so
+ * "Exposure, Alert" arrives as one thing rather than as a title with a coloured
+ * shape floating near it. `CardTitle` renders a plain `div`, so the heading role
+ * is declared on it rather than by swapping the vendored primitive's element.
+ *
  * @param props - The vector and an optional class name.
  * @returns The card element.
  */
 export function PropertyVectorCard({ vector, className }: PropertyVectorCardProps) {
   const { showDebug } = useDisplaySettings();
   const perm = "perm" in vector ? vector.perm : undefined;
+  const id = useId();
+  const titleId = `${id}-title`;
+  const stateId = `${id}-state`;
   return (
-    <Card className={cn("gap-3 py-4", className)}>
+    <Card
+      role="group"
+      aria-labelledby={`${titleId} ${stateId}`}
+      className={cn("gap-3 py-4", className)}
+    >
       <CardHeader className="gap-0.5 px-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="truncate text-sm">{displayLabel(vector)}</CardTitle>
+            <CardTitle id={titleId} role="heading" aria-level={3} className="truncate text-sm">
+              {displayLabel(vector)}
+            </CardTitle>
             {showDebug ? (
               <CardDescription className="truncate font-mono text-xs">
                 {vector.name}
@@ -40,7 +57,7 @@ export function PropertyVectorCard({ vector, className }: PropertyVectorCardProp
               </CardDescription>
             ) : null}
           </div>
-          <StateBadge state={vector.state} />
+          <StateBadge id={stateId} state={vector.state} />
         </div>
       </CardHeader>
       <CardContent className="px-4">

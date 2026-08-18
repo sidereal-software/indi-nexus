@@ -11,15 +11,25 @@ import { Badge } from "@/ui/badge";
  * tell an instrument mid-move from one that stopped there. The other three are
  * resting states: animating them would spend the reader's attention on nothing.
  * `motion-safe` holds it still for anyone whose system asks for reduced motion.
+ *
+ * The animation rings the element rather than fading it (see `--animate-state-pulse`
+ * in `theme.css`): Tailwind's `animate-pulse` drops the opacity to 0.5, which takes
+ * the badge's text down with its fill and put a passing badge at 1.75:1 for half of
+ * every cycle.
  */
 function pulseClass(state: IPState): string {
-  return state === "Busy" ? "motion-safe:animate-pulse" : "";
+  return state === "Busy" ? "motion-safe:animate-state-pulse" : "";
 }
 
 /** Props for {@link StateBadge}. */
 export interface StateBadgeProps {
   /** The INDI property state to display. */
   state: IPState;
+  /**
+   * DOM id for the badge, so a surrounding region can name itself with the state
+   * as well as the label (`aria-labelledby="title badge"`).
+   */
+  id?: string;
   className?: string;
 }
 
@@ -32,9 +42,10 @@ export interface StateBadgeProps {
  * @param props - The state and optional class name.
  * @returns The badge element.
  */
-export function StateBadge({ state, className }: StateBadgeProps) {
+export function StateBadge({ state, id, className }: StateBadgeProps) {
   return (
     <Badge
+      id={id}
       data-indi-state={state}
       className={cn(
         "border-transparent bg-[var(--indi-state)] text-[var(--indi-state-foreground)] tabular-nums",

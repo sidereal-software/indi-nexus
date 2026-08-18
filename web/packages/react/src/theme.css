@@ -34,10 +34,20 @@
   --secondary: #527575;
   --secondary-foreground: #ffffff;
   --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
+  /* Was #6b7280, which passes on a white card (4.83:1) and fails everywhere the
+     surface is tinted: 4.39:1 on the sidebar and 4.17:1 on `--accent`, and the
+     sidebar is where it labels the connection state and the two footer settings.
+     A token has to clear AA on every surface it is used over, not on the lightest
+     one. 5.55 / 5.05 / 4.79:1 on white, the sidebar and the accent. */
+  --muted-foreground: #616974;
   --accent: #eeeeee;
   --accent-foreground: #111827;
-  --destructive: #ef4444;
+  /* Was #ef4444, which is 3.76:1 under the `text-white` the destructive button
+     variant hardcodes - and that button is the one that deletes a saved
+     configuration with no undo. 4.83:1 now. Dark mode keeps #ef4444 because the
+     variant draws it at `bg-destructive/60` there, which composites to #963031
+     and measures 7.60:1. */
+  --destructive: #dc2626;
   --border: #e5e7eb;
   --input: #e5e7eb;
   --ring: #3a2a70;
@@ -72,15 +82,29 @@
 
   --tracking-normal: 0rem;
 
-  /* INDI vector states (Idle / Ok / Busy / Alert) - not part of the base theme. */
+  /*
+   * INDI vector states (Idle / Ok / Busy / Alert) - not part of the base theme.
+   *
+   * The four fills are tuned for separation under colour-vision deficiency and
+   * are deliberately unchanged: they were white-on-colour and every one failed
+   * AA at the badge's 12px (Idle 2.54, Busy 3.19, Ok 3.30, Alert 3.76). The
+   * fix is the *foreground*, not the fill - darkening the fills far enough for
+   * white text would have squeezed all four into one narrow band of lightness
+   * and collapsed exactly the separation they were chosen for (Busy against
+   * Alert fell from CIEDE2000 7.0 to 3.3 under simulated deuteranopia when
+   * tried). Dark text on the untouched fills leaves every hue distance exactly
+   * where it was and clears AA with headroom: 7.34 / 5.01 / 6.02 / 5.01:1.
+   * Each is that state's own hue taken to near-black, the way the dark palette
+   * below already does it.
+   */
   --state-idle: #9ca3af;
-  --state-idle-foreground: #ffffff;
+  --state-idle-foreground: #0f1319;
   --state-ok: #16a34a;
-  --state-ok-foreground: #ffffff;
+  --state-ok-foreground: #00250f;
   --state-busy: #d97706;
-  --state-busy-foreground: #ffffff;
+  --state-busy-foreground: #150e00;
   --state-alert: #ef4444;
-  --state-alert-foreground: #ffffff;
+  --state-alert-foreground: #280505;
 }
 
 .dark {
@@ -219,6 +243,33 @@
   --tracking-wide: calc(var(--tracking-normal) + 0.025em);
   --tracking-wider: calc(var(--tracking-normal) + 0.05em);
   --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+
+  /*
+   * The Busy indicator: a ring expanding out of whatever wears `data-indi-state`.
+   *
+   * It cannot be Tailwind's `animate-pulse`. That fades the element's opacity to
+   * 0.5, which composites the fill *and* the text it carries towards the page, and
+   * measured 1.75:1 at the dimmest frame. No fill colour survives it - even solid
+   * black at 0.5 over white reaches only 3.95:1 - so a badge that passes AA at rest
+   * still fails half the time it is animating. Moving the motion into a ring leaves
+   * the badge itself untouched, so its contrast is the same at every frame.
+   *
+   * `--indi-state` is set on the animating element by the mapping at the bottom of
+   * this file, so one keyframe serves all four states.
+   */
+  --animate-state-pulse: state-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes state-pulse {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--indi-state) 60%, transparent);
+    }
+    70% {
+      box-shadow: 0 0 0 5px color-mix(in srgb, var(--indi-state) 0%, transparent);
+    }
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--indi-state) 0%, transparent);
+    }
+  }
 
   /* Expand/collapse animations for the shadcn Accordion (per its v4 docs). */
   --animate-accordion-down: accordion-down 0.2s ease-out;

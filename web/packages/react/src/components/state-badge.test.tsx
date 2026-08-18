@@ -22,13 +22,22 @@ describe("StateBadge", () => {
 
   it("pulses only while Busy, and only when motion is welcome", () => {
     render(<StateBadge state="Busy" />);
-    expect(screen.getByText("Busy")).toHaveClass("motion-safe:animate-pulse");
+    expect(screen.getByText("Busy")).toHaveClass("motion-safe:animate-state-pulse");
 
     for (const state of [IPState.Idle, IPState.Ok, IPState.Alert]) {
       cleanup();
       render(<StateBadge state={state} />);
-      expect(screen.getByText(state).className).not.toContain("animate-pulse");
+      expect(screen.getByText(state).className).not.toContain("animate-");
     }
+  });
+
+  it("never pulses by fading, which would take the label's contrast with it", () => {
+    // `animate-pulse` drops the whole badge to opacity 0.5, which composites the
+    // text as well as the fill: the badge measured 1.75:1 at the dimmest frame,
+    // and no fill colour can survive that (solid black at 0.5 over white reaches
+    // 3.95:1). The ring animation leaves the badge's own colours alone.
+    render(<StateBadge state="Busy" />);
+    expect(screen.getByText("Busy").className).not.toContain("animate-pulse");
   });
 
   it("merges a caller-supplied class name", () => {

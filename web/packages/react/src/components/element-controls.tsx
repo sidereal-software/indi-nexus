@@ -5,8 +5,9 @@
  * corresponding `new` frame through the client:
  *
  * - number/text: editable inputs plus a Set button (read-only vectors show values);
- * - switch: a `ToggleGroup` honouring the vector's rule (OneOfMany/AtMostOne are
- *   single-select, AnyOfMany is multi-select), sending on each toggle;
+ * - switch: a group of toggle buttons honouring the vector's rule
+ *   (OneOfMany/AtMostOne are single-select, AnyOfMany is multi-select), sending
+ *   on each toggle;
  * - light: read-only coloured status dots;
  * - blob: read-only size/format with a download link when a payload is present.
  *
@@ -31,7 +32,7 @@ import type { FormEvent } from "react";
 import { Button } from "@/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/ui/field";
 import { Input } from "@/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
+import { Toggle } from "@/ui/toggle";
 import { useIndiClient } from "../context";
 import { StateDot } from "./state-badge";
 
@@ -141,7 +142,17 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
             </Field>
           );
         })}
-        <Button type="submit" variant="secondary" size="sm" className="self-end">
+        {/* One writable vector per card means a device panel shows five buttons
+            reading exactly "Set". The visible word stays - the card title is
+            right above it - but the accessible name carries the vector, so a
+            list of controls tells exposure from binning from gain. */}
+        <Button
+          type="submit"
+          variant="secondary"
+          size="sm"
+          className="self-end"
+          aria-label={`Set ${displayLabel(vector)}`}
+        >
           Set
         </Button>
       </FieldGroup>
@@ -149,89 +160,90 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
   );
 }
 
-/** Switch vector: a ToggleGroup honouring the selection rule. */
+/**
+ * The joined, segmented look these buttons used to inherit from `ToggleGroup`.
+ *
+ * `first:`/`last:` key off position within the group, exactly as the primitive's
+ * own `data-[spacing=0]` rules did.
+ *
+ * A selected member *is* the instrument state, so mistaking it is a real error, not an
+ * aesthetic one. It wears `secondary` - the same teal as the Set button - so "this is
+ * the live state" looks like the rest of the action vocabulary, and it is never the
+ * colour an unselected member can take: the stock outline toggle drew selection with
+ * `accent` and hovered to `accent` too, which made a hovered unselected member identical
+ * to the selected one.
+ *
+ * The bare `hover:` classes are what tailwind-merge needs to drop the variant's accent
+ * hover (same modifier, same group); the `data-[state=on]:hover:` pair then holds the
+ * selected look under the pointer, on specificity, since it carries the extra attribute
+ * selector.
+ */
+const SWITCH_MEMBER_CLASSES =
+  "w-auto min-w-0 shrink-0 rounded-none border-l-0 px-3 shadow-none first:rounded-l-md " +
+  "first:border-l last:rounded-r-md focus:z-10 focus-visible:z-10 " +
+  "hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary " +
+  "data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground " +
+  "data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground";
+
+/**
+ * Switch vector: a group of toggle buttons honouring the selection rule.
+ *
+ * Deliberately **not** a `ToggleGroup`, and the reason is a promise the group
+ * could not keep. `type="single"` is a Radix radio group: `role="radiogroup"`
+ * with `role="radio"` children, and the ARIA radio pattern is
+ * selection-follows-focus, so arrowing from Disconnect to Connect tells a screen
+ * reader the selection moved. It does not. Nothing goes on the wire until the
+ * member is pressed, which is the right behaviour for a control that connects
+ * hardware and the wrong thing to claim while doing it. A group of toggle
+ * buttons says what actually happens: each member is pressed or not, focus
+ * changes nothing, and pressing sends.
+ *
+ * @param props - The switch vector to render.
+ * @returns The group element.
+ */
 export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
   const client = useIndiClient();
   const writable = isWritable(vector.perm);
-  const single = vector.rule === "OneOfMany" || vector.rule === "AtMostOne";
-  const onNames = vector.elements.filter((element) => element.value === "On").map((e) => e.name);
 
-  // A selected member *is* the instrument state, so mistaking it is a real error, not an
-  // aesthetic one. It wears `secondary` - the same teal as the Set button - so "this is
-  // the live state" looks like the rest of the action vocabulary, and it is never the
-  // colour an unselected member can take: the stock outline toggle drew selection with
-  // `accent` and hovered to `accent` too, which made a hovered unselected member identical
-  // to the selected one.
-  //
-  // The bare `hover:` classes are what tailwind-merge needs to drop the variant's accent
-  // hover (same modifier, same group); the `data-[state=on]:hover:` pair then holds the
-  // selected look under the pointer, on specificity, since it carries the extra attribute
-  // selector.
-  const items = vector.elements.map((element) => (
-    <ToggleGroupItem
-      key={element.name}
-      value={element.name}
-      className="px-3 hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground"
-    >
-      {displayLabel(element)}
-    </ToggleGroupItem>
-  ));
-
-  if (single) {
-    const current = onNames[0] ?? "";
-    return (
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        size="sm"
-        value={current}
-        disabled={!writable}
-        className="flex-wrap justify-start"
-        onValueChange={(next) => {
-          if (!writable) return;
-          if (next) {
-            client.setSwitch(vector.device, vector.name, { [next]: "On" });
-            return;
-          }
-          // An empty selection means the member that was already on has been clicked
-          // again. Under OneOfMany exactly one member is on by definition, so that is
-          // not a state the instrument can be in - ignore it and make the operator press
-          // the member they actually want, rather than silently turning the device off.
-          // AtMostOne genuinely permits none, so there it stays a way to clear.
-          if (vector.rule === "AtMostOne" && current) {
-            client.setSwitch(vector.device, vector.name, { [current]: "Off" });
-          }
-        }}
-      >
-        {items}
-      </ToggleGroup>
-    );
+  function onPressed(name: string, pressed: boolean) {
+    if (!writable) return;
+    if (pressed) {
+      client.setSwitch(vector.device, vector.name, { [name]: "On" });
+      return;
+    }
+    // Un-pressing means the member that was already on has been pressed again.
+    // Under OneOfMany exactly one member is on by definition, so "none" is not a
+    // state the instrument can be in - ignore it and make the operator press the
+    // member they actually want, rather than silently turning the device off.
+    // AtMostOne genuinely permits none, so there it stays a way to clear, and
+    // AnyOfMany is just the member going Off.
+    if (vector.rule === "OneOfMany") return;
+    client.setSwitch(vector.device, vector.name, { [name]: "Off" });
   }
 
   return (
-    <ToggleGroup
-      type="multiple"
-      variant="outline"
-      size="sm"
-      value={onNames}
-      disabled={!writable}
-      className="flex-wrap justify-start"
-      onValueChange={(next) => {
-        if (!writable) return;
-        const nextOn = new Set(next);
-        const changes: Record<string, "On" | "Off"> = {};
-        for (const element of vector.elements) {
-          const wasOn = element.value === "On";
-          const nowOn = nextOn.has(element.name);
-          if (wasOn !== nowOn) changes[element.name] = nowOn ? "On" : "Off";
-        }
-        if (Object.keys(changes).length > 0) {
-          client.setSwitch(vector.device, vector.name, changes);
-        }
-      }}
+    // A fieldset rather than a div with role="group": it is a set of related
+    // controls, which is the element's whole job, and `min-w-0` undoes the
+    // `min-width: min-content` a fieldset carries by default and which would
+    // otherwise stop the members wrapping.
+    <fieldset
+      aria-label={displayLabel(vector)}
+      className="flex w-fit min-w-0 flex-wrap items-center justify-start rounded-md"
     >
-      {items}
-    </ToggleGroup>
+      {vector.elements.map((element) => (
+        <Toggle
+          key={element.name}
+          variant="outline"
+          size="sm"
+          pressed={element.value === "On"}
+          disabled={!writable}
+          onPressedChange={(pressed) => onPressed(element.name, pressed)}
+          className={SWITCH_MEMBER_CLASSES}
+        >
+          {displayLabel(element)}
+        </Toggle>
+      ))}
+    </fieldset>
   );
 }
 

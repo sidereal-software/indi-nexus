@@ -99,6 +99,20 @@ describe("PropertyVectorCard", () => {
     expect(frame.vector.elements).toContainEqual({ kind: "switch", name: "on", value: "On" });
   });
 
+  it("titles the card with a heading and names the group with the state", () => {
+    renderConnected(<PropertyVectorCard vector={numberVec} />);
+
+    // Untagged, the title was StaticText and a panel of thirty cards had no
+    // structure to move through: the heading list is the property list.
+    const title = screen.getByRole("heading", { level: 3, name: "Exposure" });
+
+    // The badge is beside the title, so without the tie it is a coloured shape
+    // that happens to sit near it. In the name it arrives as one thing.
+    const card = screen.getByRole("group", { name: "Exposure Idle" });
+    expect(card).toHaveAttribute("data-slot", "card");
+    expect(card.getAttribute("aria-labelledby")?.split(" ")).toContain(title.id);
+  });
+
   it("titles a vector whose label is the empty string with its name", () => {
     renderConnected(<PropertyVectorCard vector={{ ...switchVec, label: "" }} />);
     expect(screen.getByText("power")).toBeInTheDocument();

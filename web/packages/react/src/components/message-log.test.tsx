@@ -65,6 +65,17 @@ describe("MessageLog", () => {
     expect(screen.getByText("early bird")).toBeInTheDocument();
   });
 
+  it("is a polite log region, and one a keyboard can scroll", () => {
+    renderConnected(<MessageLog />);
+    // The scrolling viewport carries both: `log` because everything arriving over
+    // the socket has to reach a reader who cannot see the strip, and the tab stop
+    // because the view follows the newest entry, so without it the history above
+    // is reachable only with a wheel.
+    const region = screen.getByRole("log", { name: "INDI messages" });
+    expect(region).toHaveAttribute("data-slot", "scroll-area-viewport");
+    expect(region).toHaveAttribute("tabindex", "0");
+  });
+
   it("retains only the newest `limit` messages", () => {
     const { socket } = renderConnected(<MessageLog limit={2} />);
     receive(socket, { tag: "message", message: "one" });

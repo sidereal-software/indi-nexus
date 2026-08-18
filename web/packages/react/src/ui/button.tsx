@@ -10,8 +10,14 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        // DEVIATION from the shadcn registry: the focus ring. Upstream rings this
+        // variant at destructive/20 (and /40 in dark), which measures 1.30:1 against
+        // the card in light and 1.24:1 in dark, where every other variant rings at
+        // ~2.8:1 - so the one button that deletes something with no undo is also the
+        // one whose keyboard focus is hardest to see. /50 matches the ring the other
+        // variants get from the base class. Keep this on the next `shadcn add button`.
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/50 dark:bg-destructive/60",
         outline:
           "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:

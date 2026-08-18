@@ -111,6 +111,21 @@ describe("ValueVectorControl", () => {
     expect(frame.vector.elements).toEqual([{ kind: "number", name: "RA", value: 5 }]);
   });
 
+  it("names each Set button after the vector it submits", () => {
+    // One writable vector per card, so a CCD panel offers five buttons all
+    // reading "Set". The visible word stays; the accessible name carries the
+    // vector, so a list of controls tells exposure from binning.
+    renderConnected(
+      <>
+        <ValueVectorControl vector={numberVec({ name: "CCD_EXPOSURE", label: "Exposure" })} />
+        <ValueVectorControl vector={numberVec({ name: "CCD_BINNING", label: "Binning" })} />
+      </>,
+    );
+    expect(screen.getByRole("button", { name: "Set Exposure" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set Binning" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Set" })).not.toBeInTheDocument();
+  });
+
   it("shows a live current-value readout beside a writable input", () => {
     // The readout is telemetry (where the device is now); the input is only the
     // requested new value, so a slewing dome must update the readout while
@@ -234,6 +249,24 @@ describe("SwitchVectorControl", () => {
     // device off" - the operator has to press the member they want.
     fireEvent.click(screen.getByText("a"));
     expect(socket.sent).toHaveLength(0);
+  });
+
+  it("is a group of toggle buttons and never claims the radio pattern", () => {
+    renderConnected(<SwitchVectorControl vector={switchVec("OneOfMany", ["a"], "rw")} />);
+
+    // A Radix ToggleGroup type="single" is a radiogroup, and the ARIA radio
+    // pattern is selection-follows-focus: arrowing from Disconnect to Connect
+    // told a reader the connection had changed while nothing went on the wire.
+    // The two-step behaviour is right for a control that connects hardware, so
+    // the claim is what changed.
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+
+    const group = screen.getByRole("group", { name: "MODE" });
+    const on = screen.getByRole("button", { name: "a", pressed: true });
+    const off = screen.getByRole("button", { name: "b", pressed: false });
+    expect(group).toContainElement(on);
+    expect(group).toContainElement(off);
   });
 
   it("disables the toggles and sends nothing when read-only", () => {
