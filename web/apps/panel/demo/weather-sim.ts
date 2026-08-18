@@ -20,6 +20,7 @@ import {
   type IPState,
   type LightVector,
   type NumberVector,
+  type SwitchVector,
   type TextVector,
   type Vector,
   type WebSocketLike,
@@ -161,6 +162,7 @@ export class WeatherSimSocket implements WebSocketLike {
   private longitude = -118.2437;
   private timer: ReturnType<typeof setInterval> | null = null;
   private live = false;
+  private saved = false;
 
   /** Injectable so tests can drive the simulator without a network. */
   constructor(private readonly fetchPayload: (lat: number, lon: number) => Promise<Payload>) {
@@ -190,6 +192,7 @@ export class WeatherSimSocket implements WebSocketLike {
     if (vector.device !== DEVICE) return;
     if (vector.name === "CONNECTION") void this.handleConnection(vector);
     if (vector.name === "GEOGRAPHIC_COORD") void this.handleSite(vector);
+    if (vector.name === "CONFIG_PROCESS") this.handleConfig(vector);
   }
 
   /** Close the socket and stop polling. */
@@ -256,6 +259,47 @@ export class WeatherSimSocket implements WebSocketLike {
       this.deliver({ tag: "set", vector: this.siteVector("Alert") });
       this.sendMessage(`[ERROR] ${DEVICE} is not answering: ${String(error)}`);
     }
+  }
+
+  /**
+   * Run one configuration action, the way libindi's CONFIG_PROCESS behaves.
+   *
+   * Loading anything before a configuration has ever been saved is an error in
+   * libindi (there is no file to read), and it is the state a visitor is in on
+   * arrival, so the demo shows it rather than pretending every button succeeds.
+   *
+   * The vector is always answered with every member Off. CONFIG_PROCESS is a
+   * momentary action, not a state: a member left On renders as a button stuck
+   * in its pressed position.
+   */
+  private handleConfig(vector: Vector): void {
+    if (vector.kind !== "switch") return;
+    const pressed = vector.elements.find((element) => element.value === "On")?.name;
+    if (pressed === undefined) return;
+
+    if (pressed === "CONFIG_SAVE") {
+      this.saved = true;
+      this.deliver({ tag: "set", vector: this.configVector("Ok") });
+      this.sendMessage(`Configuration saved for ${DEVICE}.`);
+      return;
+    }
+    if (pressed === "CONFIG_PURGE") {
+      this.saved = false;
+      this.deliver({ tag: "set", vector: this.configVector("Ok") });
+      this.sendMessage(`Saved configuration for ${DEVICE} deleted.`);
+      return;
+    }
+    if (!this.saved) {
+      this.deliver({ tag: "set", vector: this.configVector("Alert") });
+      this.sendMessage(`[ERROR] ${DEVICE} has no saved configuration to load.`);
+      return;
+    }
+    this.deliver({ tag: "set", vector: this.configVector("Ok") });
+    this.sendMessage(
+      pressed === "CONFIG_DEFAULT"
+        ? `${DEVICE} restored the first configuration it saved.`
+        : `${DEVICE} loaded its saved configuration.`,
+    );
   }
 
   /** Refetch on the timer. */
@@ -492,11 +536,42 @@ export class WeatherSimSocket implements WebSocketLike {
     };
   }
 
-  /** Everything the device exposes, as the Python driver's setup() defines it. */
+  /**
+   * The configuration actions, in libindi's own shape.
+   *
+   * Every libindi driver carries this property - four members, AtMostOne, group
+   * "Options" - so the demo carries it too, and the panel's `DeviceConfigCard`
+   * is exercised on the published page rather than only in tests. Members are
+   * always reported Off: see `handleConfig`.
+   */
+  private configVector(state: IPState): SwitchVector {
+    return {
+      kind: "switch",
+      device: DEVICE,
+      name: "CONFIG_PROCESS",
+      label: "Configuration",
+      group: "Options",
+      state,
+      perm: "rw",
+      rule: "AtMostOne",
+      elements: ["CONFIG_LOAD", "CONFIG_SAVE", "CONFIG_DEFAULT", "CONFIG_PURGE"].map((name) => ({
+        kind: "switch" as const,
+        name,
+        value: "Off" as const,
+      })),
+    };
+  }
+
+  /**
+   * Everything the device exposes: the Python driver's setup(), plus
+   * CONFIG_PROCESS, which libindi gives every driver rather than the example
+   * declaring it.
+   */
   private defs(): Vector[] {
     return [
       this.connectionVector(false, "Ok"),
       this.siteVector("Ok"),
+      this.configVector("Idle"),
       {
         kind: "number",
         device: DEVICE,

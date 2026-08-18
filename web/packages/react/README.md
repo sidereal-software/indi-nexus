@@ -57,9 +57,18 @@ There are hooks for each property kind (`useNumber`, `useText`, `useSwitch`, `us
 for whole properties and devices (`useProperty`, `useDevice`, `useDevices`), and for the
 bridge's message log (`useMessages`).
 
-Alongside the INDI-aware components (`DevicePanel`, `PropertyVectorCard`, `StateBadge`,
-`ConnectionStatus`, `MessageLog`) the underlying themed shadcn/ui primitives are exported
-too, so your own screens match without extra setup.
+Alongside the INDI-aware components (`DevicePanel`, `DeviceConfigCard`, `PropertyVectorCard`,
+`StateBadge`, `ConnectionStatus`, `MessageLog`) the underlying themed shadcn/ui primitives are
+exported too, so your own screens match without extra setup.
+
+`DeviceConfigCard` is the one that is more than a rendering of a property. It draws
+`CONFIG_PROCESS`, which every libindi driver carries, and names what its members really do:
+purging a saved configuration is behind a confirmation because libindi deletes the file with
+no backup, loading one confirms while the instrument is connected because the saved values
+are replayed through the driver, and "Default" is labelled "Restore first saved" because that
+is what libindi's `.default` file holds. `DevicePanel` pins it at the top and folds the
+driver's own machinery (`DRIVER_MACHINERY`: debug plumbing, snooping) into a collapsed
+section at the bottom.
 
 ## Styling
 

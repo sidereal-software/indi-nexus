@@ -58,11 +58,14 @@ def free_port() -> int:
 
 @dataclass
 class Server:
-    """A running ``indiserver`` and the port it listens on."""
+    """A running ``indiserver``, the port it listens on, and its private HOME."""
 
     port: int
     process: subprocess.Popen[bytes]
     log: Path
+    #: ``HOME`` for this server and its drivers, so a test can look at what a
+    #: driver persisted under ``.indi/``.
+    home: Path
 
     def stop(self) -> None:
         """Terminate the server, escalating to a kill if it ignores SIGTERM."""
@@ -146,7 +149,7 @@ def indi_server(tmp_path: Path) -> Iterator[Callable[..., Server]]:
             cwd=REPO_ROOT,
             env=env,
         )
-        server = Server(port=port, process=process, log=log)
+        server = Server(port=port, process=process, log=log, home=home)
         servers.append(server)
         _wait_until_listening(port, server)
         return server

@@ -54,6 +54,19 @@ function connection(member: string): Vector {
   } as Vector;
 }
 
+/** The partial CONFIG_PROCESS write a client sends. */
+function config(member: string): Vector {
+  return {
+    kind: "switch",
+    device: DEVICE,
+    name: "CONFIG_PROCESS",
+    state: "Idle",
+    perm: "rw",
+    rule: "AtMostOne",
+    elements: [{ kind: "switch", name: member, value: "On" }],
+  } as Vector;
+}
+
 /** The most recent `set` for one property, if the simulator sent one. */
 function latest(frames: Frame[], name: string): Vector | undefined {
   return frames.filter((f) => f.tag === "set" && f.vector?.name === name).at(-1)?.vector;
@@ -78,5 +91,30 @@ describe("WeatherSimSocket", () => {
     expect(latest(frames, "WEATHER_STATUS")?.state).toBe("Idle");
     expect(latest(frames, "SKY")?.state).toBe("Idle");
     socket.close();
+  });
+
+  it("runs a configuration action and leaves every member Off", async () => {
+    const frames: Frame[] = [];
+    const socket = new WeatherSimSocket(async () => PAYLOAD);
+    socket.onmessage = (event) => frames.push(JSON.parse(String(event.data)) as Frame);
+    await flush();
+
+    // Nothing has been saved yet, which is exactly libindi's error case.
+    socket.send(JSON.stringify({ tag: "new", vector: config("CONFIG_LOAD") }));
+    expect(latest(frames, "CONFIG_PROCESS")?.state).toBe("Alert");
+
+    socket.send(JSON.stringify({ tag: "new", vector: config("CONFIG_SAVE") }));
+    const saved = latest(frames, "CONFIG_PROCESS");
+    expect(saved?.state).toBe("Ok");
+    // A member left On would render as a button stuck in its pressed position.
+    expect(saved?.kind === "switch" && saved.elements.every((el) => el.value === "Off")).toBe(true);
+
+    socket.send(JSON.stringify({ tag: "new", vector: config("CONFIG_LOAD") }));
+    expect(latest(frames, "CONFIG_PROCESS")?.state).toBe("Ok");
+
+    socket.send(JSON.stringify({ tag: "new", vector: config("CONFIG_PURGE") }));
+    expect(latest(frames, "CONFIG_PROCESS")?.state).toBe("Ok");
+    socket.send(JSON.stringify({ tag: "new", vector: config("CONFIG_LOAD") }));
+    expect(latest(frames, "CONFIG_PROCESS")?.state).toBe("Alert");
   });
 });

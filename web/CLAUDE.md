@@ -35,6 +35,12 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
   where `client.ts` already drops non-object JSON. A frame reaches a browser without ever
   passing the Python parser (another bridge, a test, a driver emitting JSON), which is why
   the rule cannot live only there.
+- `format.ts` holds the display helpers. `displayLabel` is the **only** way to turn an
+  element or vector into text: INDI's `label` is optional in practice as well as in the
+  schema, and libindi ships properties whose element labels are the empty string
+  (`DEVICE_BAUD_RATE` is the one everybody meets), so `label ?? name` renders a row of blank
+  controls. It is not in `types.ts` on purpose - that file mirrors the Pydantic models and a
+  display choice is not part of the wire contract.
 - `connection.ts` is a reconnecting WebSocket to the bridge's `/ws`; `client.ts` is
   `IndiClient` mirroring the Python surface. It tracks two connection states: `transport`
   (browser to bridge) and `upstream` (bridge to `indiserver`, from the bridge's `connection`
@@ -69,7 +75,35 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
 store), the per-kind value hooks (`useNumber`/`useText`/`useSwitch`/`useLight`, which return
 the value already narrowed - `useElement` hands back the element union, so reading `.value`
 off it does not type-check), and the INDI-aware components (`PropertyVectorCard`,
-`DevicePanel`, per-kind element controls, `StateBadge`, `ConnectionStatus`, `MessageLog`).
+`DevicePanel`, `DeviceConfigCard`, per-kind element controls, `StateBadge`,
+`ConnectionStatus`, `MessageLog`).
+
+`DeviceConfigCard` is the one component that is more than a rendering. `CONFIG_PROCESS` is
+universal in libindi and three of its facts are traps, so the copy **is** the component and
+changing it changes what the panel promises:
+
+- `CONFIG_DEFAULT` reads a `.default` file that libindi writes as a copy of the *first*
+  configuration ever saved, so the button reads "Restore first saved" and never "Default".
+  A test asserts that string; it is the regression, not a wording preference.
+- `CONFIG_PURGE` is an unguarded `remove()` - no backup, no undo, no confirmation anywhere
+  in libindi - so it is behind an `AlertDialog` that sends **nothing** until confirmed, and
+  the confirming button names the consequence ("Delete saved config", never "OK").
+- `CONFIG_SAVE` writes whatever the driver's `saveConfigItems` chose, and a client cannot
+  discover that subset over the wire. The card always carries the line saying so; silence
+  would read as "everything you see".
+
+`CONFIG_LOAD` and `CONFIG_DEFAULT` replay saved values through the driver's handlers, so on
+a connected device they can move hardware: both confirm while `CONNECTION`'s `CONNECT` is
+On, and neither does otherwise (including when the device has no `CONNECTION` at all).
+
+`DevicePanel` pins that card first as a Configuration section and excludes `CONFIG_PROCESS`
+from the generic grid so it is not drawn twice, puts `Main Control` next, then the remaining
+groups alphabetically, and folds `DRIVER_MACHINERY` (`components/machinery.ts`, Ekos' own
+skip list) into a collapsed "Driver internals" section. `CONNECTION` is on Ekos' list and
+deliberately **not** on ours: Ekos drives connection from its own toolbar and the panel has
+no second home for the button an operator reaches for first. The fold is recomputed per
+render, because libindi defines and deletes `DEBUG_LEVEL`/`LOGGING_LEVEL`/`LOG_OUTPUT` at
+runtime as `DEBUG` is toggled.
 
 shadcn/ui primitives live in `src/ui/` (added via the shadcn CLI, `components.json`) and are
 re-exported. Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup` and friends per the
@@ -158,6 +192,11 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
 
 - **The simulators mirror real drivers.** Change a driver's properties or its safety rule and
   change its simulator too, or the demo stops being a demo of anything.
+- **`weather-sim.ts` also carries `CONFIG_PROCESS`**, libindi's universal configuration
+  property (four members, AtMostOne, group "Options"), so the published demo exercises
+  `DeviceConfigCard` rather than leaving it visible only in tests. It answers every action
+  with all members **Off**, because `CONFIG_PROCESS` is a momentary action and not state: a
+  member left On renders as a button stuck in its pressed position.
 - **Every simulator has a `CONNECTION` property**, for the same reason every example driver
   does (see `src/indi_nexus/CLAUDE.md`): it is the first thing a client looks for, and a demo
   without one shows visitors a device shape that does not exist in the field. It has to

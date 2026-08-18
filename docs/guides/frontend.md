@@ -38,6 +38,57 @@ Two components do the work. `IndiProvider` opens a WebSocket to the bridge, keep
 (reconnecting if the observatory restarts), and mirrors everything it hears into a store.
 `DevicePanel` subscribes to that store and re-renders the parts that changed.
 
+### What the panel puts where
+
+Not every property is equally interesting, so three of them come out of the
+alphabetical run of groups.
+
+**Configuration comes first.** Every libindi driver publishes `CONFIG_PROCESS`, and
+`DevicePanel` pins it at the top as its own section, drawn by `DeviceConfigCard`
+rather than as four anonymous buttons.
+
+**`Main Control` comes next**, because that is where a driver puts the controls an
+operator came for. Everything else follows alphabetically, so the layout is the same
+every time you open the page.
+
+**The driver's own machinery folds away last.** `DEBUG`, `SIMULATION`, `ACTIVE_DEVICES`,
+the logging levels and `FILE_DEBUG` are about the driver process rather than the
+instrument, and drivers scatter them through whichever group they chose - usually
+`Options`, next to settings you do want. They collect in a collapsed **Driver
+internals** section instead, one click away rather than gone. The set is exported as
+`DRIVER_MACHINERY` if your own layout wants to ask the same question. `CONNECTION` is
+deliberately not in it: Ekos hides `CONNECTION` because it drives connection from its own
+toolbar, and the panel has no second home for the button an operator reaches for first.
+
+Because the fold is worked out from what the device has right now, a driver that
+defines `DEBUG_LEVEL` when you switch debugging on, and deletes it again when you switch
+it off, moves it in and out on its own.
+
+### What `DeviceConfigCard` does and does not promise
+
+`CONFIG_PROCESS` persists a device's settings to `$HOME/.indi/<device>_config.xml` on the
+observatory computer. Three things about it are not what the INDI names suggest, and the
+card says so on the card rather than in a manual nobody has open at 2am:
+
+- **"Restore first saved", not "Default".** `CONFIG_DEFAULT` reads a `.default` file,
+  which libindi writes as a copy of the *first* configuration ever saved for that device.
+  It is not the factory settings, and on a driver that was misconfigured before its first
+  save it restores the misconfiguration.
+- **Purging cannot be undone.** `CONFIG_PURGE` is a bare file deletion in libindi, with no
+  backup and no confirmation anywhere in the library. The card puts it behind a dialog that
+  names the device, and sends nothing until you confirm.
+- **Save does not necessarily save what you see.** Each driver chooses which properties it
+  persists, and a client cannot ask which ones over the wire. The card says that outright
+  instead of letting the screen imply it.
+
+Loading a configuration - `CONFIG_LOAD` or `CONFIG_DEFAULT` - replays every saved value
+through the driver as though it had just been sent, so on a connected instrument it is a
+hardware command and can move the mount, the focuser or the filter wheel. The card confirms
+those while the device is connected, and does not bother you while it is not.
+
+Feedback is the property's own Idle/Ok/Busy/Alert state, as everywhere else: the driver
+answering is what says the action happened.
+
 ## Letting your app connect
 
 Your app is served from its own origin - `http://localhost:5173` under Vite - and the
@@ -163,6 +214,7 @@ for scripting a sequence.
 | Component | Renders |
 |---|---|
 | `DevicePanel` | every property of a device, grouped |
+| `DeviceConfigCard` | one device's `CONFIG_PROCESS`, with the guards libindi lacks |
 | `PropertyVectorCard` | one property, with the right control for its kind |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |
 | `ConnectionStatus` | both connection states, plus a badge when the bridge announces a [protocol version](protocol.md#versioning-the-browser-contract) this build was not written against |
