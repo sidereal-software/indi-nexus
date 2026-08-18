@@ -35,7 +35,7 @@ function switchVec(name: string, group = "Options"): SwitchVector {
   };
 }
 
-/** libindi's CONFIG_PROCESS, which the panel pins as its own section. */
+/** libindi's CONFIG_PROCESS, which the panel leaves to the sidebar entry. */
 function configVec(): SwitchVector {
   return {
     ...switchVec("CONFIG_PROCESS"),
@@ -73,7 +73,7 @@ describe("DevicePanel", () => {
     receive(socket, { tag: "def", vector: numVec("EXPOSURE", "Main") });
     receive(socket, { tag: "def", vector: numVec("GAIN", "Main") });
 
-    const headings = screen.getAllByRole("heading", { level: 3 });
+    const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings.map((h) => h.textContent)).toEqual(["Main", "Options"]);
 
     // Cards are sorted by name within a group.
@@ -83,23 +83,34 @@ describe("DevicePanel", () => {
     );
   });
 
-  it("renders ungrouped properties without a group heading", () => {
+  it("keeps the heading level for ungrouped properties but hides the name", () => {
     const { socket } = renderConnected(<DevicePanel device="CCD" />);
     receive(socket, { tag: "def", vector: numVec("EXPOSURE") });
     expect(screen.getByText("EXPOSURE")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
+
+    // Nothing is drawn for a bucket with no group name, but the level has to
+    // stay: the card titles below are h3, so dropping the h2 would step the
+    // shell's h1 straight to h3 and break the outline.
+    const heading = screen.getByRole("heading", { level: 2 });
+    expect(heading).toHaveClass("sr-only");
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "EXPOSURE",
+    ]);
   });
 
-  it("pins Configuration first and does not also draw CONFIG_PROCESS as a card", () => {
+  it("leaves CONFIG_PROCESS out of the panel entirely", () => {
     const { socket } = renderConnected(<DevicePanel device="CCD" />);
     receive(socket, { tag: "def", vector: numVec("EXPOSURE", "Main Control") });
     receive(socket, { tag: "def", vector: configVec() });
 
-    const headings = screen.getAllByRole("heading", { level: 3 });
-    expect(headings.map((h) => h.textContent)).toEqual(["Configuration", "Main Control"]);
-    // The card is the config card, not a generic switch vector: the generic one
-    // would render the four members as toggles.
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    // Configuration is a per-device action surface offered from the sidebar by
+    // DeviceConfigDialog, so the panel neither pins it nor draws it generically
+    // - the generic card would render the four members as toggles, one of which
+    // deletes a file with no undo.
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.map((h) => h.textContent)).toEqual(["Main Control"]);
+    expect(screen.queryByText("Configuration")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "CONFIG_SAVE" })).not.toBeInTheDocument();
     expect(openFold()).toEqual([]);
   });
@@ -110,7 +121,7 @@ describe("DevicePanel", () => {
       receive(socket, { tag: "def", vector: numVec(`P_${group.replace(" ", "_")}`, group) });
     }
 
-    const headings = screen.getAllByRole("heading", { level: 3 });
+    const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings.map((h) => h.textContent)).toEqual([
       "Main Control",
       "Almanac",

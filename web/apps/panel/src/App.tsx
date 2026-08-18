@@ -12,9 +12,11 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  AlertAnnouncer,
   Badge,
   Button,
   ConnectionStatus,
+  DeviceConfigDialog,
   DevicePanel,
   DisplaySettingsProvider,
   type IndiClient,
@@ -126,24 +128,35 @@ function DeviceSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Devices</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {devices.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">No devices connected.</p>
-              ) : (
-                devices.map((device) => (
-                  <SidebarMenuItem key={device}>
-                    <SidebarMenuButton
-                      isActive={device === active}
-                      onClick={() => onSelect(device)}
-                      tooltip={device}
-                    >
-                      <Radio />
-                      <span>{device}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              )}
-            </SidebarMenu>
+            {/* The sidebar's own markup is all `div`s, so without this the device
+                list - the page's only means of moving between devices - sits
+                outside every landmark and a landmark walk finds only the main
+                region and the messages strip. */}
+            <nav aria-label="Devices">
+              <SidebarMenu>
+                {devices.length === 0 ? (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No devices connected.</p>
+                ) : (
+                  devices.map((device) => (
+                    <SidebarMenuItem key={device}>
+                      <SidebarMenuButton
+                        isActive={device === active}
+                        onClick={() => onSelect(device)}
+                        tooltip={device}
+                      >
+                        <Radio />
+                        <span>{device}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))
+                )}
+                {/* Configuration acts on the selected device, so it sits at the
+                    end of the same menu the selection lives in. It renders
+                    nothing when nothing is selected or the device has no
+                    CONFIG_PROCESS. */}
+                <DeviceConfigDialog device={active} />
+              </SidebarMenu>
+            </nav>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -261,6 +274,10 @@ function AppShell() {
 
   return (
     <DisplaySettingsProvider showDebug={debug}>
+      {/* Page-level on purpose: a vector going into Alert on the device that is
+          *not* on screen is the one an operator most needs to hear about, and a
+          per-device announcer would only ever cover the selection. */}
+      <AlertAnnouncer />
       <DeviceSidebar
         devices={devices}
         active={active}

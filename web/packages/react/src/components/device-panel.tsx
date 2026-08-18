@@ -5,11 +5,10 @@ import { cn } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/ui/accordion";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { useDevice } from "../hooks";
-import { DeviceConfigCard } from "./device-config-card";
 import { DRIVER_MACHINERY } from "./machinery";
 import { PropertyVectorCard } from "./property-vector-card";
 
-/** The property {@link DeviceConfigCard} renders, pinned out of the groups. */
+/** The property {@link DeviceConfigDialog} owns, kept out of the groups. */
 const CONFIG_PROCESS = "CONFIG_PROCESS";
 
 /** Where a group sorts: Main Control leads, everything else is alphabetical. */
@@ -46,13 +45,14 @@ export interface DevicePanelProps {
 /**
  * Render every property of one device, grouped and laid out as responsive cards.
  *
- * Three things sit outside the alphabetical groups. `CONFIG_PROCESS` is pinned
- * first as a Configuration section, drawn by {@link DeviceConfigCard} rather than
- * as four anonymous buttons, and excluded from its own group so it is not drawn
- * twice. `Main Control` follows, because it is where a driver puts the controls
- * an operator actually came for. The rest of {@link DRIVER_MACHINERY} - the
- * driver's debug plumbing and its snooping - folds into a collapsed "Driver
- * internals" section at the end, out of whichever group it was declared in.
+ * Three things sit outside the alphabetical groups. `CONFIG_PROCESS` is not here
+ * at all: it is a per-device action surface rather than a property group, so
+ * {@link DeviceConfigDialog} offers it from the sidebar and the panel excludes it
+ * so it is not also drawn as four anonymous buttons. `Main Control` leads,
+ * because it is where a driver puts the controls an operator actually came for.
+ * The rest of {@link DRIVER_MACHINERY} - the driver's debug plumbing and its
+ * snooping - folds into a collapsed "Driver internals" section at the end, out of
+ * whichever group it was declared in.
  *
  * The fold is computed from what the device has right now, so a driver that
  * defines `DEBUG_LEVEL` when debugging is switched on, and deletes it again
@@ -64,7 +64,6 @@ export interface DevicePanelProps {
 export function DevicePanel({ device, className }: DevicePanelProps) {
   const properties = useDevice(device);
   const all = Object.values(properties);
-  const configured = properties[CONFIG_PROCESS] !== undefined;
   const machinery = byName(
     all.filter((vector) => vector.name !== CONFIG_PROCESS && DRIVER_MACHINERY.has(vector.name)),
   );
@@ -91,23 +90,20 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
     // Column count follows the panel's own width (container queries), not the
     // viewport - docked siblings (e.g. a messages panel) shrink the container.
     <div className={cn("@container flex flex-col gap-6", className)}>
-      {configured ? (
-        <section className="flex flex-col gap-3">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Configuration
-          </h3>
-          <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
-            <DeviceConfigCard device={device} />
-          </div>
-        </section>
-      ) : null}
       {groups.map(([group, vectors]) => (
         <section key={group} className="flex flex-col gap-3">
+          {/* The panel sits under the shell's h1 and each card title is an h3, so
+              the group name is the h2 between them. A vector may carry no group
+              at all, and dropping the heading there would step h1 to h3 and break
+              the outline, so the unnamed bucket keeps its level and loses only
+              its pixels. */}
           {group ? (
-            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {group}
-            </h3>
-          ) : null}
+            </h2>
+          ) : (
+            <h2 className="sr-only">Ungrouped properties</h2>
+          )}
           <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
             {vectors.map((vector) => (
               <PropertyVectorCard key={vector.name} vector={vector} />

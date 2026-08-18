@@ -1,7 +1,8 @@
 /** INDI-aware components built on the shadcn/ui primitives. */
 
+export * from "./alert-announcer";
 export * from "./connection-status";
-export * from "./device-config-card";
+export * from "./device-config-dialog";
 export * from "./device-panel";
 export * from "./element-controls";
 export * from "./machinery";

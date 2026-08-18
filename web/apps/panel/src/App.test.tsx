@@ -83,6 +83,22 @@ describe("App", () => {
     expect(screen.getByText(/Waiting for devices/)).toBeInTheDocument();
   });
 
+  it("puts the device list in a landmark and mounts the Alert live region", () => {
+    renderApp();
+
+    // The sidebar is all divs, so without the nav the only means of moving
+    // between devices sat outside every landmark and a landmark walk reached
+    // the main region and the messages strip and nothing else.
+    expect(screen.getByRole("navigation", { name: "Devices" })).toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Messages" })).toBeInTheDocument();
+
+    // Page-level, not per-device: a fault on the device that is not on screen is
+    // the one worth hearing about.
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByRole("log", { name: "INDI messages" })).toBeInTheDocument();
+  });
+
   it("lists an arriving device, auto-selects it, and renders its properties", () => {
     const { socket } = renderApp();
     act(() =>

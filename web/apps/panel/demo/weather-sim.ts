@@ -540,7 +540,7 @@ export class WeatherSimSocket implements WebSocketLike {
    * The configuration actions, in libindi's own shape.
    *
    * Every libindi driver carries this property - four members, AtMostOne, group
-   * "Options" - so the demo carries it too, and the panel's `DeviceConfigCard`
+   * "Options" - so the demo carries it too, and the panel's `DeviceConfigDialog`
    * is exercised on the published page rather than only in tests. Members are
    * always reported Off: see `handleConfig`.
    */

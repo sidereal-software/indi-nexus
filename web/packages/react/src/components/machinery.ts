@@ -18,8 +18,8 @@
  * can drop it because it drives connection from its own toolbar; the panel has no
  * such second home for it.
  *
- * `CONFIG_PROCESS` is here because {@link DeviceConfigCard} already pins it as the
- * Configuration section - folding it as well would draw it twice.
+ * `CONFIG_PROCESS` is here because {@link DeviceConfigDialog} already offers it
+ * from the sidebar - folding it as well would draw it twice.
  *
  * Exported so a consumer building its own layout can ask the same question the
  * panel asks. There is deliberately no prop to override it: the answer is a fact

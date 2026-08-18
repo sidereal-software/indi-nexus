@@ -1,19 +1,42 @@
 /**
- * Tests for the configuration card.
+ * Tests for the configuration entry and its modal.
  *
  * Most of these are about copy and about what does *not* go on the wire, because
- * that is the whole reason the card exists: `CONFIG_PURGE` deletes a file with no
- * backup, and `CONFIG_DEFAULT` is not what its name says.
+ * that is the whole reason the component exists: `CONFIG_PURGE` deletes a file
+ * with no backup, and `CONFIG_DEFAULT` is not what its name says. The rest are
+ * about the two dialogs stacking, since the confirmation now opens on top of a
+ * modal rather than on the page.
  */
 
 import type { NewVector, SwitchVector } from "@indi-nexus/client";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { SidebarProvider } from "@/ui/sidebar";
+import { TooltipProvider } from "@/ui/tooltip";
 import type { FakeSocket } from "../testing/fake-socket";
-import { receive, renderConnected } from "../testing/render";
-import { DeviceConfigCard } from "./device-config-card";
+import { type ConnectedRender, receive, renderConnected } from "../testing/render";
+import { DeviceConfigDialog } from "./device-config-dialog";
 
 afterEach(cleanup);
+
+/**
+ * Render the entry inside the shell it is built for.
+ *
+ * The default trigger is a sidebar menu button, so it needs the sidebar's own
+ * providers exactly as the reference panel supplies them.
+ *
+ * @param device - The selected device, or null for none.
+ * @returns The connected render result.
+ */
+function renderEntry(device: string | null = "CCD"): ConnectedRender {
+  return renderConnected(
+    <TooltipProvider>
+      <SidebarProvider>
+        <DeviceConfigDialog device={device} />
+      </SidebarProvider>
+    </TooltipProvider>,
+  );
+}
 
 /** libindi's own CONFIG_PROCESS, with the given members. */
 function configVec(
@@ -48,6 +71,16 @@ function connectionVec(connected: boolean): SwitchVector {
   };
 }
 
+/** The sidebar entry that opens the dialog. */
+function trigger(): HTMLElement {
+  return screen.getByRole("button", { name: "Configuration" });
+}
+
+/** Open the configuration dialog from the sidebar entry. */
+function open(): void {
+  fireEvent.click(trigger());
+}
+
 /** The vectors of every `new` frame the client has sent so far. */
 function sentFrames(socket: FakeSocket): NewVector["vector"][] {
   return socket.sent
@@ -56,7 +89,7 @@ function sentFrames(socket: FakeSocket): NewVector["vector"][] {
     .map((frame) => frame.vector);
 }
 
-/** Every switch member the card has asked for, as `device.property.element=value`. */
+/** Every switch member the dialog has asked for, as `device.property.element=value`. */
 function requested(socket: FakeSocket): string[] {
   return sentFrames(socket).flatMap((vector) =>
     vector.kind === "switch"
@@ -67,15 +100,46 @@ function requested(socket: FakeSocket): string[] {
   );
 }
 
-describe("DeviceConfigCard", () => {
-  it("renders nothing when the device has no CONFIG_PROCESS", () => {
-    const { container } = renderConnected(<DeviceConfigCard device="CCD" />);
-    expect(container).toBeEmptyDOMElement();
+describe("DeviceConfigDialog", () => {
+  it("offers nothing when the device has no CONFIG_PROCESS", () => {
+    renderEntry();
+    // A device that cannot be configured must not offer a button that opens an
+    // empty dialog.
+    expect(screen.queryByRole("button", { name: "Configuration" })).not.toBeInTheDocument();
+  });
+
+  it("offers nothing when no device is selected", () => {
+    const { socket } = renderEntry(null);
+    receive(socket, { tag: "def", vector: configVec() });
+
+    expect(screen.queryByRole("button", { name: "Configuration" })).not.toBeInTheDocument();
+  });
+
+  it("offers the entry once the selected device has CONFIG_PROCESS", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+
+    expect(trigger()).toBeInTheDocument();
+    // The entry alone is not the dialog: nothing is on screen until it is used.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("sends nothing when the dialog is opened and closed again", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+
+    open();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(requested(socket)).toEqual([]);
   });
 
   it("renders only the members the vector carries", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec(["CONFIG_LOAD", "CONFIG_SAVE"]) });
+    open();
 
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Load saved" })).toBeInTheDocument();
@@ -84,8 +148,9 @@ describe("DeviceConfigCard", () => {
   });
 
   it("calls CONFIG_DEFAULT what it is, not 'Default'", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
 
     // Asserted by string on purpose: renaming this back to "Default" is the
     // regression, because libindi's `.default` file is a copy of the first
@@ -99,8 +164,9 @@ describe("DeviceConfigCard", () => {
   });
 
   it("says that Save does not necessarily save what is on screen", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
 
     expect(
       screen.getByText(
@@ -109,17 +175,35 @@ describe("DeviceConfigCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("sends Save on the first press, with no dialog", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+  it("attaches each button's consequence to the button", () => {
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
+
+    // The copy *is* the component: "Purge" alone does not say that it deletes a
+    // file with no backup. As a sibling paragraph that reached sighted readers
+    // only, so the accessible description carries it too.
+    expect(screen.getByRole("button", { name: "Purge" })).toHaveAccessibleDescription(
+      "Deletes the saved configuration. There is no backup and nothing to undo it.",
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toHaveAccessibleDescription(
+      /Writes this device's configuration on the observatory computer/,
+    );
+  });
+
+  it("sends Save on the first press, with no confirmation", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(requested(socket)).toEqual(["CCD.CONFIG_PROCESS.CONFIG_SAVE=On"]);
   });
 
-  it("sends nothing when Purge is pressed and the dialog is cancelled", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+  it("sends nothing when Purge is pressed and the confirmation is cancelled", () => {
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
     expect(requested(socket)).toEqual([]);
@@ -131,11 +215,30 @@ describe("DeviceConfigCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(requested(socket)).toEqual([]);
+    // Cancelling the confirmation leaves the configuration dialog behind it
+    // standing: the operator changed their mind about purging, not about
+    // configuring.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("dismisses only the confirmation on Escape, and sends nothing", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+    open();
+
+    fireEvent.click(screen.getByRole("button", { name: "Purge" }));
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(requested(socket)).toEqual([]);
   });
 
   it("sends CONFIG_PURGE only once the deletion is confirmed", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Purge" }));
     // Never "OK": the confirming button has to name the consequence.
@@ -145,9 +248,10 @@ describe("DeviceConfigCard", () => {
   });
 
   it("confirms a load while the device is connected", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
     receive(socket, { tag: "def", vector: connectionVec(true) });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Load saved" }));
     expect(requested(socket)).toEqual([]);
@@ -158,9 +262,10 @@ describe("DeviceConfigCard", () => {
   });
 
   it("confirms 'Restore first saved' too, since it also replays through the driver", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
     receive(socket, { tag: "def", vector: connectionVec(true) });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Restore first saved" }));
     expect(requested(socket)).toEqual([]);
@@ -169,9 +274,10 @@ describe("DeviceConfigCard", () => {
   });
 
   it("loads straight away while the device is disconnected", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
     receive(socket, { tag: "def", vector: connectionVec(false) });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Load saved" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -179,8 +285,9 @@ describe("DeviceConfigCard", () => {
   });
 
   it("loads straight away when the device has no CONNECTION vector", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
 
     fireEvent.click(screen.getByRole("button", { name: "Load saved" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -188,8 +295,9 @@ describe("DeviceConfigCard", () => {
   });
 
   it("follows the vector's own state for feedback", () => {
-    const { socket } = renderConnected(<DeviceConfigCard device="CCD" />);
+    const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });
+    open();
     expect(screen.getByText("Idle")).toBeInTheDocument();
 
     receive(socket, { tag: "set", vector: { ...configVec(), state: "Busy" } });
@@ -197,5 +305,19 @@ describe("DeviceConfigCard", () => {
 
     receive(socket, { tag: "set", vector: { ...configVec(), state: "Alert" } });
     expect(screen.getByText("Alert")).toBeInTheDocument();
+  });
+
+  it("opens from a caller's own trigger instead of the sidebar entry", () => {
+    const { socket } = renderConnected(
+      <DeviceConfigDialog device="CCD">
+        <button type="button">Configure the camera</button>
+      </DeviceConfigDialog>,
+    );
+    receive(socket, { tag: "def", vector: configVec() });
+
+    // No sidebar providers here: a consumer's own shell owes this component
+    // nothing but a trigger.
+    fireEvent.click(screen.getByRole("button", { name: "Configure the camera" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 });
