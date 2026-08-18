@@ -11,13 +11,14 @@ Write a driver by subclassing :class:`Device`, defining properties in
         name = "Mount"
 
         async def setup(self) -> None:
+            self.define_connection()
             self.define_number(
                 "EQUATORIAL_EOD_COORD",
                 [Number(name="RA", format="%9.6m"), Number(name="DEC", format="%9.6m")],
                 perm=IPerm.RO,
             )
 
-        @every(seconds=1)
+        @every(seconds=1, when_connected=True)
         async def poll(self) -> None:
             ra, dec = await self.read_mount()
             self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec, state=IPState.OK)

@@ -47,7 +47,10 @@ from the alphabetical run of groups.
 `CONFIG_PROCESS`, but it is a set of actions on the device rather than something to
 read, and one of them deletes a file with no undo, so it does not belong beside live
 instrument readings. `DeviceConfigDialog` offers it from the sidebar instead, and
-`DevicePanel` leaves it out rather than drawing it as four anonymous buttons.
+`DevicePanel` leaves it out rather than drawing it as four anonymous buttons. The same
+goes for `NEXUS_CONFIG_PERSISTED`, the list an INDINexus driver publishes of what Save
+writes: the dialog renders it as a sentence, and a read-only card full of wire names says
+less in more space.
 
 **`Main Control` comes first**, because that is where a driver puts the controls an
 operator came for. Everything else follows alphabetically, so the layout is the same
@@ -68,8 +71,10 @@ it off, moves it in and out on its own.
 
 ### What `DeviceConfigDialog` does and does not promise
 
-`CONFIG_PROCESS` persists a device's settings to `$HOME/.indi/<device>_config.xml` on the
-observatory computer. `DeviceConfigDialog` is the entry that offers it: give it the
+`CONFIG_PROCESS` persists a device's settings on the observatory computer - to
+`$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under
+`$XDG_CONFIG_HOME/indi-nexus` for an INDINexus one. `DeviceConfigDialog` is the entry
+that offers it: give it the
 selected device and it renders a sidebar item that opens the actions in a modal, or
 nothing at all when no device is selected or the selected one has no `CONFIG_PROCESS`.
 Give it a child element and that becomes the trigger instead, so a screen with its own
@@ -87,8 +92,12 @@ so on screen rather than in a manual nobody has open at 2am:
   that names the device, and nothing is sent until you confirm. Dismissing that
   confirmation leaves the configuration modal open and sends nothing.
 - **Save does not necessarily save what you see.** Each driver chooses which properties it
-  persists, and a client cannot ask which ones over the wire. The dialog says that outright
-  instead of letting the screen imply it.
+  persists. A libindi driver makes that choice in `saveConfigItems`, which nothing on the
+  wire exposes, so the dialog says outright that it cannot tell you rather than letting the
+  screen imply "everything". An INDINexus driver declares persistence at define time and
+  publishes the list as `NEXUS_CONFIG_PERSISTED`, and for those the dialog names the
+  properties Save writes - or says plainly that Save writes none of them, which is a
+  different statement from not knowing.
 
 Loading a configuration - `CONFIG_LOAD` or `CONFIG_DEFAULT` - replays every saved value
 through the driver as though it had just been sent, so on a connected instrument it is a
@@ -225,14 +234,24 @@ for scripting a sequence.
 |---|---|
 | `DevicePanel` | every property of a device, grouped |
 | `DeviceConfigDialog` | a sidebar entry opening one device's `CONFIG_PROCESS`, with the guards libindi lacks |
-| `PropertyVectorCard` | one property, with the right control for its kind |
+| `PropertyVectorCard` | one property as a card: title, state badge and the control below |
+| `VectorControl` | the control alone, picked from the vector's kind |
+| `ValueVectorControl` | a number or text vector, as editable fields or read-only values |
+| `SwitchVectorControl` | a switch vector, as a group of toggle buttons honouring its INDI rule |
+| `LightVectorControl` | a light vector, as labelled state dots |
+| `BlobVectorControl` | a BLOB vector, as format and size per element, with a download link once a payload has arrived |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |
+| `StateDot` | the same state where there is no room for a badge |
 | `ConnectionStatus` | both connection states, plus a badge when the bridge announces a [protocol version](protocol.md#versioning-the-browser-contract) this build was not written against |
 | `MessageLog` | the rolling INDI message log, **and the bridge's write rejections** |
 | `AlertAnnouncer` | announces a property entering `Alert` to a screen reader |
 
 Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,
-hand-built widgets around them.
+hand-built widgets around them. `VectorControl` is the seam to reach through when your own
+markup already supplies the heading and the badge - hand it any vector from `useProperty`
+and it renders the right control, which is what keeps a hand-laid screen working against
+an instrument you have not seen. The four per-kind controls underneath it are exported for
+the case where you already know the kind and want to skip the dispatch.
 
 !!! important "`AlertAnnouncer` is the only thing that speaks"
 

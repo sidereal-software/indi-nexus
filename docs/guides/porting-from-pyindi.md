@@ -22,6 +22,9 @@ are, so an existing client or panel sees the same device before and after.
 | `ISGetProperties(self, device)` | `async def setup(self)` |
 | `ISwitchVector(sw, dev, name, state, rule, perm, 0, label, group)` | `self.define_switch(name, sw, rule=..., label=..., group=...)` |
 | `INumberVector(...)` / `ITextVector(...)` / `ILightVector(...)` | `define_number` / `define_text` / `define_light` |
+| `IBLOBVector(...)` / `IBLOB` | `self.define_blob(name, [BLOB(name=...)], perm=IPerm.RO)` |
+| `saveConfigItems` / `IUSaveConfig*` | `persist=True` on the `define_*` call, plus `self.define_config()` once |
+| `loadConfig()` / `IULoadDefaultSwitches` | `await self.load_config()`, and `on_config_loaded(names)` to act on what came back |
 | `self.IDDef(vp)` | (implicit - `define_*` emits the `def`) |
 | `self.IUFind("name")` | `self["name"]`, or `self.switch("name")` for a typed handle |
 | `vp["el"].value = x` then `self.IDSet(vp)` | `self["name"].set(el=x, state=...)` |
@@ -62,6 +65,16 @@ See [Talking to real hardware](writing-drivers.md#talking-to-real-hardware).
 Failures are isolated. A raising handler or poll tick is reported to the client
 and swallowed, rather than killing a task and leaving the UI frozen on stale
 values.
+
+Configuration is declared, not written. libindi picks the subset to persist
+inside `saveConfigItems`, so which properties Save covers is buried in a method
+and invisible on the wire. Here you mark each one where it is defined -
+`define_*(..., persist=True)` - and call `define_config()` once to publish the
+`CONFIG_PROCESS` switch. Because the choice is declarative, the SDK can also
+publish the answer as `NEXUS_CONFIG_PERSISTED`, which a panel reads to name what
+Save writes. Restoring stays yours: `await self.load_config()` where you want the
+I/O to happen, and `on_config_loaded(names)` to act on the values it applied. See
+[Saving configuration](writing-drivers.md#saving-configuration).
 
 ## A worked fragment
 

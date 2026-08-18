@@ -366,6 +366,27 @@ Definitions - labels, permissions, limits - stay in the code, which is the only 
 knows what this version of the driver publishes. The file lives in
 `$XDG_CONFIG_HOME/indi-nexus`, or wherever `INDI_NEXUS_CONFIG_DIR` says.
 
+### The driver says what Save writes
+
+Because `persist=True` is declared rather than decided inside a method, your driver can
+answer a question no libindi driver can: which properties does pressing Save actually
+write? A libindi driver chooses its subset in `saveConfigItems`, a C++ virtual nothing on
+the wire exposes, which is why a panel can only warn that Save may not cover what is on
+screen.
+
+`define_config()` publishes the answer for you, as a read-only `NEXUS_CONFIG_PERSISTED`
+text property whose `PROPERTIES` element holds the persisted property names separated by
+spaces. You write nothing extra: it goes out once `setup()` returns, so it names the whole
+set at once, and it is restated when the set really changes - a persisted property defined
+in `on_connect`, or withdrawn in `on_disconnect`. The reference panel reads it and names
+those properties in the configuration dialog instead of apologising.
+
+Two consequences are worth knowing. A driver that calls `define_config()` and persists
+nothing publishes the property **empty**, because "Save writes nothing" and "this driver
+cannot tell you" are different answers and only the property's absence means the second.
+And a `persist=True` property may not have whitespace in its name - INDI itself allows it,
+the list's encoding does not - so that is a `ValueError` at define time.
+
 ### Acting on what was restored
 
 Restoring a value is not the same as acting on it. A focuser that saved its position has to

@@ -29,6 +29,35 @@ it touched: `CHANGELOG.md` for the Python package, and one in each of
 [changelog page](https://indi-nexus.sidereal.software/changelog/) on the documentation
 site shows all three, and the GitHub release carries them together.
 
+## What number comes next
+
+Release Please works it out from the commit types, and below 1.0 the answer is not the
+one the Conventional Commits homepage gives. `bump-minor-pre-major` is set in
+`release-please-config.json`, so while the major version is `0`:
+
+| Commits since the last release | Next version after `0.2.0` |
+|---|---|
+| `fix:` only | `0.2.1` |
+| any `feat:` | `0.3.0` |
+| any `!` or `BREAKING CHANGE:` | `0.3.0` - a minor bump, **not** `1.0.0` |
+
+So a breaking change below 1.0 is indistinguishable from a feature by version number
+alone. That is the convention, and it is also the reason the changelog has to carry the
+weight: the only way a user learns their code will stop compiling is the `!` you wrote in
+the commit subject, which Release Please renders as a **BREAKING CHANGE** entry at the
+top of the section.
+
+**Read those entries before you merge the release PR.** Each one is a promise to somebody
+who pinned `^0.2.0` and will get this by default. Check that the entry says what a reader
+has to *do*, not only what changed - if it does not, this is the moment to fix it, with
+the `BEGIN_COMMIT_OVERRIDE` block below.
+
+Three landed between `0.2.0` and the next release, which is what that release is mostly
+made of: `@indi-nexus/client` now raises rather than queueing a send while disconnected,
+the bridge guards `/ws`, and `DeviceConfigCard`/`DeviceConfigCardProps` were removed from
+`@indi-nexus/react` in favour of `DeviceConfigDialog`. Every one of them is a caller's
+code changing.
+
 If a release note reads badly after merging, edit the merged PR body and wrap a
 replacement in `BEGIN_COMMIT_OVERRIDE` / `END_COMMIT_OVERRIDE`; Release Please picks it up
 on its next run. To force a version, put `Release-As: 1.2.3` in a commit body.

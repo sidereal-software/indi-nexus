@@ -16,7 +16,8 @@ and custom screen both, with nothing to install. Press Connect and it calls the
 real API, falling back to a recorded reply if it cannot reach it.
 
 The finished code is `examples/openmeteo_device.py`, and its tests are
-`tests/test_openmeteo_example.py`.
+`tests/test_openmeteo_example.py`. Following every step below leaves you with
+that file.
 
 ## What we are building
 
@@ -28,7 +29,8 @@ A weather device that reports:
   outside it, so an operator can glance rather than read.
 - **Sky** - a plain-language description, and whether it is day or night.
 - **Almanac** - today's sunrise, sunset and moon phase.
-- **Site** - the latitude and longitude, which the operator can change.
+- **Site** - the latitude and longitude, which the operator can change, and the
+  one thing here that survives a restart.
 
 ## 1. Ask for only what you need
 
@@ -211,22 +213,91 @@ device at a different site:
 async def _move_site(self, vector: NumberVector) -> None:
     self._latitude = vector.get("LAT", self._latitude)
     self._longitude = vector.get("LONG", self._longitude)
+    await self._apply_site()
+
+async def _apply_site(self) -> None:
     ...
 ```
 
 `get(name, default)` matters here: a client that changes only the latitude sends
 only the latitude, and the longitude must survive that.
 
-## 8. Run it
+The handler holds no logic of its own. It reads the request, then hands over to
+`_apply_site`, which republishes the site and refetches for it. That split looks
+like ceremony until the next step, where a second caller needs exactly the same
+work done.
+
+## 8. Remember the site across restarts
+
+An operator who points the driver at their own site expects it to still be there
+tomorrow. `define_config()` publishes the standard INDI `CONFIG_PROCESS` switch -
+Load, Save, Purge - that every libindi driver has, and `persist=True` says which
+properties those buttons cover:
+
+```python
+async def setup(self) -> None:
+    self.define_connection()
+    self.define_config()
+    self.define_number(
+        "GEOGRAPHIC_COORD",
+        [Number(name="LAT", label="Latitude"), Number(name="LONG", label="Longitude")],
+        label="Site",
+        group="Site",
+        persist=True,             # the one thing here worth surviving a restart
+    )
+    ...
+    try:
+        await self.load_config()
+    except ConfigError as exc:
+        self.message(f"Using the built-in site: {exc}")
+```
+
+Two lines in there look like boilerplate and are not.
+
+`define_config()` does no file I/O - it only defines the property. Restoring is
+the explicit `await self.load_config()`, because reading a file is the blocking
+work step 3 told you to be deliberate about. And having nothing saved is the
+ordinary first run rather than a failure, so it arrives as `ConfigError` (an
+`OSError`, imported from `indi_nexus`) and gets caught: without the `except`, a
+first start would look like a broken driver.
+
+Restoring a value is not the same as acting on it. `load_config()` puts the saved
+numbers into `GEOGRAPHIC_COORD`, but the driver is still fetching for wherever it
+was pointed before. `on_config_loaded` is handed the names the load applied to,
+and it finishes the job by calling the method the client write already calls:
+
+```python
+async def on_config_loaded(self, names: list[str]) -> None:
+    if "GEOGRAPHIC_COORD" not in names:
+        return
+    site = self.number("GEOGRAPHIC_COORD")
+    self._latitude = site.value("LAT")
+    self._longitude = site.value("LONG")
+    await self._apply_site()
+```
+
+That is why `_move_site` kept its body in `_apply_site`: a site that arrives from
+a file does exactly what one typed into the panel does, and there is one place to
+fix when that changes. [Saving
+configuration](writing-drivers.md#saving-configuration) covers the rest, including
+`NEXUS_CONFIG_PERSISTED` - the property this driver publishes to tell a panel
+which settings Save writes.
+
+## 9. Run it
 
 ```bash
 indi-nexus serve --device examples.openmeteo_device:OpenMeteo
 ```
 
 Open <http://localhost:8000/> and press Connect: the readings are live weather.
-Edit the Site latitude and longitude and the driver follows.
+Edit the Site latitude and longitude and the driver follows. Then open
+Configuration in the sidebar, press Save, then restart the driver: it comes back
+already showing the site you chose, with `Restored 1 property.` in the message
+log. On the very first run, before anything is saved, the same log reads
+`Using the built-in site: ...` - that is the `except ConfigError` above, not a
+fault.
 
-## 9. A screen of your own
+## 10. A screen of your own
 
 The stock `DevicePanel` renders anything, because it builds itself from whatever
 the device says it has. That is what you want for commissioning and the wrong
@@ -312,7 +383,7 @@ const live = parameters !== undefined && parameters.state !== "Idle";
 Colour comes from theme tokens rather than hex (`bg-state-*`, `fill-chart-3`,
 `stroke-border`), so the board follows light and dark mode without extra work.
 
-## 10. Test both halves
+## 11. Test both halves
 
 The driver is tested against a recorded real response, so the field names are
 checked against what the service sends rather than guessed:

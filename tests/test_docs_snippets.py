@@ -236,6 +236,8 @@ CLAIMS = [
             "def _go_offline",
             "lights[element] = IPState.OK",
             '@on_new("GEOGRAPHIC_COORD")',
+            "self.define_config()",
+            "async def on_config_loaded",
         )
     ],
     Claim(

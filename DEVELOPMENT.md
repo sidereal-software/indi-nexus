@@ -45,6 +45,7 @@ indi-nexus/
 │   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy + coerce_switch
 │   │   ├── models.py        #   typed Pydantic vectors, elements, def/set/new + enableBLOB
 │   │   ├── numbers.py       #   parse_number / format_number, incl. the %m sexagesimal form
+│   │   ├── compression.py   #   the INDI `.z` rule: inflate on receive, in both codecs
 │   │   ├── xml.py           #   INDI XML codec + streaming pull-parser
 │   │   └── json.py          #   the browser codec: the same models, JSON on the wire
 │   ├── driver/              # driver SDK (stdio under indiserver)
@@ -125,7 +126,8 @@ indi-nexus --help                           # all CLI commands and options
 Every knob lives under one prefix, `INDI_NEXUS_`, everything is optional, and
 `indi_nexus.settings.Settings` reads all of it. There is one reader and one story: a
 variable means what the table says wherever INDINexus runs, and no flag carries its own
-environment lookup.
+environment lookup. One variable outside the prefix is read, `XDG_CONFIG_HOME`, and only
+to compute the last row's default.
 
 | Variable | Flag | Default | Effect |
 |---|---|---|---|
@@ -138,6 +140,15 @@ environment lookup.
 | `INDI_NEXUS_TOKEN` | `--token` | unset | See [Access control on `serve`](#access-control-on-serve). |
 | `INDI_NEXUS_ALLOWED_ORIGINS` | `--allow-origin` | unset | Same. **Space separated** in the environment, repeatable as a flag. |
 | `INDI_NEXUS_ALLOW_INSECURE_BIND` | `--allow-insecure-bind` | off | Same. |
+| `INDI_NEXUS_CONFIG_DIR` | - | computed - see below | Where a driver's `CONFIG_PROCESS` saves and loads its properties. |
+
+`CONFIG_DIR` is the one default that is computed rather than written down:
+`$XDG_CONFIG_HOME/indi-nexus`, else `~/.config/indi-nexus`, else **nothing at all**.
+`Path.home()` *raises* when there is no home to expand - which is how a service manager
+runs a driver - and a temp directory would accept every Save and lose the lot on reboot,
+so the honest answer is `None`, and every persistence call then raises `ConfigError`
+naming this variable as the fix. Set it wherever the process's home is unset or read-only,
+which in practice means a container: see [docs/docker.md](docs/docker.md).
 
 Where a setting has both forms, **the flag wins and its absence defers to the
 environment**. A flag that names a variable has no default of its own - the table's
@@ -150,7 +161,8 @@ other, so it turns a configured token back off for one run.
 launched by `indiserver` as `./my_driver.py` reaches `indi_nexus.driver.run` and never
 `indi-nexus`; that entrypoint reads the same two fields.
 
-In the Docker image the last three are also spelled `WEB_TOKEN`, `WEB_ALLOWED_ORIGINS` and
+In the Docker image `TOKEN`, `ALLOWED_ORIGINS` and `ALLOW_INSECURE_BIND` are also spelled
+`WEB_TOKEN`, `WEB_ALLOWED_ORIGINS` and
 `WEB_ALLOW_ANONYMOUS`, because the entrypoint generates a token when none was given and
 prints the URL with it; either spelling works there. See [docs/docker.md](docs/docker.md).
 
