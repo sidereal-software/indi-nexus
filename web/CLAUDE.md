@@ -2,8 +2,10 @@
 
 Detail for `web/`. The repository-wide rules are in the root `CLAUDE.md`.
 
-A `pnpm` workspace holding a reusable library, the reference panel that ships inside the
-wheel, and the `scripts/` package that typechecks the documentation's code fences. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
+A `pnpm` workspace holding the two published libraries (`@indi-nexus/client` and
+`@indi-nexus/react`, each with its own heading below), the reference panel that ships
+inside the wheel, and the `scripts/` package that typechecks the documentation's code
+fences. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
 **Vitest** runs tests, **Biome** lints and formats (`web/biome.json`; the vendored shadcn
 `ui/` files are excluded). Run everything from `web/`: `pnpm -r build`, `pnpm -r typecheck`,
 `pnpm -r test`, `pnpm lint`, `pnpm run lint:diagrams`. All five are CI gates.
@@ -117,9 +119,21 @@ changing it changes what the panel promises:
 - `CONFIG_PURGE` is an unguarded `remove()` - no backup, no undo, no confirmation anywhere
   in libindi - so it is behind an `AlertDialog` that sends **nothing** until confirmed, and
   the confirming button names the consequence ("Delete saved config", never "OK").
-- `CONFIG_SAVE` writes whatever the driver's `saveConfigItems` chose, and a client cannot
-  discover that subset over the wire. The dialog always carries the line saying so; silence
-  would read as "everything you see".
+- `CONFIG_SAVE` writes a subset, and the dialog always carries a line about it, because
+  silence would read as "everything you see". Which line depends on what the driver says.
+  A libindi driver picks the subset in `saveConfigItems`, which nothing on the wire
+  exposes, so it gets the fallback apology. An INDINexus driver declares persistence at
+  define time and publishes `NEXUS_CONFIG_PERSISTED` (a read-only text vector, element
+  `PROPERTIES`, names separated by spaces), and then `SaveScope` names the properties -
+  as their own labels where the device still publishes them, since `GEOGRAPHIC_COORD` is
+  the wire's word for what the panel calls "Site". An **empty** list is a third statement,
+  not the fallback: the driver saying Save writes none of its properties. All three
+  strings are asserted, and `SaveScope` is a child of `DialogContent` on purpose - Radix
+  mounts that only while the dialog is open, so the whole-device subscription it needs for
+  those labels is not live behind a closed modal.
+  `DevicePanel` excludes `NEXUS_CONFIG_PERSISTED` alongside `CONFIG_PROCESS` (and it is in
+  `DRIVER_MACHINERY` for a consumer's own layout): drawn as a card it is a read-only field
+  of wire names saying less than the sentence does.
 
 `CONFIG_LOAD` and `CONFIG_DEFAULT` replay saved values through the driver's handlers, so on
 a connected device they can move hardware: both confirm while `CONNECTION`'s `CONNECT` is
@@ -278,8 +292,16 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
   - It carries **four** members where `openmeteo_device.py`'s `define_config()` publishes
     three: the SDK does not implement `CONFIG_DEFAULT`, and libindi does. That is the one
     deliberate divergence from the driver it mirrors, and it is the right way round - the
-    panel meets libindi drivers far more often than ours, so the demo is what proves the
-    card renders a four-member property. Do not "fix" it by dropping the member.
+    panel meets libindi drivers far more often than ours, so the demo is what proves
+    `DeviceConfigDialog` renders a four-member property. Do not "fix" it by dropping the
+    member.
+  - For the same reason it publishes **no `NEXUS_CONFIG_PERSISTED`**, even though the
+    driver it mirrors now does, so the published demo exercises the fallback apology.
+    Adding it would make the simulator a device that exists nowhere: libindi's four-member
+    `CONFIG_PROCESS` *and* a property no libindi driver has. The demo is already committed
+    to the libindi shape, and it is the shape whose copy is easiest to get wrong. The
+    INDINexus side is covered where it is real - `DeviceConfigDialog`'s tests, and
+    `indi-nexus serve --device examples.openmeteo_device:OpenMeteo`.
 - **Every simulator has a `CONNECTION` property**, for the same reason every example driver
   does (see `src/indi_nexus/CLAUDE.md`): it is the first thing a client looks for, and a demo
   without one shows visitors a device shape that does not exist in the field. It has to

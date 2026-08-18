@@ -8,8 +8,17 @@ import { useDevice } from "../hooks";
 import { DRIVER_MACHINERY } from "./machinery";
 import { PropertyVectorCard } from "./property-vector-card";
 
-/** The property {@link DeviceConfigDialog} owns, kept out of the groups. */
-const CONFIG_PROCESS = "CONFIG_PROCESS";
+/**
+ * The properties {@link DeviceConfigDialog} owns, kept out of the groups.
+ *
+ * `NEXUS_CONFIG_PERSISTED` is there for the dialog to read, not for an operator:
+ * drawn as a card it is a read-only text field holding a list of property names,
+ * which says nothing the dialog does not say in words.
+ */
+const CONFIG_PROPERTIES: ReadonlySet<string> = new Set([
+  "CONFIG_PROCESS",
+  "NEXUS_CONFIG_PERSISTED",
+]);
 
 /** Where a group sorts: Main Control leads, everything else is alphabetical. */
 function groupRank(group: string): number {
@@ -45,14 +54,16 @@ export interface DevicePanelProps {
 /**
  * Render every property of one device, grouped and laid out as responsive cards.
  *
- * Three things sit outside the alphabetical groups. `CONFIG_PROCESS` is not here
- * at all: it is a per-device action surface rather than a property group, so
- * {@link DeviceConfigDialog} offers it from the sidebar and the panel excludes it
- * so it is not also drawn as four anonymous buttons. `Main Control` leads,
- * because it is where a driver puts the controls an operator actually came for.
- * The rest of {@link DRIVER_MACHINERY} - the driver's debug plumbing and its
- * snooping - folds into a collapsed "Driver internals" section at the end, out of
- * whichever group it was declared in.
+ * Three things sit outside the alphabetical groups. The configuration
+ * properties are not here at all: `CONFIG_PROCESS` is a per-device action
+ * surface rather than a property group, so {@link DeviceConfigDialog} offers it
+ * from the sidebar and the panel excludes it so it is not also drawn as four
+ * anonymous buttons, and `NEXUS_CONFIG_PERSISTED` is the answer that dialog
+ * renders in words rather than as a text field full of property names. `Main
+ * Control` leads, because it is where a driver puts the controls an operator
+ * actually came for. The rest of {@link DRIVER_MACHINERY} - the driver's debug
+ * plumbing and its snooping - folds into a collapsed "Driver internals" section
+ * at the end, out of whichever group it was declared in.
  *
  * The fold is computed from what the device has right now, so a driver that
  * defines `DEBUG_LEVEL` when debugging is switched on, and deletes it again
@@ -65,10 +76,14 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
   const properties = useDevice(device);
   const all = Object.values(properties);
   const machinery = byName(
-    all.filter((vector) => vector.name !== CONFIG_PROCESS && DRIVER_MACHINERY.has(vector.name)),
+    all.filter(
+      (vector) => !CONFIG_PROPERTIES.has(vector.name) && DRIVER_MACHINERY.has(vector.name),
+    ),
   );
   const groups = groupVectors(
-    all.filter((vector) => vector.name !== CONFIG_PROCESS && !DRIVER_MACHINERY.has(vector.name)),
+    all.filter(
+      (vector) => !CONFIG_PROPERTIES.has(vector.name) && !DRIVER_MACHINERY.has(vector.name),
+    ),
   );
 
   if (all.length === 0) {

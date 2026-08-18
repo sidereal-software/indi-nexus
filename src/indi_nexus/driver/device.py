@@ -77,6 +77,22 @@ CONFIG_LOAD = "CONFIG_LOAD"
 CONFIG_SAVE = "CONFIG_SAVE"
 CONFIG_PURGE = "CONFIG_PURGE"
 
+#: The read-only property that answers "what does Save actually write?", and the
+#: element carrying the answer: the persisted property names, separated by
+#: spaces. libindi cannot answer that question at all - its subset is chosen in
+#: ``saveConfigItems``, a C++ virtual no client can read over the wire - which is
+#: why a panel has to apologise for every libindi driver. Here ``persist=True``
+#: is declared at define time, so the answer is data and the driver publishes it.
+#:
+#: **The name is namespaced deliberately.** ``CONFIG_PERSISTED`` sits in the same
+#: flat property namespace libindi's own ``CONFIG_*`` properties do, and INDI's
+#: selling point is that everybody's clients talk to everybody's drivers. Once
+#: this has shipped, this SDK, the panel and any third-party consumer all key on
+#: the name, so a later collision could only be resolved by breaking all three
+#: together. The prefix costs nothing and makes that impossible.
+CONFIG_PERSISTED = "NEXUS_CONFIG_PERSISTED"
+CONFIG_PERSISTED_NAMES = "PROPERTIES"
+
 #: Vector kinds that cannot be persisted. A light is a status readout the driver
 #: computes - restoring one would put a stale judgement on screen with nothing
 #: behind it - and a BLOB is an image, which is not configuration and would put
@@ -334,6 +350,17 @@ class Device:
         this version of the driver publishes. Lights and BLOBs cannot be
         persisted at all.
 
+        Because that choice is declarative, the device can **tell a client what
+        Save writes**, which no libindi driver can: a read-only
+        ``NEXUS_CONFIG_PERSISTED`` text property whose ``PROPERTIES`` element
+        lists the persisted property names, separated by spaces. It is published
+        once :meth:`setup` returns, so it names the whole set rather than
+        growing an element at a time, and updated whenever the membership really
+        changes - a persisted property defined on connect, or withdrawn on
+        disconnect. A device that persists nothing publishes it **empty**: "this
+        driver saves nothing" and "this driver cannot tell you" are different
+        answers, and only the property being absent means the second.
+
         The device keeps one authoritative map of its configuration, and four
         rules govern it:
 
@@ -379,6 +406,65 @@ class Device:
             label=label,
             group=group,
         )
+
+    def _publish_persisted(self) -> None:
+        """Define ``NEXUS_CONFIG_PERSISTED``, once :meth:`setup` has returned.
+
+        Called by :meth:`_dispatch_get_properties` after a successful
+        :meth:`setup`, and only for a device that defined ``CONFIG_PROCESS`` -
+        without a Save button there is nothing for the list to describe. Doing
+        it here rather than from each ``define_*(persist=True)`` call is what
+        makes the property arrive stating the whole set: publishing per property
+        would announce a list that is wrong until the last persisted define, and
+        put a ``set`` on the wire for each one.
+
+        It carries the ``CONFIG_PROCESS`` group so the two stay in the same tab,
+        and ``emit="on_change"`` so a define-delete-define cycle that leaves the
+        membership as it was says nothing.
+        """
+        if CONFIG_PROCESS not in self._properties or CONFIG_PERSISTED in self._properties:
+            return
+        self.define_text(
+            CONFIG_PERSISTED,
+            [
+                Text(
+                    name=CONFIG_PERSISTED_NAMES,
+                    label="Properties",
+                    value=self._persisted_names(),
+                )
+            ],
+            label="Saved properties",
+            group=self._properties[CONFIG_PROCESS].vector.group,
+            perm=IPerm.RO,
+            state=IPState.OK,
+            emit="on_change",
+        )
+
+    def _refresh_persisted(self) -> None:
+        """Restate ``NEXUS_CONFIG_PERSISTED`` after the membership may have moved.
+
+        A no-op until the property exists, which is what keeps the persisted
+        ``define_*`` calls inside :meth:`setup` silent: they run before
+        :meth:`_publish_persisted`, and the value it publishes already accounts
+        for them. Afterwards this is the path that keeps a connect-time
+        persisted property honest in both directions.
+        """
+        prop = self._properties.get(CONFIG_PERSISTED)
+        if prop is None:
+            return
+        prop.set({CONFIG_PERSISTED_NAMES: self._persisted_names()})
+
+    def _persisted_names(self) -> str:
+        """Return the persisted property names as the wire carries them.
+
+        Returns
+        -------
+        names : str
+            The names of every persisted property defined right now, in the
+            order they were defined, separated by single spaces. Empty when the
+            device persists nothing, which is a statement rather than a gap.
+        """
+        return " ".join(name for name, prop in self._properties.items() if prop.persist)
 
     async def on_config_loaded(self, names: list[str]) -> None:
         """React to a configuration that has just been restored.
@@ -605,7 +691,8 @@ class Device:
         Raises
         ------
         ValueError
-            Raised if ``persist=True`` is asked for on a light or BLOB vector.
+            Raised if ``persist=True`` is asked for on a light or BLOB vector,
+            or on a property whose name contains whitespace.
         """
         if not vector.device:
             vector.device = self._device
@@ -615,11 +702,27 @@ class Device:
                 "persisted: a light is a judgement the driver recomputes and a BLOB is not "
                 "configuration"
             )
+        # Nothing in INDI forbids whitespace in a property name - models.py puts
+        # no pattern on `name` and the 1.7 DTD types it CDATA - so this guard is
+        # not a restatement of the protocol. It is what makes the space-separated
+        # NEXUS_CONFIG_PERSISTED encoding unambiguous: one name with a space in
+        # it and every client reading that list sees two properties, neither of
+        # which exists. It binds only persisted names, because they are the only
+        # ones that list carries.
+        if persist and any(character.isspace() for character in vector.name):
+            raise ValueError(
+                f"{self._device}.{vector.name!r} cannot be persisted: whitespace in the name "
+                f"would be indistinguishable from a separator in {CONFIG_PERSISTED}"
+            )
         prop = BoundProperty(vector, self._send, policy=emit, owner=self, persist=persist)
         self._properties[vector.name] = prop
         if persist:
             self._restore(prop)
         prop._announce()
+        if persist:
+            # After the announcement, so the list never names a property the
+            # client has not been told about yet.
+            self._refresh_persisted()
         return prop
 
     def _restore(self, prop: BoundProperty[Any]) -> None:
@@ -980,7 +1083,11 @@ class Device:
         connect/disconnect cycle behave: the property comes back on the next
         connect holding what the operator last set it to, not what happened to
         be on disk when the driver started, and a Save taken while it is
-        withdrawn still writes it.
+        withdrawn still writes it. ``NEXUS_CONFIG_PERSISTED`` stops naming it at
+        the same moment even so: it answers "which of the properties you can see
+        does Save write", and a client that has just been sent a ``delProperty``
+        for this one can see it no longer. The values a Save keeps for it come
+        from the map, not from a property anybody could point at.
 
         Called by :meth:`BoundProperty.delete` so that removal and announcement
         stay in one place, and so the announcement can follow the removal rather
@@ -1006,6 +1113,12 @@ class Device:
         if prop.persist:
             self._config_values[prop.name] = values_of(prop.vector)
         del self._properties[prop.name]
+        if prop.persist:
+            # Ahead of the ``delProperty`` the caller is about to emit, as the
+            # definition path restates it after the ``def``: both orders err the
+            # same way, so a client never holds a list that claims Save covers a
+            # property it cannot see.
+            self._refresh_persisted()
         return True
 
     # -- property access --------------------------------------------------- #
@@ -1310,6 +1423,10 @@ class Device:
         The first matching request runs :meth:`setup`; later ones (a late-joining
         client) re-emit the ``def`` for every property already defined.
 
+        A device that defined ``CONFIG_PROCESS`` publishes
+        ``NEXUS_CONFIG_PERSISTED`` here too, once :meth:`setup` has returned and
+        the persisted set is settled - see :meth:`_publish_persisted`.
+
         A :meth:`setup` that **raises** - hardware absent at boot, the ordinary
         case - is not a terminal state:
 
@@ -1354,6 +1471,11 @@ class Device:
                 announced = dict(self._properties)
                 try:
                     await self.setup()
+                    # Inside the try, so a device that cannot publish its
+                    # persisted list rolls back with the rest of the attempt
+                    # rather than serving a configuration surface it never
+                    # finished describing.
+                    self._publish_persisted()
                 except Exception as exc:
                     self._roll_back_setup(announced, exc)
                     self._setup_done = False  # let a later getProperties retry

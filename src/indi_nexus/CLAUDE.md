@@ -362,10 +362,33 @@ What a driver author subclasses. The vocabulary is plain Python: no libindi-C su
       frameworks fighting over one file. `CONFIG_DEFAULT` is not published: the code is
       already the definition of default. `persist=True` on a light or a BLOB raises at
       define time.
-    - `NEXUS_CONFIG_PERSISTED` is **reserved** for the follow-up that tells a client which
-      properties are persisted. Nothing publishes it yet, and nothing reads it: the panel
-      ships the honest fallback. `persist=` being declarative is what makes that follow-up
-      small.
+    - **`NEXUS_CONFIG_PERSISTED` is what `persist=` being declarative bought.** A read-only
+      text property, one element (`PROPERTIES`) holding the persisted property names
+      separated by spaces, published by `define_config()`'s device once `setup()` returns
+      and re-`set` when the membership really changes. libindi cannot answer this at all -
+      `saveConfigItems` is a C++ virtual nothing on the wire exposes - so the panel's
+      apology is right there and wrong here, and `DeviceConfigDialog` now names the
+      properties for a driver that publishes it. Five things about it are settled.
+      - **The name is namespaced deliberately.** A bare `CONFIG_PERSISTED` shares a flat
+        namespace with every future libindi `CONFIG_*`, and once shipped the SDK, the panel
+        and any third-party consumer all key on it, so a collision could only be resolved by
+        breaking all three together.
+      - **Published once, after `setup()`, not per `define_*`.** Emitting as each persisted
+        property is defined would announce a list that is wrong until the last one and put a
+        `set` on the wire for each. It carries `emit="on_change"`, so a
+        define-delete-define cycle that lands on the same membership says nothing.
+      - **Empty is an answer.** A device with `define_config()` and nothing persisted
+        publishes it with an empty value; only the property being *absent* means "cannot
+        tell you", and the panel renders those two differently.
+      - **It lists what is defined right now**, so a connect-time persisted property joins
+        it on connect and leaves on disconnect - even though a Save still writes that
+        property's captured values from `_config_values`. The list answers "which of the
+        properties you can see does Save write", and a client has been sent a
+        `delProperty` for the other one.
+      - The space-separated encoding is safe only because `define(persist=True)` **refuses
+        a name containing whitespace**. Nothing in INDI forbids one (`models.py` puts no
+        pattern on `name`, the DTD types it CDATA), so that guard is not a restatement of
+        the protocol and must not be deleted as one - the reason is written at it.
   - `await self.off_thread(fn, ...)` runs a **blocking** instrument call in a worker thread.
     This is the answer to the commonest way a real driver goes wrong: calling a synchronous
     vendor library from an `async def` silently stalls the whole reactor. Only the blocking

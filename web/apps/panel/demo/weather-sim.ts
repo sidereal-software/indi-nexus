@@ -543,6 +543,13 @@ export class WeatherSimSocket implements WebSocketLike {
    * "Options" - so the demo carries it too, and the panel's `DeviceConfigDialog`
    * is exercised on the published page rather than only in tests. Members are
    * always reported Off: see `handleConfig`.
+   *
+   * This device is libindi's, all the way: it publishes no
+   * `NEXUS_CONFIG_PERSISTED` even though `openmeteo_device.py` now does, so the
+   * dialog's fallback line - the one for a driver that cannot say what Save
+   * writes - is what the published demo shows. Carrying both would make this a
+   * device that exists nowhere, libindi's four-member `CONFIG_PROCESS` beside a
+   * property no libindi driver has.
    */
   private configVector(state: IPState): SwitchVector {
     return {

@@ -8,7 +8,7 @@
  * modal rather than on the page.
  */
 
-import type { NewVector, SwitchVector } from "@indi-nexus/client";
+import type { NewVector, NumberVector, SwitchVector, TextVector } from "@indi-nexus/client";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SidebarProvider } from "@/ui/sidebar";
@@ -52,6 +52,34 @@ function configVec(
     perm: "rw",
     rule: "AtMostOne",
     elements: members.map((name) => ({ kind: "switch" as const, name, value: "Off" as const })),
+  };
+}
+
+/** An INDINexus driver's answer to "what does Save write?". */
+function persistedVec(names: string): TextVector {
+  return {
+    kind: "text",
+    device: "CCD",
+    name: "NEXUS_CONFIG_PERSISTED",
+    label: "Saved properties",
+    group: "Options",
+    state: "Ok",
+    perm: "ro",
+    elements: [{ kind: "text", name: "PROPERTIES", label: "Properties", value: names }],
+  };
+}
+
+/** A persisted property, so the dialog has a label to render instead of a name. */
+function siteVec(): NumberVector {
+  return {
+    kind: "number",
+    device: "CCD",
+    name: "GEOGRAPHIC_COORD",
+    label: "Site",
+    group: "Options",
+    state: "Ok",
+    perm: "rw",
+    elements: [{ kind: "number", name: "LAT", value: 47.6 }],
   };
 }
 
@@ -168,11 +196,55 @@ describe("DeviceConfigDialog", () => {
     receive(socket, { tag: "def", vector: configVec() });
     open();
 
+    // The fallback, and what every libindi driver gets: its persisted subset is
+    // chosen in `saveConfigItems`, which no client can read.
     expect(
       screen.getByText(
         "This driver does not report what Save writes. Most drivers save only part of what you see.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("names what Save writes when the driver reports it", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+    receive(socket, { tag: "def", vector: siteVec() });
+    receive(socket, { tag: "def", vector: persistedVec("GEOGRAPHIC_COORD") });
+    open();
+
+    // The property's own label, not the wire name: "Site" is the word the rest
+    // of the panel uses for it.
+    expect(
+      screen.getByText("Save writes Site. Nothing else on this screen is saved."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/does not report what Save writes/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the wire name for a property the device is not publishing", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+    receive(socket, { tag: "def", vector: persistedVec("GEOGRAPHIC_COORD BACKLASH") });
+    open();
+
+    expect(
+      screen.getByText(
+        "Save writes GEOGRAPHIC_COORD, BACKLASH. Nothing else on this screen is saved.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says plainly when the driver reports that Save writes nothing", () => {
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+    receive(socket, { tag: "def", vector: persistedVec("") });
+    open();
+
+    // An empty list is an answer, and a different one from "cannot say": an
+    // empty list rendered as a list would be a blank line saying neither.
+    expect(
+      screen.getByText("This driver reports that Save writes none of its properties."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/does not report what Save writes/)).not.toBeInTheDocument();
   });
 
   it("attaches each button's consequence to the button", () => {

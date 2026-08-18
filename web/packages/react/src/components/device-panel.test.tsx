@@ -1,6 +1,6 @@
 /** Tests for the grouped per-device property panel. */
 
-import type { NumberVector, SwitchVector } from "@indi-nexus/client";
+import type { NumberVector, SwitchVector, TextVector } from "@indi-nexus/client";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { receive, renderConnected } from "../testing/render";
@@ -45,6 +45,20 @@ function configVec(): SwitchVector {
       name,
       value: "Off" as const,
     })),
+  };
+}
+
+/** An INDINexus driver's list of what Save writes, which the dialog renders. */
+function persistedVec(): TextVector {
+  return {
+    kind: "text",
+    device: "CCD",
+    name: "NEXUS_CONFIG_PERSISTED",
+    label: "Saved properties",
+    group: "Options",
+    state: "Ok",
+    perm: "ro",
+    elements: [{ kind: "text", name: "PROPERTIES", value: "GEOGRAPHIC_COORD" }],
   };
 }
 
@@ -112,6 +126,19 @@ describe("DevicePanel", () => {
     expect(screen.queryByText("Configuration")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "CONFIG_SAVE" })).not.toBeInTheDocument();
+    expect(openFold()).toEqual([]);
+  });
+
+  it("leaves NEXUS_CONFIG_PERSISTED out of the panel entirely", () => {
+    const { socket } = renderConnected(<DevicePanel device="CCD" />);
+    receive(socket, { tag: "def", vector: numVec("EXPOSURE", "Main Control") });
+    receive(socket, { tag: "def", vector: persistedVec() });
+
+    // The dialog turns this into a sentence about what Save writes. Drawn as a
+    // card it is a read-only field of wire names, which tells an operator less
+    // than the sentence does and takes a slot in the grid to do it.
+    expect(screen.queryByText("Saved properties")).not.toBeInTheDocument();
+    expect(screen.queryByText("GEOGRAPHIC_COORD")).not.toBeInTheDocument();
     expect(openFold()).toEqual([]);
   });
 

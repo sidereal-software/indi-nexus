@@ -22,6 +22,7 @@ import pytest
 from indi_nexus import ConfigError
 from indi_nexus.driver import Device, on_new
 from indi_nexus.driver.config import MAX_CONFIG_BYTES, config_path
+from indi_nexus.driver.device import CONFIG_PERSISTED, CONFIG_PERSISTED_NAMES
 from indi_nexus.protocol import (
     BLOB,
     IPerm,
@@ -505,8 +506,163 @@ async def test_purge_removes_the_file_and_repeats_cleanly(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# Telling a client what Save writes                                            #
+# --------------------------------------------------------------------------- #
+async def test_the_device_publishes_what_save_writes(tmp_path):
+    """``NEXUS_CONFIG_PERSISTED`` names the persisted properties, read-only.
+
+    This is what ``persist=True`` being declarative buys: libindi picks the
+    subset in ``saveConfigItems``, which no client can read, so a panel can only
+    apologise for it.
+    """
+    harness = _harness(tmp_path)
+    await harness.setup()
+
+    listed = harness.latest(CONFIG_PERSISTED)
+    assert listed.perm is IPerm.RO
+    assert [el.name for el in listed.elements] == [CONFIG_PERSISTED_NAMES]
+    # TEMPERATURE is defined and is not in it: a reading is not configuration.
+    assert listed.element(CONFIG_PERSISTED_NAMES).value == "GEOGRAPHIC_COORD"
+
+
+async def test_the_list_is_published_once_and_not_per_property(tmp_path):
+    """One ``def`` after ``setup``, and no correction behind it.
+
+    Emitting from each ``define_*(persist=True)`` would announce a list that is
+    wrong until the last of them, and put a ``set`` on the wire for each.
+    """
+    harness = _harness(tmp_path)
+    await harness.setup()
+
+    assert len(harness.defs(CONFIG_PERSISTED)) == 1
+    assert harness.sets(CONFIG_PERSISTED) == []
+
+
+async def test_a_device_that_persists_nothing_says_so(tmp_path):
+    """An empty list is an answer; only the property's absence is "cannot say".
+
+    A panel has to tell those two apart, so a device offering Save always
+    publishes the property - even when pressing Save writes nothing at all.
+    """
+
+    class _NoSettings(Device):
+        """A device with a Save button and nothing behind it."""
+
+        name = "NoSettings"
+
+        async def setup(self) -> None:
+            """Define the configuration switch and one live reading."""
+            self.define_config()
+            self.define_number("TEMPERATURE", [Number(name="C", value=11.0)], perm=IPerm.RO)
+
+    harness = _harness(tmp_path, _NoSettings())
+    await harness.setup()
+
+    assert harness.latest(CONFIG_PERSISTED).element(CONFIG_PERSISTED_NAMES).value == ""
+
+
+async def test_a_device_without_config_process_publishes_nothing(tmp_path):
+    """No Save button, nothing to describe.
+
+    The property answers "what does *this* Save write", so a device that offers
+    no configuration action must not carry it.
+    """
+
+    class _Plain(Device):
+        """A device that never calls ``define_config``."""
+
+        name = "Plain"
+
+        async def setup(self) -> None:
+            """Define one property, persisted, with nothing to persist it with."""
+            self.define_number("BACKLASH", [Number(name="STEPS", value=0.0)], persist=True)
+
+    harness = _harness(tmp_path, _Plain())
+    await harness.setup()
+
+    assert CONFIG_PERSISTED not in harness.device
+    assert harness.defs(CONFIG_PERSISTED) == []
+
+
+async def test_the_list_follows_a_connect_time_property(tmp_path):
+    """A persisted property defined on connect joins the list, and leaves on disconnect.
+
+    The list answers for the properties a client can see right now: once
+    ``BACKLASH`` is retracted, naming it would point a panel at a property it
+    has been told is gone.
+    """
+
+    class _Connectable(Device):
+        """A device whose persisted property exists only while connected."""
+
+        name = "Connectable"
+
+        async def setup(self) -> None:
+            """Define the configuration switch and the connection."""
+            self.define_connection()
+            self.define_config()
+
+        async def on_connect(self) -> None:
+            """Define the setting the instrument owns."""
+            self.define_number("BACKLASH", [Number(name="STEPS", value=0.0)], persist=True)
+
+        async def on_disconnect(self) -> None:
+            """Withdraw it again."""
+            self.delete_property("BACKLASH")
+
+    harness = _harness(tmp_path, _Connectable())
+    await harness.setup()
+    assert harness.latest(CONFIG_PERSISTED).element(CONFIG_PERSISTED_NAMES).value == ""
+
+    await harness.write("CONNECTION", CONNECT=True)
+    assert harness.latest(CONFIG_PERSISTED).element(CONFIG_PERSISTED_NAMES).value == "BACKLASH"
+
+    await harness.write("CONNECTION", DISCONNECT=True)
+    assert harness.latest(CONFIG_PERSISTED).element(CONFIG_PERSISTED_NAMES).value == ""
+    # Three states, three frames: the property is on_change, so the redefinition
+    # that follows a reconnect does not restate a membership nothing moved.
+    assert len(harness.sets(CONFIG_PERSISTED)) == 2
+
+
+async def test_two_persisted_properties_are_separated_by_a_space(tmp_path):
+    """The encoding is one space between names, in the order they were defined."""
+
+    class _Pair(Device):
+        """A device with two persisted properties."""
+
+        name = "Pair"
+
+        async def setup(self) -> None:
+            """Define the configuration switch and two settings."""
+            self.define_config()
+            self.define_number("GEOGRAPHIC_COORD", [Number(name="LAT", value=0.0)], persist=True)
+            self.define_text("SITE_NAME", [Text(name="NAME", value="home")], persist=True)
+
+    harness = _harness(tmp_path, _Pair())
+    await harness.setup()
+
+    value = harness.latest(CONFIG_PERSISTED).element(CONFIG_PERSISTED_NAMES).value
+    assert value == "GEOGRAPHIC_COORD SITE_NAME"
+
+
+# --------------------------------------------------------------------------- #
 # What cannot be persisted, and where it cannot be written                     #
 # --------------------------------------------------------------------------- #
+async def test_a_persisted_name_with_whitespace_is_refused(tmp_path):
+    """The guard is what makes the space-separated list unambiguous.
+
+    Nothing in INDI forbids the space - the models put no pattern on ``name``
+    and the 1.7 DTD types it CDATA - so without this, one such property would
+    read to every client as two properties, neither of which exists.
+    """
+    harness = _harness(tmp_path, Device("Spacey"))
+
+    with pytest.raises(ValueError, match=CONFIG_PERSISTED):
+        harness.device.define_number("SITE COORD", [Number(name="LAT", value=0.0)], persist=True)
+    # Unpersisted, the same name is nobody's business: it never reaches the list.
+    harness.device.define_number("SITE COORD", [Number(name="LAT", value=0.0)])
+
+
 @pytest.mark.parametrize("kind", ["light", "blob"])
 async def test_persisting_a_light_or_a_blob_is_refused_at_define_time(tmp_path, kind):
     """Neither kind is configuration, and the refusal is loud and immediate."""

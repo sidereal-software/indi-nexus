@@ -19,7 +19,11 @@
  * such second home for it.
  *
  * `CONFIG_PROCESS` is here because {@link DeviceConfigDialog} already offers it
- * from the sidebar - folding it as well would draw it twice.
+ * from the sidebar - folding it as well would draw it twice. So is
+ * `NEXUS_CONFIG_PERSISTED`, the one entry no libindi driver publishes: an
+ * INDINexus driver lists there which of its properties Save writes, which the
+ * same dialog renders as a sentence. A layout that draws it anyway shows an
+ * operator a read-only field of wire names.
  *
  * Exported so a consumer building its own layout can ask the same question the
  * panel asks. There is deliberately no prop to override it: the answer is a fact
@@ -31,6 +35,7 @@ export const DRIVER_MACHINERY: ReadonlySet<string> = new Set([
   "DEBUG",
   "SIMULATION",
   "CONFIG_PROCESS",
+  "NEXUS_CONFIG_PERSISTED",
   "ACTIVE_DEVICES",
   "DEBUG_LEVEL",
   "LOGGING_LEVEL",

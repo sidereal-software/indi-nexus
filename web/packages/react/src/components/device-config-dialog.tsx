@@ -21,15 +21,18 @@
  *   driver's own handlers, so applying one to a connected instrument can move
  *   hardware. Both confirm while the device is connected, and neither does while
  *   it is not.
- * - `CONFIG_SAVE` writes whatever the driver's `saveConfigItems` chose, which is
- *   a subset a client cannot discover over the wire. The dialog says so rather
- *   than letting an operator assume the screen is what gets persisted.
+ * - `CONFIG_SAVE` writes a subset of the device's properties. A libindi driver
+ *   picks it in `saveConfigItems`, a C++ virtual no client can read, so for one
+ *   of those the dialog says outright that it cannot tell you - silence would
+ *   read as "everything you see". An INDINexus driver declares persistence at
+ *   define time and publishes the answer as `NEXUS_CONFIG_PERSISTED`, and then
+ *   the dialog names the properties instead of apologising.
  *
  * Feedback is the vector's own Idle/Ok/Busy/Alert state, as everywhere else in
  * this package: the driver answering is what says the action happened.
  */
 
-import { displayLabel } from "@indi-nexus/client";
+import { displayLabel, type Vector } from "@indi-nexus/client";
 import { Settings2 } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import {
@@ -54,11 +57,22 @@ import {
 } from "@/ui/dialog";
 import { SidebarMenuButton, SidebarMenuItem } from "@/ui/sidebar";
 import { useIndiClient } from "../context";
-import { useProperty } from "../hooks";
+import { useDevice, useProperty } from "../hooks";
 import { StateBadge } from "./state-badge";
 
 /** The INDI property this dialog presents. */
 const CONFIG_PROCESS = "CONFIG_PROCESS";
+
+/**
+ * The property an INDINexus driver publishes to say what Save writes, and the
+ * element holding the persisted property names separated by spaces.
+ *
+ * No libindi driver has it, which is the point: its absence is what the fallback
+ * copy below is for, and an empty value is a different answer again - a driver
+ * saying that Save writes nothing.
+ */
+const CONFIG_PERSISTED = "NEXUS_CONFIG_PERSISTED";
+const CONFIG_PERSISTED_NAMES = "PROPERTIES";
 
 /** What this component knows about one `CONFIG_PROCESS` member. */
 interface ConfigAction {
@@ -225,6 +239,60 @@ function ActionButton({
   );
 }
 
+/**
+ * The property names a driver says Save writes, or `null` when it does not say.
+ *
+ * @param vector - The device's `NEXUS_CONFIG_PERSISTED`, if it has one.
+ * @returns The names, empty when the driver persists nothing, or null when there
+ *   is no answer to be had - which is every libindi driver.
+ */
+function persistedNames(vector: Vector | undefined): string[] | null {
+  if (vector?.kind !== "text") return null;
+  const element = vector.elements.find((candidate) => candidate.name === CONFIG_PERSISTED_NAMES);
+  if (element === undefined) return null;
+  // The driver refuses to persist a property whose name holds whitespace, which
+  // is what makes splitting on it safe. An empty value is an empty list, not a
+  // list of one empty name.
+  return element.value.split(/\s+/).filter((name) => name !== "");
+}
+
+/**
+ * The line under the buttons saying what pressing Save actually writes.
+ *
+ * Three different statements, and the difference between them matters to an
+ * operator deciding whether to trust the screen: the driver named the
+ * properties, the driver said there are none, or the driver cannot say. Only the
+ * third is an apology, and it is the one every libindi driver gets.
+ *
+ * Names are rendered as the properties' own labels where the device still
+ * publishes them, since `GEOGRAPHIC_COORD` is the wire's word for "Site" and the
+ * operator is reading the panel's.
+ *
+ * @param props - The device whose configuration is on screen.
+ * @returns The paragraph.
+ */
+function SaveScope({ device }: { device: string }): ReactNode {
+  const properties = useDevice(device);
+  const names = persistedNames(properties[CONFIG_PERSISTED]);
+
+  let text: string;
+  if (names === null) {
+    text =
+      "This driver does not report what Save writes. Most drivers save only part of what you " +
+      "see.";
+  } else if (names.length === 0) {
+    text = "This driver reports that Save writes none of its properties.";
+  } else {
+    const labels = names.map((name) => {
+      const vector = properties[name];
+      return vector === undefined ? name : displayLabel(vector);
+    });
+    text = `Save writes ${labels.join(", ")}. Nothing else on this screen is saved.`;
+  }
+
+  return <p className="border-t pt-3 text-xs text-muted-foreground">{text}</p>;
+}
+
 /** Props for {@link DeviceConfigDialog}. */
 export interface DeviceConfigDialogProps {
   /**
@@ -305,12 +373,11 @@ export function DeviceConfigDialog({ device, children }: DeviceConfigDialogProps
               onAct={() => client.setSwitch(vector.device, vector.name, { [action.name]: "On" })}
             />
           ))}
-          {/* Always present, because a client cannot discover a driver's
-              saveConfigItems over the wire: silence would read as "everything". */}
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            This driver does not report what Save writes. Most drivers save only part of what you
-            see.
-          </p>
+          {/* Always present: what Save writes is never the whole screen, and
+              silence would read as "everything". Mounted with the dialog's
+              content, so the whole-device subscription it needs to name the
+              properties is only live while the dialog is open. */}
+          <SaveScope device={vector.device} />
         </div>
       </DialogContent>
     </Dialog>
