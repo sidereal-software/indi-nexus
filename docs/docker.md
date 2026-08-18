@@ -25,9 +25,29 @@ refused with close code 1008 and no devices ever appear - so read the URL out of
 or set `WEB_TOKEN` yourself as above and keep it stable across restarts. See
 [The token](#the-token) for the rest, including `WEB_ALLOW_ANONYMOUS`.
 
-Released images are published to the GitHub Container Registry, one per release, tagged
-`latest`, `0.2` and `0.2.0`. They are built for `linux/amd64` and `linux/arm64`, so an
-Apple Silicon Mac and an observatory Raspberry Pi both get a native image.
+## Which tag to pull
+
+Images are published to the GitHub Container Registry under
+`ghcr.io/sidereal-software/indi-nexus`.
+
+| Tag | Points at | Built for |
+|---|---|---|
+| `latest` | the newest **release** | `linux/amd64`, `linux/arm64` |
+| `0.2.0` | that exact patch release, forever | `linux/amd64`, `linux/arm64` |
+| `0.2` | the newest `0.2.x` release | `linux/amd64`, `linux/arm64` |
+| `edge` | the tip of `main`, rebuilt on every merge | `linux/amd64` |
+| `sha-a1b2c3d` | one exact commit on `main` | `linux/amd64` |
+
+`latest` is the newest *release*, not the newest commit, which is why the commands on
+this page can safely leave the tag off. **Pin the patch tag for anything pointed at real
+hardware**: an observatory that pulls `latest` gets a different version the day you cut a
+release, usually in the dark, usually not on purpose.
+
+`edge` is for tracking development or reproducing a bug report against a known commit,
+and it is opt-in by name for that reason. It is `amd64` only, because arm64 has to be
+emulated on a CI runner and a release is the thing worth spending that on; a Raspberry Pi
+wants a release tag anyway. Release images are native on both, so an Apple Silicon Mac
+and an observatory Pi each get a real build.
 
 To build it yourself instead, from a checkout:
 

@@ -6,10 +6,19 @@ name: docker
 # installing indi-nexus from PyPI. So it is not blocked on the PyPI and npm
 # trusted-publisher setup that release.yml still needs.
 #
-# Cadence: one image per release, which is what the version tags are for. A pull
-# request that touches the image builds it without pushing, so the Dockerfile
-# cannot rot unnoticed between releases, and workflow_dispatch publishes on
-# demand.
+# Two cadences, two meanings:
+#
+#   :latest, :X.Y.Z, :X.Y   one image per release. `latest` is the newest
+#                           RELEASE, not the newest commit, because
+#                           docs/docker.md tells people to pull untagged and an
+#                           untagged pull must never hand an observatory an
+#                           unreleased build.
+#   :edge, :sha-<commit>    every push to main. Opt-in by name, for anyone
+#                           tracking development or reproducing a bug report
+#                           against a specific commit.
+#
+# A pull request that touches the image builds it without pushing, so the
+# Dockerfile cannot rot unnoticed, and workflow_dispatch publishes on demand.
 #
 # ONE-TIME SETUP: the first push creates the package as private. Make it public
 # once at Settings -> Packages -> indi-nexus -> Change visibility, or `docker
@@ -18,6 +27,18 @@ name: docker
 on:
   release:
     types: [published]
+  push:
+    branches: [main]
+    # Same paths as the pull_request filter below: a commit that cannot change
+    # the image should not spend a runner rebuilding it.
+    paths:
+      - "docker/**"
+      - "compose.yaml"
+      - ".dockerignore"
+      - "src/**"
+      - "web/**"
+      - "pyproject.toml"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
     inputs:
       tag:
@@ -60,12 +81,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # arm64 is emulated. It is slow, and the honest reason to accept that is
-      # that this runs once per release rather than on every push. If it becomes
-      # painful, the fix is a matrix over ubuntu-latest and ubuntu-24.04-arm
-      # building by digest plus a manifest-merge job, which is free for a public
-      # repository and needs no QEMU.
+      # arm64 is emulated, and emulation is slow enough that it sets the cadence
+      # rather than the other way round: a release pays it, a push to main does
+      # not. :edge exists for developers and CI, where amd64 covers effectively
+      # every consumer, and anyone running a Raspberry Pi at a telescope wants a
+      # release anyway. So QEMU is only installed on the paths that build arm64.
+      #
+      # If :edge ever needs arm64 too, the fix is a matrix over ubuntu-latest and
+      # ubuntu-24.04-arm building by digest plus a manifest-merge job, which is
+      # free for a public repository and needs no emulation at all.
       - uses: docker/setup-qemu-action@v4
+        if: github.event_name != 'push'
         with:
           platforms: arm64
       - uses: docker/setup-buildx-action@v4
@@ -89,6 +115,8 @@ jobs:
             type=match,pattern=indi-nexus-v(\d+\.\d+\.\d+),group=1
             type=match,pattern=indi-nexus-v(\d+\.\d+)\.\d+,group=1
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+            type=raw,value=edge,enable=${{ github.event_name == 'push' }}
+            type=sha,format=short,enable=${{ github.event_name == 'push' }}
             type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
             type=ref,event=pr
           labels: |
@@ -99,7 +127,9 @@ jobs:
           context: .
           file: docker/Dockerfile
           target: runtime
-          platforms: linux/amd64,linux/arm64
+          # Kept in step with the QEMU guard above: no emulation installed on a
+          # push to main, so nothing there may ask for arm64.
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
