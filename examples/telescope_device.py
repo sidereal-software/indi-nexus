@@ -229,9 +229,24 @@ class TelescopeSimulator(Device):
 
         A real driver would close its serial/network connection here.
         """
+        parking = self._parking  # read before the lines below clear it
         self._target = None
         self._parking = False
         self._ns_rate = self._we_rate = 0.0
+        self["TELESCOPE_MOTION_NS"].set(
+            MOTION_NORTH=ISState.OFF, MOTION_SOUTH=ISState.OFF, state=IPState.IDLE
+        )
+        self["TELESCOPE_MOTION_WE"].set(
+            MOTION_WEST=ISState.OFF, MOTION_EAST=ISState.OFF, state=IPState.IDLE
+        )
+        if parking:
+            # PARK went On when the park was *requested*: this vector states the
+            # standing intent, not where the mount is. The park never arrived, so
+            # retract the claim rather than leave it Busy for ever. UNPARK alone
+            # is enough - the vector is OneOfMany, so `set` clears PARK with it.
+            # A park that completed needs nothing: _tick_slew already left it On
+            # and Ok, which was true then and stays true now.
+            self["TELESCOPE_PARK"].set(UNPARK=ISState.ON, state=IPState.IDLE)
         self["EQUATORIAL_EOD_COORD"].set(state=IPState.IDLE)
 
     @property

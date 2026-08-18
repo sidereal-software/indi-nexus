@@ -167,6 +167,9 @@ class {class_name}(Device):
 
     async def on_disconnect(self) -> None:
         """Halt motion and close your hardware link here."""
+        # Nothing polls while disconnected, so stop claiming the last reading is
+        # current. Leave every property that could still be moving safe and Idle.
+        self["TELEMETRY"].set(state=IPState.IDLE)
 
     @every(seconds=1, when_connected=True)
     async def poll(self) -> None:

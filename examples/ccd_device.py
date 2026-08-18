@@ -18,6 +18,10 @@ star field here is synthetic (a deterministic random field per driver
 instance), rendered off the event loop, so the driver stays dependency-free
 and fast.
 
+This is the driver half of a BLOB. For the client half - and for the
+``enable_blob`` call without which ``indiserver`` silently forwards no image at
+all - see ``examples/blob_receiver.py``.
+
 Run it under ``indiserver``::
 
     indiserver ./examples/ccd_device.py
@@ -280,6 +284,11 @@ class CCDSimulator(Device):
             self["CCD_EXPOSURE"].set(CCD_EXPOSURE_VALUE=0, state=IPState.IDLE)
         self._temperature_target = None
         self["CCD_TEMPERATURE"].set(state=IPState.IDLE)
+        # State only, as for the temperature above. COOLER_ON/COOLER_OFF describe
+        # the TEC itself, which this hook does not switch off, so writing
+        # COOLER_OFF here would claim an action nobody performed. Idle says what
+        # is actually true: nothing is driving the temperature any more.
+        self["CCD_COOLER"].set(state=IPState.IDLE)
 
     # -- simulation -------------------------------------------------------- #
     @every(seconds=1, when_connected=True)

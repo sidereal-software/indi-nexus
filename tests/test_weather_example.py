@@ -49,6 +49,11 @@ class _FakeStation:
         self.calls.append("close")
         self.is_open = False
 
+    def identify(self) -> dict[str, str]:
+        """Return the station's scripted identification."""
+        self.calls.append("identify")
+        return {"MODEL": "Fake WS-1", "FIRMWARE": "0.1"}
+
     def read_all(self) -> dict[str, float]:
         """Return the scripted readings, blocking for the scripted delay."""
         self.calls.append("read")
@@ -122,6 +127,56 @@ async def test_disconnecting_stops_claiming_the_readings_are_current(station) ->
     assert harness.latest("WEATHER_PARAMETERS").state is IPState.IDLE
     lights = harness.latest("WEATHER_STATUS")
     assert all(light.value is IPState.IDLE for light in lights.elements)
+
+
+async def test_the_station_identifies_itself_only_while_connected() -> None:
+    """SENSOR_INFO is defined on connect and retracted again on disconnect.
+
+    The property is read off the station, so it has no honest value with the
+    link down. `deletes()` is where the retraction shows up, and nowhere else.
+    """
+    device = WeatherStation()
+    device._station = _FakeStation()
+    harness = DeviceHarness(device)
+    await harness.setup()
+    assert "SENSOR_INFO" not in {vector.name for vector in harness.defs()}
+
+    await harness.write("CONNECTION", CONNECT=True)
+
+    info = harness.latest("SENSOR_INFO")
+    assert info.get("MODEL") == "Fake WS-1"
+    assert info.get("FIRMWARE") == "0.1"
+
+    await harness.write("CONNECTION", DISCONNECT=True)
+
+    assert [msg.name for msg in harness.deletes()] == ["SENSOR_INFO"]
+
+
+async def test_reconnecting_defines_the_station_info_again(station) -> None:
+    """Define, delete and define again is the normal life of the property."""
+    harness, _fake = station
+    await harness.write("CONNECTION", DISCONNECT=True)
+    harness.clear()
+
+    await harness.write("CONNECTION", CONNECT=True)
+
+    assert harness.latest("SENSOR_INFO").get("MODEL") == "Fake WS-1"
+
+
+async def test_disconnecting_settles_a_latched_reset(station) -> None:
+    """A reset left at Alert does not survive the link going down.
+
+    Nothing is going to clear it once the station is unreachable, so the hook
+    settles it with everything else rather than leaving a red control behind.
+    """
+    harness, fake = station
+    fake.fail_reset = True
+    await harness.write("STATION_RESET", RESET=True)
+    assert harness.latest("STATION_RESET").state is IPState.ALERT
+
+    await harness.write("CONNECTION", DISCONNECT=True)
+
+    assert harness.latest("STATION_RESET").state is IPState.IDLE
 
 
 # --------------------------------------------------------------------------- #

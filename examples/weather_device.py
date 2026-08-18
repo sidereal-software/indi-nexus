@@ -18,6 +18,10 @@ driver actually is, and exists to be copied:
 * the readbacks are declared ``emit="on_change"``, so a station reporting steady
   conditions goes quiet on the wire instead of republishing identical vectors
   forever;
+* ``SENSOR_INFO`` is read off the station and therefore defined in
+  ``on_connect`` and withdrawn with ``delete_property`` in ``on_disconnect`` -
+  the shape every property that only exists while the hardware is reachable
+  wants;
 * and the whole thing is tested without hardware in
   ``tests/test_weather_example.py``, using
   :class:`~indi_nexus.testing.DeviceHarness`.
@@ -46,12 +50,16 @@ from indi_nexus.protocol import (
     Number,
     Switch,
     SwitchVector,
+    Text,
     slugify,
 )
 
 #: The conditions the station reports, as (label, format, safe low, safe high).
 #: Element names are derived from the labels and match the client's dictionary
 #: keys, so a reading maps onto the property by name with no translation table.
+#: ``slugify`` yields lowercase names (``wind_speed``), which is why this driver
+#: reads differently from the rest of the suite; ``openmeteo_device.py`` spells
+#: the same readings ``WIND_SPEED`` by hand and shows that alternative.
 CONDITIONS = [
     ("Temperature", "%.1f", -40.0, 50.0),
     ("Humidity", "%.0f", 0.0, 90.0),
@@ -119,6 +127,24 @@ class _WeatherStationClient:
             "cloud_cover": max(0.0, 40.0 + 45.0 * math.sin(phase / 5)),
         }
 
+    def identify(self) -> dict[str, str]:
+        """Return what the station says it is (blocking).
+
+        Returns
+        -------
+        info : dict
+            The model and firmware revision the station reports.
+
+        Raises
+        ------
+        WeatherError
+            Raised if the link is closed.
+        """
+        if not self._open:
+            raise WeatherError("station link is not open")
+        time.sleep(0.05)
+        return {"MODEL": "Acme WS-2000", "FIRMWARE": "2.4.1"}
+
     def reset(self) -> None:
         """Ask the station to restart its own sensors (blocking).
 
@@ -176,20 +202,43 @@ class WeatherStation(Device):
 
     # -- connection lifecycle ----------------------------------------------- #
     async def on_connect(self) -> None:
-        """Open the station link.
+        """Open the station link and publish what the station says it is.
 
         No error handling here on purpose: if the hardware is not there, the
         raise propagates and the SDK rolls ``CONNECTION`` back to disconnected
         with the reason attached.
+
+        ``SENSOR_INFO`` is defined here rather than in :meth:`setup` because it
+        is *read off the station*: with the link down there is nothing to read
+        and nothing honest to publish, so the property should not exist. Its
+        counterpart is the ``delete_property`` in :meth:`on_disconnect`.
         """
         await self.off_thread(self._station.open)
         self._offline = False
+        info = await self.off_thread(self._station.identify)
+        self.define_text(
+            "SENSOR_INFO",
+            [
+                Text(name="MODEL", label="Model", value=info["MODEL"]),
+                Text(name="FIRMWARE", label="Firmware", value=info["FIRMWARE"]),
+            ],
+            label="Station",
+            group="Options",
+            perm=IPerm.RO,
+        )
 
     async def on_disconnect(self) -> None:
         """Close the link and stop claiming the last readings are current."""
         await self.off_thread(self._station.close)
+        # Withdraw what only exists while the station is reachable. Deleting a
+        # name that is not defined is a no-op, so this is correct on the first
+        # disconnect and on every one after it - no guard needed.
+        self.delete_property("SENSOR_INFO", "only while connected")
         self["WEATHER_PARAMETERS"].set(state=IPState.IDLE, force=True)
         self["WEATHER_STATUS"].set_all(IPState.IDLE, state=IPState.IDLE, force=True)
+        # A failed reset latches STATION_RESET at Alert; nothing is going to
+        # clear it now that the link is down, so settle it with the rest.
+        self["STATION_RESET"].set(state=IPState.IDLE)
 
     # -- polling ------------------------------------------------------------ #
     @every(seconds=1, when_connected=True)

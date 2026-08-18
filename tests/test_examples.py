@@ -3,19 +3,28 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import pytest
 
+from examples.blob_receiver import receive, save_frame
 from examples.ccd_device import AMBIENT_C, CCDSimulator
 from examples.demo_device import Demo
 from examples.dome_device import PARK_AZ, DomeSimulator
 from examples.flat_panel import MAX_BRIGHTNESS, MIN_BRIGHTNESS, FlatPanel
 from examples.guided_camera import MAIN_SIZE, CameraLink, GuideChip, MainChip
 from examples.monitor_client import format_event, monitor
+from examples.scripted_session import session, slew, watch_link
 from examples.telescope_device import TelescopeSimulator
 from indi_nexus.client import IndiClient
 from indi_nexus.client.store import PropertyEvent
+from indi_nexus.driver import Device
+from indi_nexus.exceptions import NotConnectedError
+from indi_nexus.hub import InProcessHub
 from indi_nexus.protocol import (
+    BLOB,
+    BLOBVector,
     DefVector,
     IPState,
     ISRule,
@@ -697,6 +706,71 @@ def test_scope_rejects_commands_while_disconnected():
     asyncio.run(scenario())
 
 
+def test_scope_disconnect_releases_the_motion_paddles():
+    """Disconnecting with a paddle held leaves no switch claiming to be moving."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await scope._dispatch_new(_scope_switch("TELESCOPE_MOTION_NS", "MOTION_NORTH"))
+        await scope._dispatch_new(_scope_switch("TELESCOPE_MOTION_WE", "MOTION_WEST"))
+        assert scope["TELESCOPE_MOTION_NS"].vector.state is IPState.BUSY
+        assert scope["TELESCOPE_MOTION_WE"].vector.state is IPState.BUSY
+
+        await scope._dispatch_new(_scope_switch("CONNECTION", "DISCONNECT"))
+
+        for name in ("TELESCOPE_MOTION_NS", "TELESCOPE_MOTION_WE"):
+            motion = scope[name].vector
+            assert motion.state is IPState.IDLE
+            assert all(member.value is ISState.OFF for member in motion.elements)
+        assert scope["EQUATORIAL_EOD_COORD"].vector.state is IPState.IDLE
+        dec_before = _radec(scope)[1]
+        await scope.tick()
+        assert _radec(scope)[1] == dec_before  # the paddle really did stop
+
+    asyncio.run(scenario())
+
+
+def test_scope_disconnect_mid_park_retracts_the_park_claim():
+    """A park that never arrived stops claiming the mount is on its way."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await _sync_to(scope, 5, 20)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_PARK", "PARK"))
+        await scope.tick()  # under way, nowhere near the pole
+        assert scope["TELESCOPE_PARK"].vector.state is IPState.BUSY
+        assert _radec(scope)[1] < 90.0
+
+        await scope._dispatch_new(_scope_switch("CONNECTION", "DISCONNECT"))
+
+        park = scope["TELESCOPE_PARK"].vector
+        assert park.state is IPState.IDLE
+        assert park.element("UNPARK").value is ISState.ON
+        assert park.element("PARK").value is ISState.OFF  # OneOfMany cleared the sibling
+
+    asyncio.run(scenario())
+
+
+def test_scope_disconnect_after_a_completed_park_leaves_it_parked():
+    """A park that finished is true and stays true across a disconnect."""
+
+    async def scenario() -> None:
+        scope, _ = await _scope()
+        await _sync_to(scope, 5, 20)
+        await scope._dispatch_new(_scope_switch("TELESCOPE_PARK", "PARK"))
+        for _ in range(3):  # 20 -> 90 degrees at 30 deg/s
+            await scope.tick()
+        assert scope["TELESCOPE_PARK"].vector.state is IPState.OK
+
+        await scope._dispatch_new(_scope_switch("CONNECTION", "DISCONNECT"))
+
+        park = scope["TELESCOPE_PARK"].vector
+        assert park.element("PARK").value is ISState.ON
+        assert park.state is IPState.OK  # untouched: the mount really is parked
+
+    asyncio.run(scenario())
+
+
 def test_scope_location_update_is_stored():
     """A GEOGRAPHIC_COORD write is normalised, stored, and confirmed."""
 
@@ -719,8 +793,6 @@ def test_hub_serves_several_drivers_on_one_client():
     """
 
     async def scenario() -> None:
-        from indi_nexus.hub import InProcessHub
-
         hub = InProcessHub([DomeSimulator(), TelescopeSimulator()])
         tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
         try:
@@ -976,6 +1048,32 @@ def test_ccd_rejects_commands_while_disconnected():
     asyncio.run(scenario())
 
 
+def test_ccd_disconnect_settles_the_cooler_without_faking_a_switch_off():
+    """Disconnecting mid-cool stops the TEC countdown and settles the states."""
+
+    async def scenario() -> None:
+        ccd, _ = await _ccd()
+        await ccd._dispatch_new(_ccd_number("CCD_TEMPERATURE", {"CCD_TEMPERATURE_VALUE": -10}))
+        await ccd.tick()
+        assert ccd["CCD_COOLER"].vector.state is IPState.BUSY
+        assert ccd["CCD_COOLER"]["COOLER_ON"].value is ISState.ON
+
+        await ccd._dispatch_new(_ccd_switch("CONNECTION", "DISCONNECT"))
+
+        cooler = ccd["CCD_COOLER"].vector
+        assert cooler.state is IPState.IDLE
+        # COOLER_ON stays On on purpose: the hook does not switch the TEC off,
+        # and a property that lies about the hardware is worse than one that
+        # admits nothing is driving it.
+        assert cooler.element("COOLER_ON").value is ISState.ON
+        assert ccd["CCD_TEMPERATURE"].vector.state is IPState.IDLE
+        frozen = _temp(ccd)
+        await ccd.tick()
+        assert _temp(ccd) == frozen
+
+    asyncio.run(scenario())
+
+
 # --------------------------------------------------------------------------- #
 # The flat-field lamp example (the "Writing a driver" guide)                    #
 # --------------------------------------------------------------------------- #
@@ -1212,5 +1310,91 @@ def test_guided_camera_disconnect_drops_a_running_exposure():
 
         assert main.latest("CCD_EXPOSURE").state is IPState.IDLE
         assert main.latest("CCD_EXPOSURE").get("CCD_EXPOSURE_VALUE") == 0
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The client examples, driven against real drivers over the in-process hub      #
+# --------------------------------------------------------------------------- #
+async def _against(device: Device, scenario: Callable[[IndiClient], Awaitable[None]]) -> None:
+    """Run one client scenario against a live driver, over in-memory pipes.
+
+    No socket, no ``indiserver``, no network: the hub is the whole hub.
+
+    Parameters
+    ----------
+    device : Device
+        The driver to serve.
+    scenario : Callable
+        Called with a connected client; awaited, then everything is torn down.
+    """
+    hub = InProcessHub([device])
+    tasks = [asyncio.create_task(runtime.serve()) for runtime in hub.runtimes]
+    try:
+        async with IndiClient(connect=hub.connect) as client:
+            await scenario(client)
+    finally:
+        hub.shutdown()
+        async with asyncio.timeout(5):
+            await asyncio.gather(*tasks)
+
+
+def test_save_frame_refuses_a_vector_with_no_payload():
+    """A BLOB property before its first image has nothing to write."""
+    empty = BLOBVector(device="CCD Simulator", name="CCD1", elements=[BLOB(name="CCD1")])
+    with pytest.raises(ValueError, match="no BLOB payload"):
+        save_frame(empty, Path("/nowhere"))
+
+
+def test_blob_receiver_saves_the_image_a_real_camera_sends(tmp_path):
+    """blob_receiver drives the CCD example end to end and writes its FITS out.
+
+    **This test cannot prove its own headline lesson.** ``InProcessHub`` has no
+    ``enableBLOB`` gate at all (see :mod:`indi_nexus.hub`), so every driver frame
+    reaches the client whether or not it asked for BLOBs. What passing proves is
+    that the payload survives the round trip; what it does *not* prove is that
+    the ``enable_blob`` call in ``receive`` is load-bearing - against a real
+    ``indiserver`` it is the difference between an image and silence. Do not
+    delete that call because this test stays green without it.
+    """
+
+    async def scenario(client: IndiClient) -> None:
+        path = await receive(client, "CCD Simulator", directory=tmp_path, seconds=0.0, timeout=10)
+        assert path.parent == tmp_path
+        assert path.suffix == ".fits"
+        assert path.read_bytes().startswith(b"SIMPLE")
+
+    asyncio.run(_against(CCDSimulator(), scenario))
+
+
+def test_scripted_session_points_a_real_mount():
+    """The scripted session connects the telescope example and waits out the slew.
+
+    The target is one tick away in both axes, so the wait resolves on the
+    driver's first ``@every`` iteration rather than after several seconds.
+    """
+
+    async def scenario(client: IndiClient) -> None:
+        arrived = await session(client, "Telescope Simulator", ra=1.0, dec=85.0, timeout=10)
+        assert arrived.get("RA") == pytest.approx(1.0, abs=1e-3)
+        assert arrived.get("DEC") == pytest.approx(85.0, abs=1e-3)
+        assert arrived.state is IPState.OK
+
+    asyncio.run(_against(TelescopeSimulator(), scenario))
+
+
+def test_scripted_session_reports_a_send_with_no_link():
+    """A command with the link down raises rather than being queued for later."""
+
+    async def scenario() -> None:
+        # Never started, so there is no connection and nothing to open one -
+        # no socket is created and no host is contacted.
+        client = IndiClient(connect=_Server().connect())
+        seen: list[str] = []
+        watch_link(client, seen.append)
+        with pytest.raises(NotConnectedError):
+            await slew(client, "Telescope Simulator", 1.0, 85.0, timeout=1)
+        assert seen == []  # never connected, so nothing was ever announced
 
     asyncio.run(scenario())
