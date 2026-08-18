@@ -144,19 +144,31 @@ jobs:
       # Only the native arch is loadable here, which is the one worth smoke
       # testing anyway.
       - name: Check the image actually serves the panel
+        env:
+          # /api and /ws require a token, and the entrypoint generates a random
+          # one when the operator gives none - so an unauthenticated call to
+          # /api/devices is refused by design, not by accident. Pinning a token
+          # is what docs/docker.md tells an operator to do, and it lets this step
+          # check the guard as well as what is behind it.
+          WEB_TOKEN: smoke-test-token
         run: |
           set -euo pipefail
           docker buildx build --load --file docker/Dockerfile --target runtime \
             --build-arg VERSION=ci --tag indi-nexus:ci --cache-from type=gha .
-          docker run -d --name smoke -p 8000:8000 indi-nexus:ci
+          docker run -d --name smoke -e WEB_TOKEN -p 8000:8000 indi-nexus:ci
           for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8000/health >/dev/null; then break; fi
             sleep 2
           done
           curl -sf http://127.0.0.1:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
-          curl -sf http://127.0.0.1:8000/api/devices | tee /dev/stderr | grep -q 'Telescope Simulator'
+          # An image that serves the instrument to anyone who can reach the port
+          # is a failed build, so the refusal is asserted before the payload.
+          code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/devices)"
+          test "$code" = 403 || { echo "::error::/api/devices answered $code unauthenticated"; exit 1; }
+          curl -sf -H "Authorization: Bearer $WEB_TOKEN" http://127.0.0.1:8000/api/devices \
+            | tee /dev/stderr | grep -q 'Telescope Simulator'
           curl -sf http://127.0.0.1:8000/ | grep -q '<title>INDINexus</title>'
-          echo "OK: health, a device, and the compiled panel"
+          echo "OK: health, the token guard, a device behind it, and the compiled panel"
       - name: Show the container log if that failed
         if: failure()
         run: docker logs smoke || true
