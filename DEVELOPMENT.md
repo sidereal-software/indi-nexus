@@ -222,6 +222,7 @@ Served by `indi-nexus serve`, with or without `--device`:
     "protocol": 1,
     "connected": true,
     "dropped_slow_sinks": 0,
+    "coalesced_blobs": 12,
     "sinks_attached": 3,
     "upstream": {"uptime_seconds": 4211.3, "reconnects": 2, "last_message_age_seconds": 0.8},
     "parser": {"dropped": 0, "resets": 0, "bytes_since_last_message": 1204,
@@ -235,7 +236,12 @@ Served by `indi-nexus serve`, with or without `--device`:
   process, and is `null` while disconnected; `reconnects` counts successful
   re-establishments only, so a bridge that has never reached `indiserver` reports `0` with
   `connected: false`; `last_message_age_seconds` is the age of the last *parsed* INDI
-  message, so a peer dribbling malformed bytes does not read as healthy. While
+  message, so a peer dribbling malformed bytes does not read as healthy. `coalesced_blobs`
+  counts images that were replaced in a browser's queue before it read them: the bridge
+  delivers the **latest** exposure rather than every exposure, which is the only bounded
+  thing it can do, and this is the only place that says so. It counts BLOBs alone - a
+  temperature readout coalesces constantly by design - and a browser that needs every frame
+  wants a Python `IndiClient` on TCP instead. While
   disconnected the `parser` block reports the last connection's final counters, and the two
   `_total` fields are the durable ones - they include the connection in progress, so
   `dropped_total` is never behind `dropped`. There is deliberately **no release version**:

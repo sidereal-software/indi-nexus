@@ -251,6 +251,13 @@ def create_app(
         opening a WebSocket. The release version is deliberately **not** here;
         see this module's docstring.
 
+        ``coalesced_blobs`` counts images that were replaced in a browser's queue
+        before it read them. The bridge delivers the latest exposure rather than
+        every exposure, which is the only bounded thing it can do
+        (:meth:`~indi_nexus.web.bridge.Subscription.enqueue` argues it), and this
+        is where that shows up instead of being silent. It is additive and **not**
+        a ``protocol`` bump: nothing on the browser contract changed.
+
         While disconnected, ``upstream.uptime_seconds`` and
         ``last_message_age_seconds`` are ``null`` and ``reconnects`` keeps its
         count, while the ``parser`` block reports the **last** connection's final
@@ -264,6 +271,7 @@ def create_app(
             "protocol": BRIDGE_PROTOCOL_VERSION,
             "connected": stats.connected,
             "dropped_slow_sinks": bridge.dropped_slow_sinks,
+            "coalesced_blobs": bridge.coalesced_blobs,
             "sinks_attached": bridge.sink_count(),
             "upstream": {
                 "uptime_seconds": _seconds(stats.uptime_seconds),

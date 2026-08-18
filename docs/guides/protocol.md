@@ -100,6 +100,31 @@ BLOBs carry binary payloads, typically a FITS image. They can be large, so `indi
 does not send them to a client until that client explicitly asks with `enableBLOB`. The
 Python and TypeScript clients both expose this as `enable_blob` / `enableBlob`.
 
+In JSON the payload is a base64 string in the **standard** alphabet (`+` and `/`), so
+`atob` and a `data:application/octet-stream;base64,...` URL both accept it as it arrives.
+
+### The bridge delivers the latest image, not every image
+
+A browser that takes frames more slowly than the camera produces them does **not** build up
+a queue of exposures. The bridge keeps at most one queued image per BLOB property: a new
+one replaces the one still waiting, and the browser sees the most recent frame.
+
+That is deliberate and cannot be traded away for completeness. The property cache overwrites
+a payload in place, so there is nothing behind the queue to replay; the queue is bounded by
+frame count, so holding every image would put gigabytes per browser behind a single slow
+socket; and the INDI 1.7 specification licenses exactly this, allowing a server to drop
+BLOBs arriving faster than a slow recipient takes them. `indiserver` makes the same trade
+more bluntly, by disconnecting a client whose backlog passes 128 MB.
+
+Skipped images are counted as `coalesced_blobs` on
+[`/health`](../docker.md), since a browser cannot tell a skipped exposure from an idle
+camera.
+
+**If you need every exposure, do not collect it in the browser.** Use the Python
+[`IndiClient`](../reference/python/client.md) against `indiserver` over TCP, which delivers
+each BLOB as it arrives and never coalesces. `examples/blob_receiver.py` is that program,
+and the [examples guide](examples.md) walks through it.
+
 ## Full model reference
 
 Every model, field and enum: the [protocol reference](../reference/python/protocol.md).

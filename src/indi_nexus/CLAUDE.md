@@ -242,7 +242,11 @@ streaming parser (no runtime DTD reflection, no "accumulate stdin and retry
   unrecognised object, as a `getProperties`. That was a live hole: `Bridge.handle_incoming`
   accepted a browser echoing a bridge **control** frame back up `/ws` and forwarded it
   upstream. Same models, so the JSON *is* the frontend contract; BLOB bytes travel as
-  base64.
+  base64 in the **standard** alphabet, which `BLOB.data` pins with a field serializer
+  because pydantic's `ser_json_bytes="base64"` emits the URL-safe one, and both `atob` and
+  a `data:...;base64,` URL reject `-`/`_` outright - the panel's download link is exactly
+  such a URL. Validation still takes either alphabet, which is why nothing caught it: the
+  payload round-tripped through our own stack perfectly and failed only in a browser.
 
 ## `driver/` - the SDK
 
@@ -528,6 +532,25 @@ there, along with the whole package's freedom from import cycles.
     browser is dropped, counted (`dropped_slow_sinks`, reported on `/health`) and logged; it
     reconnects and re-seeds. A browser cannot tell that from a network fault, which is
     accepted, because the remedy is identical either way.
+  - **BLOBs coalesce too, so a slow browser gets the latest image and not every image.**
+    That is settled, not an oversight, and three things hold it there. The bridge could not
+    be lossless for BLOBs under *any* policy: `PropertyStore` overwrites the payload in the
+    cached vector in place, so once the next exposure lands there is nothing behind the queue
+    to replay from. `max_backlog` counts **frames**, so queueing every image would remove the
+    memory bound outright - thirty 8 MiB frames measure at 372 MiB, a browser at the cap
+    projects to gigabytes, and the process dies before `dropped_slow_sinks` can record
+    anything, because that counter fires on frame count. And INDI 1.7 licenses it in as many
+    words: a server may drop BLOBs arriving faster than a slow recipient accepts them, and
+    must not block writing a large one to a slow client. `indiserver` itself never coalesces
+    but bounds by **bytes** instead, and gives a `.fits` capture no relief at all before
+    killing the client at 128 MB.
+    - The skipping is silent to the browser, so it is counted: `coalesced_blobs`, on
+      `/health` beside `dropped_slow_sinks`. **Only BLOB coalescing** - a temperature readout
+      coalesces constantly and by design, and a count over every frame kind would run away in
+      the first minute and say nothing. Adding the field is not a `BRIDGE_PROTOCOL_VERSION`
+      change: `/health` is not the browser contract.
+    - Anything that has to collect **every** exposure wants a Python `IndiClient` on TCP,
+      which does not coalesce; `examples/blob_receiver.py` is exactly that program.
   - `handle_incoming` accepts only what a client may send (`new*`, `getProperties`,
     `enableBLOB`) and answers anything it refuses - a malformed frame, a `def` from a
     browser, `NotConnectedError`, `SendQueueFull` - with an `{"event":"error"}` control frame

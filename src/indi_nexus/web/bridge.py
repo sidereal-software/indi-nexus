@@ -46,6 +46,7 @@ from indi_nexus import __version__
 from indi_nexus.client import IndiClient, PropertyEvent
 from indi_nexus.exceptions import NotConnectedError, SendQueueFull
 from indi_nexus.protocol import (
+    BLOBVector,
     DefVector,
     DelProperty,
     EnableBLOB,
@@ -74,11 +75,18 @@ Sink = Callable[[str], Awaitable[None]]
 #: from ``INDI_NEXUS_MESSAGE_HISTORY``.
 _MESSAGE_HISTORY = 100
 
-#: How many live frames a browser may fall behind by before it is dropped. The
-#: seed is excluded and drained first, so this measures lateness rather than cache
-#: size. Coalescing means a fast instrument spamming one property costs one slot,
-#: so reaching this means falling behind on that many *distinct* properties and
-#: messages - a wedged socket, not a slow one. The default for
+#: How many live **frames** a browser may fall behind by before it is dropped.
+#: The seed is excluded and drained first, so this measures lateness rather than
+#: cache size. Coalescing means a fast instrument spamming one property costs one
+#: slot, so reaching this means falling behind on that many *distinct* properties
+#: and messages - a wedged socket, not a slow one.
+#:
+#: That reading holds **only because BLOBs coalesce too**. This counts frames,
+#: not bytes, so an uncoalesced queue of images has no memory bound worth the
+#: name: at this cap, 8 MiB exposures come to gigabytes per browser, and the
+#: process is killed long before the count reaches 512 and
+#: ``dropped_slow_sinks`` ever moves. Bounding frames is safe precisely because
+#: one BLOB property can never hold more than one image. The default for
 #: ``Bridge(max_backlog=...)``, which ``indi-nexus serve`` fills from
 #: ``INDI_NEXUS_MAX_BACKLOG``.
 _MAX_BACKLOG = 512
@@ -173,7 +181,7 @@ class Subscription:
         """
         self.bridge._deliver(self, frame, None)
 
-    def enqueue(self, frame: str, key: tuple[str, str] | None) -> None:
+    def enqueue(self, frame: str, key: tuple[str, str] | None) -> bool:
         """Append a frame, or fold it into the queued frame for the same key.
 
         Parameters
@@ -183,20 +191,48 @@ class Subscription:
         key : tuple of str or None
             The ``(device, name)`` this frame may coalesce onto. `None` always
             appends.
+
+        Returns
+        -------
+        replaced : bool
+            Whether this frame overwrote a queued one rather than joining the
+            queue. The caller counts that for BLOBs, where a dropped frame is a
+            whole exposure the browser will never see.
         """
         if key is not None:
             queued = self.coalescible.get(key)
             if queued is not None:
                 # Replacing in place keeps the frame's position in the queue, so
-                # ordering against everything else is untouched. INDI `set` is
-                # last-writer-wins state, so only intermediate values are lost.
+                # ordering against everything else is untouched.
+                #
+                # BLOBs coalesce along with everything else, and that is a
+                # deliberate choice rather than a consequence of `set` being
+                # last-writer-wins state. Three reasons, none of them optional:
+                #
+                # 1. The bridge could not be lossless for BLOBs even if it tried.
+                #    `PropertyStore` overwrites the payload in the cached vector
+                #    in place, so once the next exposure has been folded in there
+                #    is nothing behind the queue left to replay.
+                # 2. `_MAX_BACKLOG` counts frames, not bytes. Queueing every
+                #    image removes the memory bound outright: thirty 8 MiB frames
+                #    already measure at 372 MiB, and a browser at the cap projects
+                #    to gigabytes - the process dies before `dropped_slow_sinks`
+                #    can even record a drop.
+                # 3. INDI 1.7 licenses it explicitly: a server may drop BLOBs
+                #    arriving faster than a slow recipient takes them, and must
+                #    not block while writing a large BLOB to one.
+                #
+                # A consumer that needs every exposure wants a Python
+                # `IndiClient` on TCP, which does not coalesce; see
+                # `examples/blob_receiver.py`.
                 queued.frame = frame
-                return
+                return True
         slot = _Slot(frame, key)
         self.queue.append(slot)
         if key is not None:
             self.coalescible[key] = slot
         self.ready.set()
+        return False
 
     def invalidate(self, device: str, name: str | None) -> None:
         """Forget the coalescible slot(s) for a property, or for a whole device.
@@ -277,6 +313,7 @@ class Bridge:
         self._hello = dump_frame(HelloFrame(server=server))
         self._subs: set[Subscription] = set()
         self._dropped_slow_sinks = 0
+        self._coalesced_blobs = 0
         self._max_backlog = max_backlog
         # INDI messages are transient (not part of the property cache), so keep a
         # bounded history to prime a newly-attached browser's log.
@@ -296,6 +333,23 @@ class Bridge:
         the diagnosis has to be readable server-side without scraping logs.
         """
         return self._dropped_slow_sinks
+
+    @property
+    def coalesced_blobs(self) -> int:
+        """How many queued BLOB frames were replaced before a browser read them.
+
+        One per browser per skipped image: the bridge delivers the **latest**
+        exposure, not every exposure (see :meth:`Subscription.enqueue` for why),
+        and this is the only place that shows it happening. A rising count on an
+        otherwise healthy bridge says a browser is being served images slower
+        than the camera produces them, which is a fact about the socket and not
+        a fault.
+
+        Only BLOB coalescing is counted. A temperature readout coalesces
+        constantly and by design, so a count over every frame kind would run
+        away from the first minute and tell an operator nothing.
+        """
+        return self._coalesced_blobs
 
     async def start(self) -> None:
         """Subscribe to the client and open its upstream connection.
@@ -456,7 +510,9 @@ class Bridge:
         self._subs.discard(sub)
         sub.closed.set()
 
-    def _deliver(self, sub: Subscription, frame: str, key: tuple[str, str] | None) -> None:
+    def _deliver(
+        self, sub: Subscription, frame: str, key: tuple[str, str] | None, *, weighty: bool = False
+    ) -> None:
         """Queue one frame for one browser, dropping it if it is too far behind.
 
         Parameters
@@ -467,12 +523,16 @@ class Bridge:
             The JSON text to send.
         key : tuple of str or None
             The ``(device, name)`` this frame may coalesce onto.
+        weighty : bool, optional
+            Whether this frame carries a BLOB payload, so that replacing a
+            queued one is worth counting; `False` by default.
         """
         if sub.closed.is_set():
             # Nothing will ever drain this one again, so queueing would only grow
             # a deque nobody reads and drop it a second time on the next frame.
             return
-        sub.enqueue(frame, key)
+        if sub.enqueue(frame, key) and weighty:
+            self._coalesced_blobs += 1
         if len(sub.queue) > self._max_backlog:
             self._drop(sub)
 
@@ -595,6 +655,9 @@ class Bridge:
             self._broadcast(
                 to_json(SetVector(vector=event.vector)),
                 coalesce=None if event.name is None else (event.device, event.name),
+                # An image replaced in the queue is an exposure a browser never
+                # sees, which is the one coalescing worth counting.
+                weighty=isinstance(event.vector, BLOBVector),
             )
             return
         if event.type == "def" and event.vector is not None:
@@ -638,6 +701,7 @@ class Bridge:
         *,
         coalesce: tuple[str, str] | None = None,
         invalidate: tuple[str, str | None] | None = None,
+        weighty: bool = False,
     ) -> None:
         """Queue a frame for every attached browser.
 
@@ -661,8 +725,12 @@ class Bridge:
             The ``(device, name)`` - ``name`` `None` for a whole device - whose
             queued ``set`` may no longer be replaced, because this frame is a
             ``def`` or a ``del`` that a later ``set`` must not overtake.
+        weighty : bool, optional
+            Whether this frame carries a BLOB payload, so that each browser it
+            coalesces for counts towards :attr:`coalesced_blobs`; `False` by
+            default.
         """
         for sub in list(self._subs):
             if invalidate is not None:
                 sub.invalidate(*invalidate)
-            self._deliver(sub, frame, coalesce)
+            self._deliver(sub, frame, coalesce, weighty=weighty)
