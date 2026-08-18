@@ -46,8 +46,8 @@ uv venv --python 3.12           # create the venv (first time)
 uv pip install -e ".[dev]"      # install package + dev deps
 
 uv run pytest                   # run tests
-uv run ruff check src tests     # lint
-uv run ruff format src tests    # format
+uv run ruff check src tests examples hatch_build.py     # lint (the set CI checks)
+uv run ruff format src tests examples hatch_build.py    # format
 uv run mypy src                 # type-check (strict)
 
 # After an intentional protocol-model change: regenerate the golden wire schema,

@@ -127,8 +127,7 @@ if __name__ == "__main__":
 `open_serial_link`, `read_mount` and `slew_to` are the only parts you write; they are
 whatever talks to your instrument. The Connect button and its lifecycle, the timer, the
 dispatch, the wire format and the error handling all come from the framework. For a
-driver that runs as written, see [`examples/flat_panel.py`](examples/flat_panel.py), 108
-lines for a real device.
+driver that runs as written, see [`examples/flat_panel.py`](examples/flat_panel.py).
 
 Or start from a working file and open it in the panel:
 
@@ -187,11 +186,13 @@ the [frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) cove
 
 ## The examples
 
-Every example in `examples/` runs and is covered by tests. Start with `demo_device.py` for
+Every example in `examples/` runs and is covered by tests. Start with `flat_panel.py` for
 the shape of a driver, then `weather_device.py` - the one to copy for real hardware. There
-are also a dome, a telescope, a CCD, a client, and a driver for a live public weather API;
-the [examples guide](https://indi-nexus.sidereal.software/guides/examples/) says what each
-one is for.
+are also a dome, a telescope, a CCD, a two-device camera, a driver for a live public
+weather API, and three clients (`monitor_client.py` watches, `scripted_session.py` drives,
+`blob_receiver.py` collects images); the
+[examples guide](https://indi-nexus.sidereal.software/guides/examples/) says which to
+reach for and when.
 
 Run any of them in the panel:
 

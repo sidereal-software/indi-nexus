@@ -72,8 +72,8 @@ Run everything through `uv`:
 ```bash
 uv run pytest                     # run the test suite
 uv run pytest -k "name"           # run a single test by name
-uv run ruff check src tests       # lint
-uv run ruff format src tests      # auto-format
+uv run ruff check src tests examples hatch_build.py    # lint (the set CI checks)
+uv run ruff format src tests examples hatch_build.py   # auto-format
 uv run mypy src                   # type-check (strict)
 
 # Regenerate the browser wire schema after an intentional model change, and

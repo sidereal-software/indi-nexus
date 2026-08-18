@@ -1048,16 +1048,3 @@ def test_tutorial_quoted_reply_covers_every_judged_reading() -> None:
     current = json.loads(quoted.code)["current"]
     missing = sorted({field for field, *_rest in READINGS} - set(current))
     assert not missing, f"the tutorial's quoted reply is missing {missing}"
-
-
-def test_documented_line_count_of_the_flat_panel_example() -> None:
-    """Check the "108 lines" both front pages give for ``examples/flat_panel.py``.
-
-    A stale number here is small, but it is the kind of claim a reader checks
-    first, and nothing else in the build looks at it.
-    """
-    lines = (REPO_ROOT / "examples/flat_panel.py").read_text().splitlines()
-    actual = sum(1 for line in lines if line.strip())
-    for path in ("README.md", "docs/index.md"):
-        quoted = re.findall(r"(\d+)\s*\n?\s*(?:non-blank )?lines", (REPO_ROOT / path).read_text())
-        assert str(actual) in quoted, f"{path} says {quoted} lines; the file has {actual}"

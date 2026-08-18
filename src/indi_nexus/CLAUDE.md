@@ -605,23 +605,52 @@ implicitly, and an example without one teaches a device shape that does not exis
 field. That means all four of these, not just the first:
 
 - `define_connection()` is the first line of `setup()`.
-- Every `@on_new` handler opens with `if not self.require_connected(): return`.
+- Every `@on_new` handler opens with `if not self.require_connected(): return`. **One
+  sanctioned exception**, and only one: `openmeteo_device._move_site` checks
+  `self.connected` mid-handler instead, because the site is the driver's own
+  configuration rather than a command to hardware and an operator may move it while
+  disconnected. The reason is written at the handler; do not re-file it as a violation,
+  and do not add a second exception without writing the same kind of argument.
 - A job that touches hardware is `@every(..., when_connected=True)`.
 - `on_disconnect()` leaves the instrument safe and its properties `Idle`, so nothing keeps
   reading live after the client has gone. Skip `on_connect()` when there is genuinely
   nothing to open; an empty override teaches nothing.
+  - **Settle the state; do not invent the element values.** A vector whose members
+    describe *physical* state (`CCD_COOLER`'s `COOLER_ON`/`COOLER_OFF`) gets
+    `set(state=IPState.IDLE)` and nothing more, because the hook did not switch the
+    hardware and a property that claims it did is worse than one admitting nothing is
+    driving it. A vector whose members state a *request* (`TELESCOPE_PARK`, where
+    `PARK=On` is written when the park is asked for) has its claim retracted when the
+    request never came true. Both rules are worked in the examples, and each was got
+    wrong once.
 
 The same rule holds for the TypeScript simulators that mirror these drivers, which is
 `web/CLAUDE.md`'s problem but the same requirement.
 
-- `examples/demo_device.py` - the reference driver: a number, a text, a light and a switch
-  vector (no BLOB; `ccd_device.py` has that), an `@every` animation gated on both the
-  connection and a power switch, an `@on_new` handler.
-- `examples/weather_device.py` - the reference **site** driver: a blocking vendor-style
-  client behind `off_thread`, the connection lifecycle, hardware that stops answering, and
-  `emit="on_change"` readbacks. **Keep at least one example in this shape** - the simulator
-  examples never exercise a slow, absent or lying instrument, which is what real drivers
-  spend their bug budget on.
+The reading order the docs now state is **`flat_panel.py`, then `weather_device.py`**, and
+everything else is picked by need. Keep `docs/guides/examples.md` and `README.md` saying
+the same thing; they disagreed for a while and the two front doors sent readers to
+different files.
+
+- `examples/flat_panel.py` - the shortest thing here that is still a real driver, and what
+  `docs/guides/writing-drivers.md` and `docs/index.md` build. The first thing a newcomer
+  reads.
+- `examples/demo_device.py` - the sampler and the **generic fixture**: a number, a text, a
+  light and a switch vector (no BLOB; `ccd_device.py` has that), an `@every` animation
+  gated on both the connection and a power switch, an `@on_new` handler. It is what
+  `tests/test_cli.py`, `tests/test_integration.py`, `DEVELOPMENT.md` and two `cli.py`
+  docstrings use as a stand-in driver, which is most of why it stays. It is **not** the
+  file to send a newcomer to second.
+- `examples/weather_device.py` - the reference **site** driver, and the second thing a
+  newcomer reads: a blocking vendor-style client behind `off_thread`, the connection
+  lifecycle, hardware that stops answering, `emit="on_change"` readbacks, and the one
+  worked example of a **connect-time property** (`SENSOR_INFO` defined in `on_connect`,
+  `delete_property`'d in `on_disconnect`), which is the API `writing-drivers.md` teaches
+  and `harness.deletes()` asserts on. **Keep at least one example in this shape** - the
+  simulator examples never exercise a slow, absent or lying instrument, which is what real
+  drivers spend their bug budget on. Its element names are lowercase because they come from
+  `slugify`; `openmeteo_device.py` spells the same readings `UPPER_CASE` by hand, and the
+  divergence is deliberate.
 - `examples/openmeteo_device.py` - the same shape against a **real public API**, and what
   `docs/guides/tutorial-open-meteo.md` builds. Its tests run against
   `tests/data/open_meteo_response.json`, a recorded real reply, so the field names are
@@ -631,7 +660,19 @@ The same rule holds for the TypeScript simulators that mirror these drivers, whi
   guide chip in one process behind one shared (blocking) link, ending in
   `run([MainChip(), GuideChip()])`. Keep an example in this shape - it is the only place
   the several-devices-on-one-pipe wiring is shown end to end, and the guide points at it.
-- `examples/monitor_client.py` - the reference client.
+- **Three client examples**, one per thing a client does. The README sells three audiences
+  and this half used to be one 99-line file; keep it at three unless a fourth carries a
+  lesson none of them does.
+  - `examples/monitor_client.py` - *watching*: subscribe and print.
+  - `examples/scripted_session.py` - *driving*: `wait_for` with a timeout and its detached
+    snapshot, `on_connection`, and the never-queued-send rule (`NotConnectedError`) in the
+    one place a reader meets it, under a top-level `except IndiError`.
+  - `examples/blob_receiver.py` - *collecting images*: the `enable_blob` call without which
+    `indiserver` forwards no BLOB and reports nothing. `InProcessHub` has **no `enableBLOB`
+    gate**, so `tests/test_examples.py` proves the payload round-trips and cannot prove the
+    gating - the caveat is written in that test's docstring and in `hub.py`'s module
+    docstring, because the second is where someone deciding the call is dead code would
+    look.
 - `indi-nexus serve --device` - driver, bridge and panel over in-memory pipes, so the whole
   stack runs end to end with `indi-nexus serve --device examples.demo_device:Demo` and no `indiserver`.
 - `tests/test_integration.py` cross-wires a `DriverRuntime` and an `IndiClient` through

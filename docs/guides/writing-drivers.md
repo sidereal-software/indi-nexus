@@ -46,7 +46,7 @@ Here is a working driver for a flat-field lamp - a light panel with a brightness
 Every line is explained underneath.
 
 ```python
-from indi_nexus.driver import Device, every, on_new
+from indi_nexus.driver import Device, on_new
 from indi_nexus.protocol import (
     IPState, ISRule, ISState, Number, NumberVector, Switch, SwitchVector,
 )

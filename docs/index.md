@@ -93,8 +93,8 @@ if __name__ == "__main__":
 
 That is
 [`examples/flat_panel.py`](https://github.com/sidereal-software/indi-nexus/blob/main/examples/flat_panel.py),
-shown without its module docstring or its parameter docs, with the import list folded and
-one comment shortened; the file in the repository is 108 non-blank lines. It is covered
+shown trimmed for this page - the file in the repository carries its module header and
+fuller docstrings, and folds nothing. It is covered
 by the test suite, it is the driver the [driver guide](guides/writing-drivers.md) builds
 one property at a time, and you can [drive it in your browser](flat-demo/flat.html)
 without installing anything.
