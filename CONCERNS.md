@@ -71,39 +71,33 @@ one, which is why it is still here.
 
 ## Known sharp edges
 
-### The nightly interop suite has been red for two nights
+### One interop test fails on CI and passes locally
 
-`interop` was green on 2026-08-17 (`40c9119`) and has failed on the 18th (`dde4e1e`) and
-the 19th (`42c965b`). Two tests fail, **identically on both the `libindi distro` and
-`libindi ppa` jobs**, so this is our behaviour and not a packaging difference. Everything
-else passes: 2 failed, 37 passed, 2 skipped.
+`interop` was green on 2026-08-17 (`40c9119`) and red on the 18th and 19th, on two tests.
+One of them is fixed. The other is this entry.
 
-- `tests/interop/test_blob.py::test_the_only_policy_delivers_the_frame_and_nothing_else`
-  asserts that under `BLOBPolicy.ONLY` nothing but BLOBs arrives, and non-BLOB updates
-  arrive anyway - `CCD_STREAM_FRAME`, `FILTER_NAME`, `FILTER_SLOT`, `GUIDER_FRAME`,
-  `GUIDER_INFO` on distro, and those plus `CCD_BINNING` and `CCD_INFO` on ppa. **The two
-  lists differing is the most interesting fact in this entry**: a fixed libindi rule would
-  produce the same set on both, so this looks like a race between the policy taking effect
-  and definitions already in flight, rather than `ONLY` meaning something other than we
-  thought.
-- `tests/interop/test_panel_e2e.py::test_panel_drives_a_real_cpp_driver` times out after
-  30s in Playwright waiting for a control to become checked.
+`tests/interop/test_blob.py::test_the_only_policy_delivers_the_frame_and_nothing_else`
+asserts that under `BLOBPolicy.ONLY` nothing but BLOBs arrives, and non-BLOB updates
+arrive anyway - `CCD_STREAM_FRAME`, `FILTER_NAME`, `FILTER_SLOT`, `GUIDER_FRAME`,
+`GUIDER_INFO` on the distro leg, and those plus `CCD_BINNING` and `CCD_INFO` on ppa.
 
-Twenty-seven commits landed in that window, most of them BLOB work - `a2bb2fc` (inflate a
-zlib BLOB on the way in), `064d1c7` (standard base64), `a36bf66` (coalescing), `99ab097`
-and `dde4e1e` (the BLOB tests themselves), and `a4ec69d`, which changed the interop
-harness by giving each server its own `HOME`. That last one is the only commit in the
-range that touches how the suite runs rather than what it tests.
+**Two facts point the same way, and neither is about `ONLY` meaning something we misread.**
+The two CI legs report *different* property sets, where a fixed libindi rule would produce
+the same set on both. And the whole suite passes locally in the interop container - 39
+passed, 2 skipped, twice - against the same Ubuntu 24.04 and the same distro libindi the
+failing leg installs. The difference left is the machine: a shared CI runner is slower and
+noisier than a laptop, so this reads as a race between the policy taking effect and
+definitions already in flight, which a faster machine wins and a loaded one does not.
 
-Not reproducible from a checkout on macOS: the whole package skips when `indiserver` is
-not on `PATH`, and the workflow installs libindi from Ubuntu packages. Whoever picks this
-up needs a Linux box with libindi, or has to iterate in CI.
+That makes it the harder kind of bug: the reproduction is the environment, not the code.
 
-**Resolved by:** bisecting that range against a real `indiserver` - `a4ec69d` and
-`a2bb2fc` are where to start - then either fixing the client or, if libindi's `ONLY` never
-promised what the test assumes, rewriting the assertion to say what the protocol actually
-guarantees. The Playwright timeout may share a cause or may be a second, unrelated
-failure; establish which before treating them as one.
+**Resolved by:** deciding what `enableBLOB` actually guarantees about frames already in
+flight when the policy lands, and then either making the client hold them or rewriting the
+assertion to say what the protocol really promises rather than what we hoped. Reproducing
+it may need the container throttled (`--cpus`, or load) rather than a bisect - the suite
+passing locally is evidence about timing, not evidence the client is right. Note it also
+never fails the same way twice, so a fix has to be argued from the protocol rather than
+confirmed by one green run.
 
 `driver.run` and `serve --device` resolve `config_dir` from `Settings`; `DeviceHarness`
 does not, because the harness deliberately reads no ambient environment. The consequence

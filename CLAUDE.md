@@ -61,6 +61,14 @@ uv run mypy src                 # type-check (strict)
 # After an intentional protocol-model change: regenerate the golden wire schema,
 # and update web/packages/client/src/types.ts in the same commit.
 INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
+
+# The interop suite: a real indiserver, real libindi C++ drivers and a real browser.
+# `uv run pytest` excludes it and it skips itself when indiserver is not on PATH, so
+# on macOS it is silently never run. Run it in the container the repository already
+# ships - same Ubuntu 24.04 and same distro libindi as the nightly job, so it
+# reproduces that job rather than approximating it:
+docker compose --profile interop run --rm --build interop
+docker compose --profile interop run --rm interop pytest tests/interop/test_blob.py -q  # narrowed
 ```
 
 Frontend commands run from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -r test`,
@@ -69,6 +77,21 @@ Frontend commands run from `web/`: `pnpm -r build`, `pnpm -r typecheck`, `pnpm -
 **Green baseline before any commit:** `ruff check` and `ruff format --check` clean,
 `mypy src` clean, `pytest` passing, and the frontend five if you touched `web/`. New work
 lands with its own tests.
+
+**Run the interop suite locally, and do not wait for the nightly to tell you.** It is the
+only thing here that puts a real libindi on the other side of the wire, so it is the only
+thing that can catch a deviation from the spec - and because it skips itself without
+`indiserver`, a green local run proves nothing about it. Run the container when you touch
+`protocol/`, `client/`, `tests/interop/`, or **the markup the panel renders**. The first
+three are what its workflow watches; the fourth is not, and that is the gap that has
+already cost a red nightly: changing a switch vector from a radio group to toggle buttons
+was correct, and it broke an interop selector that neither `pytest` nor the frontend five
+could see, because the only test that drives the real panel lives behind `indiserver`.
+
+**Check the nightly rather than assuming it is green.** `gh run list --workflow interop
+--limit 3` is the whole check. It is deliberately off the pull-request path, so nothing
+blocks a merge on it and a failure is easy to carry for days without noticing - it had
+been red for two nights before anyone looked.
 
 ## How to work here
 
