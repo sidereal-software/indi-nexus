@@ -80,20 +80,113 @@ The no-ambient rule is right and should stay. The silence is the problem.
 the harness is the caller, or a line in `docs/guides/writing-drivers.md` where the harness
 is introduced. The first is better; the second is cheap.
 
-### Two vendored shadcn primitives are hand-edited
+### The light outline Button's hairline is 1.24:1
 
-`web/packages/react/src/ui/button.tsx` and `ui/scroll-area.tsx` carry deliberate edits,
-against the rule in `web/CLAUDE.md` that primitives come from the CLI untouched. Both are
-marked `DEVIATION` in place with the measurement that forced them, and neither is fixable
-from outside the file: `scroll-area` spreads props onto the root only, so nothing can reach
-the scrolling element that has carried a focus-ring class all along, and `button` rings the
-destructive variant at a fifth of the opacity every other control uses.
+`--border` is `#e5e7eb`, which measures 1.24:1 against the white card. In light mode the
+outline Button variant draws its edge with a bare `border` off that token, so the one thing
+saying where that control is fails SC 1.4.11's 3:1 by a wide margin. `--input` was retuned
+in the same batch and reaches 3.55:1, which fixes the Input, the switch-vector members and
+the Switch - the outline Button in light mode is what is left, because it does not use
+`--input` there (only `dark:border-input`).
 
-The next `shadcn add` for either component silently reverts them and the accessibility
-failures come back.
+The obvious fix was tried and measured in Chrome, and it is worse than the problem. An
+unlayered `[data-variant="outline"] { border-color: var(--input) }` in `theme.css` also beats
+`focus-visible:border-ring` and `aria-invalid:border-destructive`, so it destroys the focus
+indicator it exists to strengthen; and `data-variant` is not scoped to buttons anyway
+(`ui/badge.tsx` and `ui/toggle-group.tsx` set it too). Narrowing by `data-slot` does not work
+either: `data-slot` does not survive `asChild`, so `AlertDialogCancel` would be missed. There
+is no class hook to use instead, because in light mode the variant emits a bare `border`.
 
-**Resolved by:** upstreaming both to shadcn, or accepting them permanently and adding a
-check that fails when the markers disappear. Doing neither is what makes this a concern.
+**Resolved by:** either raising `--border` itself - which is the token the base layer puts
+on *every* element, so it has to be re-measured across every surface first - or adding a
+light-mode `border-input` to the outline variant upstream, which gives the correction a
+class to hook. Not by an unlayered `border-color` rule.
+
+### The dark destructive button is nearly invisible until you focus it
+
+`dark:bg-destructive/60` composites `#ef4444` over the card to `#973030`, which is **2.48:1**
+against `#121212`. White on it is 7.60:1, so the *label* is fine and SC 1.4.11 is not failed -
+a control identified by its text needs no boundary contrast - but the most dangerous button in
+the product is the one whose presence reads weakest in dark mode, and an operator scanning a
+modal at 3am finds "Cancel" before "Delete saved config".
+
+The focus ring no longer depends on it: the correction in `theme.css` gives the destructive
+ring a white offset so the indicator is two-tone (see DESIGN.md, The Ring Stands Off The
+Control Rule). This entry is about the resting state.
+
+Raising dark `--destructive` far enough to clear 3:1 was measured and rejected: the composite
+needs roughly `#ff6b6b`, which is a hair from `--state-alert` `#f87171` and collapses the
+CIEDE2000 11.3 the theme keeps between "danger" and "the instrument is in Alert".
+
+**Resolved by:** dropping the `/60` from the dark destructive variant so the fill is the token
+itself (5.00:1) - which is a registry edit, or an upstream change, not something `theme.css`
+can reach, since `background-color` is a real property. Decide whether that is worth a third
+`DEVIATION`.
+
+### The panel's heading chain skips a level in the empty state
+
+`DESIGN.md`'s Heading Chain Rule promises h1 → h2 → h3 with no step skipped. With no devices
+connected the page emits `h1 "INDINexus"` and then `h3 "Messages"` - the message strip's
+accordion trigger, which Radix wraps in an `<h3>` by default. axe reports `heading-order`
+(moderate, best-practice tag; it is not one of the WCAG A/AA rules, and the panel has none of
+those). Populated, the chain is unbroken because the property groups supply the `h2`.
+
+**Resolved by:** giving `AccordionTrigger` a heading level the strip can set - another
+`DEVIATION` in `src/ui/`, or a prop upstream - or accepting that a docked chrome strip is not
+part of the content outline and saying so in `DESIGN.md` instead.
+
+### The mobile drawer's `aria-hidden` background holds 14 focusable descendants
+
+Opening the drawer has Radix call `hideOthers()`, which sets `aria-hidden="true"` on the whole
+app wrapper. Fourteen focusable elements are inside it. ARIA says authors must not put
+`aria-hidden` on content that is focusable, and what keeps focus out today is only Radix's JS
+focus trap - behaviour, not structure. axe reports it as `aria-hidden-focus` needs-review
+rather than a pass, which is the correct verdict: it is not a violation while the trap holds,
+and nothing in the markup says so.
+
+`inert` on the same wrapper would make the containment structural - it removes descendants from
+the tab order and from the accessibility tree at once, so the guarantee survives the trap being
+bypassed. This is upstream Radix behaviour, not something the panel introduces.
+
+**Resolved by:** `inert` landing in `react-remove-scroll`/`aria-hidden` upstream and Radix
+adopting it, or a deviation in `src/ui/` that adds it beside the `aria-hidden` - which would be
+a third one in `sidebar.tsx` and has to be worth that. Not resolvable from `theme.css`: `inert`
+is an attribute, not a style.
+
+### A recovery speaks twice into one atomic region, 12ms apart
+
+`role="status"` is implicitly `aria-atomic`, so each change re-reads the whole region. A
+transport recovery announces "Reconnected to the bridge." and then, when the bridge's next
+`connection` frame arrives, "The bridge is connected to indiserver again." - measured 12ms
+apart. Some screen readers clip the first utterance when an atomic region is replaced that
+fast, and the first is the one carrying the news.
+
+Two sentences is the right content: they are two different links and the second is genuinely
+new information. Only the timing is in question.
+
+**Resolved by:** listening to it on a real screen reader - NVDA and VoiceOver disagree about
+atomic re-reads and nothing in this repository can stand in for either. If the first is clipped,
+the fix is to coalesce a recovery arriving inside some small window into one sentence, not to
+drop either.
+
+### A write the bridge refuses leaves `StatusAnnouncer` armed for ever
+
+`onWrite` fires on the send, which is right - the socket buffers while offline and the operator
+pressed the button regardless - so the announcer arms the property and waits for the state that
+answers it. If the bridge refuses the frame instead (`{"event":"error"}`: no upstream
+connection, a full outbox, a kind a client may not send), nothing ever answers, and the arming
+survives until the property is deleted or the page is reloaded. A transition minutes later is
+then announced as though it were the answer to that press.
+
+The announcer cannot disarm from the `error` frame itself: `ErrorFrame` carries `code`,
+`message` and the rejected `tag`, and no device or property name, so acting on it would have to
+clear every pending write including the ones still legitimately waiting. This is much narrower
+than it was - any non-`Busy` frame for the property now disarms, where a same-state frame used
+to be swallowed - but it is not nothing.
+
+**Resolved by:** `ErrorFrame` naming the device and property of the frame it rejected, which is
+a `BRIDGE_PROTOCOL_VERSION` question and touches `control_frames.py`, `types.ts` and the golden
+wire schema together. Then the announcer disarms exactly the write that failed.
 
 ### `InProcessHub` duplicates the multi-device runtime
 
@@ -109,15 +202,60 @@ rider.
 **Resolved by:** either collapsing it with that question answered, or writing down that the
 duplication is permanent and why.
 
-### Two accessibility claims are unit-tested but never seen in a browser
+### The panel ignores `prefers-color-scheme` at first paint
 
-The panel passes an axe sweep across eight states, but two of them were unreachable live
-and rest on unit tests alone: the empty state, because the browser simulators define their
-properties synchronously and leave no window to scan, and the distinctness of the write
-buttons, because no shipped example publishes two writable properties at once.
+`web/apps/panel/src/use-theme.ts` seeds from the `.dark` class on `<html>` and nothing else, so
+a browser set to dark that has never used the toggle gets a full-screen white page and then
+whatever the operator picks. At a telescope that is a flash bright enough to cost the dark
+adaptation the whole design exists for, and it happens on every fresh load.
 
-**Resolved by:** a demo build that can be told to stay silent, or a run against a real
-`indiserver` with a driver that has two writable properties.
+The fix is not a one-liner, which is why it is here rather than done: reading
+`prefers-color-scheme` at startup makes the OS a *third* input beside the stored choice and the
+current class, and the interesting questions are what happens when an explicit choice disagrees
+with the OS, whether the OS changing mid-session should move the page under the operator, and
+whether an inline script has to set the class before first paint or the white flash simply
+becomes a dark one. `PRODUCT.md` also records dark-adaptation preservation as a confirmed but
+unbuilt requirement, and a red or luminance-ceiling mode would be a third scheme, so this
+decision should not be taken twice.
+
+**Resolved by:** answering those three questions and building the result, most likely as part
+of the dark-adaptation work rather than ahead of it.
+
+### A number input rejected by `max` says so only in the native bubble
+
+The per-element number control carries `min`/`max`/`step` from the wire, so an out-of-range
+value is refused by the browser with its own transient bubble. Nothing sets `aria-invalid` and
+nothing associates a persistent message with the field through `aria-describedby`, so a screen
+reader gets a validity state with no explanation attached to the control, and a sighted user
+loses the bubble as soon as focus moves.
+
+**Resolved by:** rendering the constraint as a real hint element wired with `aria-describedby`
+and setting `aria-invalid` while the value is out of range. The shadcn `Field` primitives
+already model this; the work is deciding whether the hint is always visible - which costs a
+line per element on a card that can carry a dozen - or appears only on failure.
+
+### The protocol-mismatch explanation is reachable only with a mouse
+
+`ConnectionStatus` renders the mismatch line as a `<span title="...">`. A `title` needs hover,
+which rules out touch, and the span is not focusable, which rules out the keyboard. The visible
+text ("protocol 2, UI 1") is the summary; the sentence explaining what it means to the operator
+is the part only a mouse user can read.
+
+**Resolved by:** making it a real `Tooltip` on a focusable trigger, or simply rendering the
+sentence beside the numbers - it appears only when the two halves are from different releases,
+which is rare enough to afford the space.
+
+### The panel has no skip link and no `banner`/`contentinfo` landmarks
+
+There is a `main`, a `nav aria-label="Devices"` and an `aria-label="Messages"` region, but the
+header bar and the sidebar's own chrome - the wordmark, the connection dots, the two footer
+settings - sit outside every landmark, which axe's best-practice `region` rule flags. There is
+also no skip link, so reaching the property grid by keyboard means tabbing past the whole
+device list on every load.
+
+**Resolved by:** wrapping the header in a `banner` (and deciding whether the sidebar footer is
+`contentinfo` or simply part of the navigation region), and adding a visually-hidden-until-
+focused skip link as the first tab stop. Both are shell-level; neither touches a primitive.
 
 ### A bare `.z` format inflates to no format at all
 

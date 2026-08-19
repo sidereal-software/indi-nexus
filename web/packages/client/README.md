@@ -54,6 +54,26 @@ one arrives). Compare it with the exported `CLIENT_PROTOCOL_VERSION` if you want
 whether the bridge and this build agree; a mismatch is never fatal, and the client only
 logs one line.
 
+## Knowing which changes you asked for
+
+`onWrite` is the outbound counterpart to `subscribe`. It fires with the device and property
+name of every `new` frame `send` puts on the wire - from the four `set*` helpers or from a
+frame you built yourself - and returns an unsubscribe function, like every other listener
+here:
+
+```ts
+const stop = client.onWrite((device, name) => console.log("sent", device, name));
+client.setSwitch("Dome", "DOME_SHUTTER", { SHUTTER_OPEN: "On" });
+stop();
+```
+
+Nothing else can make that distinction. A vector going `Busy` and then `Ok` looks the same
+on the wire whether this browser asked for it or another client did, so it has to be
+recorded on the way out. That is what lets a UI treat an operator's own command as feedback
+and the rest of the stream as telemetry. It fires on the send rather than on an
+acknowledgement, because the socket buffers while the connection is down and the operator
+pressed the button either way. The callback type is exported as `WriteCallback`.
+
 ## Documentation
 
 Full guides and API reference: <https://indi-nexus.sidereal.software/>. The

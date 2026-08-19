@@ -31,8 +31,8 @@ export function App() {
 That is a working control panel: every property of the dome, under a heading for its INDI
 group, each drawn with the right control for its kind. Numbers come with their units and
 limits, switches render as radio buttons or checkboxes depending on the INDI rule, lights
-as coloured dots, BLOBs as download links. Writable properties get editable controls and
-read-only ones do not. Status badges update live.
+as a coloured dot with its state written beside it, BLOBs as download links. Writable
+properties get editable controls and read-only ones do not. Status badges update live.
 
 Two components do the work. `IndiProvider` opens a WebSocket to the bridge, keeps it open
 (reconnecting if the observatory restarts), and mirrors everything it hears into a store.
@@ -147,8 +147,8 @@ function Observatory() {
 ```
 
 `ConnectionStatus` and `MessageLog` are two of the pieces the reference panel adds around
-that, and they take no props. The third is `DeviceConfigDialog`, which takes the device
-your own shell has selected.
+that, and neither needs any props. The third is `DeviceConfigDialog`, which takes the
+device your own shell has selected.
 
 ## Building your own layout
 
@@ -228,6 +228,33 @@ for scripting a sequence.
     and publishes the new value, not when you click it, so the screen shows what the
     hardware reports rather than what was asked of it.
 
+### Knowing which changes you asked for
+
+Because a command is a request, the answer arrives as an ordinary `set` frame - and an
+ordinary `set` frame is also what a driver sends when a cloud sensor updates or another
+client moves the mount. Nothing in the frame says who asked. So the client reports its own
+sends instead: `onWrite` fires with the device and property name of every `new` frame that
+goes on the wire, whether from a `set*` helper or from a frame you built yourself, and
+returns an unsubscribe function.
+
+```tsx
+import { useEffect, useState } from "react";
+import { useIndiClient } from "@indi-nexus/react";
+
+function LastCommand() {
+  const client = useIndiClient();
+  const [last, setLast] = useState<string | null>(null);
+  // `onWrite` returns its own unsubscribe, so the effect can hand it straight back.
+  useEffect(() => client.onWrite((device, name) => setLast(`${device} ${name}`)), [client]);
+  return <p>Last sent: {last ?? "nothing yet"}</p>;
+}
+```
+
+That is how a UI treats an operator's own command as feedback and the rest of the stream as
+telemetry - it is what `StatusAnnouncer` uses, and what any confirmation of your own would
+need. It fires on the send rather than on an acknowledgement, because the socket buffers
+while the connection is down and the operator pressed the button either way.
+
 ## The components
 
 | Component | Renders |
@@ -242,9 +269,9 @@ for scripting a sequence.
 | `BlobVectorControl` | a BLOB vector, as format and size per element, with a download link once a payload has arrived |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |
 | `StateDot` | the same state where there is no room for a badge |
-| `ConnectionStatus` | both connection states, plus a badge when the bridge announces a [protocol version](protocol.md#versioning-the-browser-contract) this build was not written against |
+| `ConnectionStatus` | both connection states - a filled dot each, a hollow one and the word "offline" when either is down - plus a line when the bridge announces a [protocol version](protocol.md#versioning-the-browser-contract) this build was not written against |
 | `MessageLog` | the rolling INDI message log, **and the bridge's write rejections** |
-| `AlertAnnouncer` | announces a property entering `Alert` to a screen reader |
+| `StatusAnnouncer` | the spoken status region: a fault, your own write settling, the connection |
 
 Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,
 hand-built widgets around them. `VectorControl` is the seam to reach through when your own
@@ -253,17 +280,32 @@ and it renders the right control, which is what keeps a hand-laid screen working
 an instrument you have not seen. The four per-kind controls underneath it are exported for
 the case where you already know the kind and want to skip the dispatch.
 
-!!! important "`AlertAnnouncer` is the only thing that speaks"
+!!! important "`StatusAnnouncer` is the only thing that speaks"
 
     Everything on this page arrives over a socket, and a screen reader announces none of
     it on its own: a property going `Ok` to `Alert` redraws a badge and says nothing.
-    `AlertAnnouncer` is the live region that fixes that. Render it once, anywhere.
+    `StatusAnnouncer` is the live region that fixes that. Render it once, anywhere - it
+    watches every device, not just the one on screen.
 
-    It deliberately announces **only** a transition into `Alert`, not every value. A
-    driver polling once a second would otherwise talk over itself continuously, and a
-    temperature changing is not a status message while an instrument faulting is. A UI
-    that leaves it out is silent for a blind operator, which is the failure mode with no
-    workaround: there is nothing to click and nothing to re-read.
+    It is deliberately not a spoken copy of the stream. `set` frames are telemetry, and a
+    driver polling once a second would talk over itself continuously, so exactly three
+    things qualify:
+
+    1. **A vector entering `Alert`.** Entering, not being: a `set` that carries no state
+       leaves the cached one alone, so a latched Alert re-emits with every later frame and
+       only the transition is announced.
+    2. **A vector this browser wrote to, until it settles.** A state change is telemetry
+       only when nobody asked for it. Press Open and you hear "Shutter on Dome Simulator is
+       Busy." and then "...is Ok."; the first state that is not `Busy` disarms it, so one
+       press buys at most two sentences and a driver still emitting afterwards is back to
+       being telemetry. [`client.onWrite`](#knowing-which-changes-you-asked-for) is what
+       tells the two apart, and only the sender can.
+    3. **The connection.** The socket dropping, or the bridge losing `indiserver`, plus the
+       matching recovery. A recovery is announced only if the loss was announced first,
+       which is what keeps a freshly opened session quiet.
+
+    A UI that leaves it out is silent for a blind operator, which is the failure mode with
+    no workaround: there is nothing to click and nothing to re-read.
 
 !!! important "`MessageLog` is where a refused write shows up"
 

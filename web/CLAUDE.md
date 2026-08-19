@@ -10,6 +10,18 @@ fences. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds 
 `ui/` files are excluded). Run everything from `web/`: `pnpm -r build`, `pnpm -r typecheck`,
 `pnpm -r test`, `pnpm lint`, `pnpm run lint:diagrams`. All five are CI gates.
 
+**Both libraries typecheck as two projects, and the split is load bearing.** `tsconfig.json`
+excludes `*.test.ts(x)` (and `src/testing/setup.ts` in the React package) so that
+`"types": []` actually means something: that field only stops TypeScript *auto-including*
+`@types/*`, and a `/// <reference types="node" />` inside a `.d.ts` the program already reads
+still brings the globals in - vite's does, and every test file reaches it through `vitest`. So
+`process` was in scope for both browser libraries despite the `types: []` that was there to
+prevent exactly that, and `skipLibCheck` meant a stray `process.env` in library source would
+have compiled in silence. `tsconfig.test.json` compiles the tests with the exclusions lifted,
+and each package's `typecheck` script runs both. Probe it the way it was found: append
+`export const _probe = process.env.HOME` to a library source file and check that
+`tsc --noEmit` fails.
+
 ## `packages/client/` - `@indi-nexus/client`
 
 A faithful TS port of the Python client, framework-agnostic (it only needs a `WebSocket`).
@@ -49,7 +61,7 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
   control frame), plus `protocol` from the bridge's `hello`. `CLIENT_PROTOCOL_VERSION`
   mirrors `BRIDGE_PROTOCOL_VERSION`; a mismatch is **never** fatal in either direction
   (bumps are breaking-only, everything additive keeps working), so it logs one line and
-  carries on, and `ConnectionStatus` shows it. Two traps live here:
+  carries on, and `ConnectionStatus` shows it. Three traps live here:
   - `protocol` is `null` until a frame arrives and `0` once a **non-hello** frame arrives
     first, meaning a bridge older than the frame. The latch is evaluated **before**
     `acceptFrame`, so a first frame the frame guard rejects still trips it, and it resets in
@@ -59,6 +71,25 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
     comparison. Leave one out and it is assigned and never notified, which no typecheck
     catches. For the same reason the state is written out in full at each site rather than
     spread from the previous one.
+  - **`current()` protects the socket we let go of; the timer has to protect the one we
+    hold.** `open()` overwrites `this.socket`, so any socket that loses that assignment is
+    orphaned - still `OPEN`, never closed, and every one of its events filtered out by a
+    guard written for sockets we discarded deliberately. Three paths reached it, and each
+    was independently reachable: the deferred reconnect never asked whether a socket had
+    arrived while it waited; `start()` left a booked `reconnectTimer` running, which also
+    handed the *next* close a part-spent timer and silently shortened its backoff; and
+    `onclose` calls `onClose` **before** `scheduleReconnect`, so a consumer reconnecting
+    from its own close handler re-enters `start()` when there is no timer to cancel yet.
+    The symptom is the worst one this client has: `connected` reports `true`, the socket
+    genuinely is open, and frames land nowhere. Still latent and deliberately not changed:
+    `scheduleReconnect` declines to replace an existing timer, so the first booked deadline
+    wins if two closes ever land inside one delay window.
+- `onWrite` is the outbound counterpart to `subscribe`: it fires with `(device, name)` for
+  every `new` frame `send` puts on the wire, and it exists so a consumer can tell a state
+  change it asked for from telemetry it did not. Nothing else can make that distinction - the
+  frames coming back are identical either way - so it lives on the sender. It fires on the
+  send rather than on the acknowledgement, because the socket buffers while offline and the
+  operator pressed the button regardless. `StatusAnnouncer` is the one consumer.
 - The third control frame, `{"event":"error"}`, says a frame this
   browser sent did **not** go upstream; it lands in the message log, because nothing retries
   it and a browser that hears nothing would assume its write landed. An `event` the client
@@ -78,7 +109,7 @@ store), the per-kind value hooks (`useNumber`/`useText`/`useSwitch`/`useLight`, 
 the value already narrowed - `useElement` hands back the element union, so reading `.value`
 off it does not type-check), and the INDI-aware components (`PropertyVectorCard`,
 `DevicePanel`, `DeviceConfigDialog`, per-kind element controls, `StateBadge`,
-`ConnectionStatus`, `MessageLog`, `AlertAnnouncer`).
+`ConnectionStatus`, `MessageLog`, `StatusAnnouncer`).
 
 ### Two live regions, and why they are two
 
@@ -89,15 +120,79 @@ exactly two announcing surfaces, and the split between them is the whole design:
   new driver message is read once instead of the panel being re-read. That viewport also
   carries `tabIndex={0}`: it is a scroll container, the view follows the newest entry, and
   without a tab stop the history above it is reachable only with a wheel.
-- **`AlertAnnouncer` is a separate `role="status"`**, mounted once at the top of the app,
-  and it fires on exactly one thing: a vector *entering* Alert. Volume is the reason it
-  cannot just be more of the log - `set` frames are telemetry, a CCD simulator emits them
-  continuously, and a five-minute poll updating a temperature is not a status message. It
-  keeps the last state per property, so a latched Alert re-emitting (which it does with
-  every subsequent `set`, since a `set` with no `state` leaves the cached one alone) is
-  silent. It watches **every** device on purpose: a fault on the device that is not on
-  screen is the one an operator most needs to be told about, which is why it is mounted
-  page-level and not inside `DevicePanel`.
+- **`StatusAnnouncer` is a separate `role="status"`**, mounted once at the top of the app. It
+  watches **every** device on purpose: a fault on the device that is not on screen is the one
+  an operator most needs to be told about, which is why it is mounted page-level and not
+  inside `DevicePanel`.
+
+**What that region may speak, and the rule for each.** Volume is why it cannot just be more of
+the log: `set` frames are telemetry, a CCD simulator emits them continuously, and a five-minute
+poll updating a temperature is not a status message. Three things qualify, and each qualifies
+for a reason that does not generalise into "announce state changes":
+
+1. **A vector entering Alert.** "Entering" is the whole point. It keeps the last state per
+   property, so a latched Alert re-emitting (which it does with every subsequent `set`, since a
+   `set` with no `state` leaves the cached one alone) is silent.
+2. **A vector this browser wrote to, until it settles.** A state change is telemetry only when
+   nobody asked for it. The operator presses Open, the shutter goes Busy and then Ok, and a
+   sighted operator reads both off the badge - so this is feedback on their own action, not the
+   stream. `IndiClient.onWrite` is what separates the two, and only the sender can: it fires on
+   each `new` frame the client sends. The property is disarmed by the first state that is not
+   Busy, so one press buys at most two sentences and a driver still emitting afterwards is back
+   to being telemetry. Verified live against `examples/dome_device.py`: pressing Open produced
+   exactly "Shutter on Dome Simulator is Busy." and then "...is Ok.", and nothing across the
+   thirteen seconds of position telemetry between them.
+3. **The connection.** A lost socket is not telemetry under any reading - every number on
+   screen stops being true and nothing else says so out loud. A recovery is announced only if
+   this region announced the loss before it, which is also what keeps a freshly opened session
+   silent: without that guard, the first `connection` frame (sent while `upstream` is still
+   false from the socket opening) would announce a fault that never happened.
+
+**The last state seen on the wire belongs to rule 1, and no other rule may read it.** Treat
+that as the invariant rather than as a description, because the region has had **two** bugs of
+one shape and the shape is the point: *the answer to a press carried a state that did not
+change.*
+
+- First, a `previous === state` early return above everything. A write answered with an
+  unchanged state was read as telemetry - silent, and still armed, so an unrelated transition
+  minutes later was announced as the answer to it.
+- Then, once that was split out, a `state === "Busy" && previous === "Busy"` guard left on the
+  write side. It suppressed the dome's position telemetry correctly and also swallowed the
+  acknowledgement whenever the property was **already Busy when the operator pressed** - so the
+  press bought nothing for thirteen seconds, which is exactly when an operator presses again.
+
+Neither is an edge case: most libindi writes go straight to Ok or Idle with no intermediate
+Busy, onto a property frequently already at that state. And the live verification above walks
+Idle→Busy→Ok, the one path that touches neither. Nor did any of the tests, which reasoned from
+the same model as the code.
+
+So the two rules now ask two questions and neither borrows the other's state:
+
+- **Telemetry** asks *has it changed*, against `seen` - the last state on the wire. Entering
+  Alert is news; a latched Alert re-emitting is not.
+- **A press** asks *what have I already said about this write*, against the state that write was
+  last announced at. `awaiting` is therefore a `Map<name, IPState | null>` and not a `Set`, with
+  `null` meaning armed-but-unacknowledged. One line, `announcedFor !== state`, replaces three
+  guards: every press is acknowledged exactly once whatever the driver answers with and whatever
+  the property was doing beforehand, and a driver repeating itself is silent. `onWrite` re-arms
+  to `null` even on a property already pending, because a second press is a second thing the
+  operator is owed an answer to.
+
+That bounds it both ways, which is the property to preserve if these rules are ever touched: it
+cannot become a firehose (one sentence per entry into Alert; per press at most one
+acknowledgement plus the settle that disarms) and it cannot go silent (an armed property
+announces its very next frame unconditionally). The one write it cannot recover from is one the
+bridge refuses outright - see `CONCERNS.md`.
+
+Three mutations are pinned by `status-announcer.test.tsx`, and they are the three ways this goes
+wrong: reading `previous` on the write side, announcing every armed frame, and failing to re-arm
+on a second press.
+
+**`role="status"`, not `role="alert"`, and that includes the connection sentences.** Assertive
+would interrupt whatever is being read out; a region that talks over a screen reader is one an
+operator turns off. Losing the socket is the strongest case for interrupting - every reading on
+screen has stopped being true - and it is still not a frequent event, so it can wait its turn.
+Decided rather than defaulted.
 
 ### The switch control is a group of toggle buttons, not a radio group
 
@@ -166,26 +261,63 @@ shadcn/ui primitives live in `src/ui/` (added via the shadcn CLI, `components.js
 re-exported. Use semantic tokens, `FieldGroup`/`Field`, `ToggleGroup` and friends per the
 shadcn rules; imports use the standard `@/` alias; **do not hand-edit `src/ui/`.**
 
-Two files break that rule, both to fix something the registry gets wrong and neither
-reachable from outside the file. Each is marked `DEVIATION` in place, and each has to be
-re-applied after a `shadcn add` of that component:
+**Two** files break that rule, and both break it for the same reason: what is wrong with
+them is *behaviour*, which no stylesheet can reach. The test before adding a third is exactly
+that - if a rule in `theme.css` could fix it, it does not belong in `src/ui/`.
 
-- `scroll-area.tsx` grows a `viewportProps` passthrough. Upstream spreads props onto the
-  Root only, so nothing can reach the scrolling element - and a scroll container outside
-  the tab order cannot be scrolled by keyboard at all. The viewport's class list has
-  carried `focus-visible:ring` since the component was added, so the styling was already
-  waiting for a tabindex nobody could supply.
-- `button.tsx` rings the `destructive` variant at `destructive/50` instead of upstream's
-  `/20` (`/40` in dark), which measured 1.30:1 against a card in light and 1.24:1 in dark -
-  the weakest focus indicator in the theme, on the button that deletes a saved
-  configuration with no undo.
+`scroll-area.tsx` grows a `viewportProps` passthrough, marked `DEVIATION` in place and to be
+re-applied after a `shadcn add scroll-area`: upstream spreads props onto the Root only, so
+nothing can reach the scrolling element - and a scroll container outside the tab order cannot
+be scrolled by keyboard at all. The viewport's class list has carried `focus-visible:ring`
+since the component was added, so the styling was already waiting for a tabindex nobody could
+supply. `message-log.test.tsx` asserts `role="log"`, `data-slot="scroll-area-viewport"` and
+`tabindex="0"` - exactly what the passthrough exists to deliver - so the marker disappearing
+fails a test rather than a browser.
+
+`sidebar.tsx` carries two numbered `DEVIATION` blocks, both in the mobile drawer, both
+reproduced at 390x844 before they were touched:
+
+- **Focus restoration.** The drawer is a Sheet with no `Dialog.Trigger` - it is opened by
+  `SidebarTrigger`, which renders outside it, or by Cmd/Ctrl+B. Radix's modal close handler
+  calls `preventDefault()` on FocusScope's own restore and then focuses `context.triggerRef`,
+  which is `null` here, so the keyboard landed on `<body>` and the tab order restarted at the
+  top of the document (SC 2.4.3). `SidebarProvider` therefore remembers what had focus when
+  the drawer opened and `SheetContent`'s `onCloseAutoFocus` puts it back. Doing *nothing* is
+  not the same as leaving Radix alone, which is why the handler only stands aside when the
+  opener has left the document.
+- **The tooltip that ate Escape.** `SidebarMenuButton` mounted a Radix `Tooltip` and hid the
+  content with `hidden={state !== "collapsed" || isMobile}`. A hidden tooltip is still an
+  *open* dismissable layer sitting above the drawer's, so the first Escape closed something
+  nobody could see and the drawer needed a second. It has nothing to say in either hidden case
+  anyway, so the wrapper is not mounted rather than mounted invisible.
+
+**There was a third, and it is the worked example of the test above.** The registry passes
+`[&>button]:hidden` to the drawer's `SheetContent`, which renders the Sheet's close and then
+sets `display: none` on it - leaving an overlay tap and Escape as the only ways out of an 18rem
+drawer, on a phone with no Escape key whose overlay is `aria-hidden` and so unreachable by a
+VoiceOver swipe. Dropping the class in place was the obvious fix and the wrong one: the utility
+compiles into `@layer utilities`, so an unlayered `display: revert` in `theme.css` outranks it
+and the vendored line went back to registry-exact. It hangs off `[data-mobile="true"]`, the same
+hook that grows the button to a 44px target, because this element spreads `data-slot="sidebar"`
+over the primitive's own `sheet-content` and the sheet hook cannot see it. `revert` rather than
+a display value, because the registry sets none - and the close is `absolute`, which blockifies,
+so the only thing the rule has to achieve is "not `none`".
+
+**`aria-modal` was considered and is deliberately absent**, which is Radix's decision and not
+an oversight: `DialogContentModal` calls `hideOthers()` from the `aria-hidden` package instead,
+and that was confirmed in a production build - opening the drawer sets `aria-hidden="true"` on
+the whole app wrapper, leaving only sonner's `aria-live` region reachable. Adding `aria-modal`
+would be a second, weaker mechanism for a job already done.
+
+Everything else the registry gets wrong is corrected **from `theme.css`, not in place**.
+See the next section.
 
 The theme is the shadcn tokens in `src/theme.css` plus `--state-*` for INDI
 Idle/Ok/Busy/Alert. The build emits a prebuilt `dist/styles.css`
 (`@indi-nexus/react/styles.css`, batteries-included) and copies the source `theme.css`
 (`@indi-nexus/react/theme.css`, for consumers running their own Tailwind).
 
-Two things in that file are load bearing and easy to undo by accident:
+Five things in that file are load bearing and easy to undo by accident:
 
 - **The four `--state-*` fills are tuned for separation, so contrast is fixed on the
   foreground.** Light mode was white-on-colour and all four failed AA at the badge's 12px.
@@ -194,11 +326,52 @@ Two things in that file are load bearing and easy to undo by accident:
   CIEDE2000 7.0 to 3.3 under simulated deuteranopia when tried - so the light `-foreground`
   tokens became near-black instead, as the dark palette already did. Change a foreground,
   not a fill.
-- **Busy pulses with a ring, not with opacity** (`--animate-state-pulse`). Tailwind's
+- **Busy pulses with a ring on a pseudo-element, not with opacity on the badge.** Tailwind's
   `animate-pulse` fades the element to 0.5, which takes the badge's text down with its
   fill: 1.75:1 at the dimmest frame, and no fill colour survives that - solid black faded
-  to 0.5 over white reaches only 3.95:1. Ringing the badge leaves its own colours identical
-  at every frame.
+  to 0.5 over white reaches only 3.95:1. The mechanism is `[data-indi-pulse]::after`
+  carrying an `outline` (not a border, not a box-shadow) that scales and fades: an outline
+  paints entirely outside the pseudo-element's box, so at rest not one animated pixel lands
+  on the badge or its line box, whatever padding a consumer passes. `state-badge.tsx` sets
+  `data-indi-pulse` and the `relative` the ring is positioned against; the theme owns the
+  rest, including the `prefers-reduced-motion` gate.
+- **Everything below the `[data-indi-state]` mapping is outside every `@layer`, on
+  purpose.** That is what lets `theme.css` overrule a vendored primitive that
+  `shadcn add` will rewrite. The hook is always the utility class the registry emits,
+  never `data-slot`, because `data-slot` does not survive `asChild` while `className`
+  concatenates. And the constraint that governs the whole section: an unlayered rule
+  setting a **real** property beats every layered rule on that element, so it must either
+  restate every variant of that property the element can be in, or be narrowed to something
+  that cannot be in those states. A custom property (`--tw-ring-color`) is always safe;
+  `border-color`, `position` and `background-color` are not - a `border-color` rule was
+  tried there and destroyed the `focus-visible:border-ring` shift it existed to strengthen.
+  `theme-cascade.test.ts` compiles the stylesheet **twice** and asserts each correction is
+  outside every layer, because jsdom implements neither cascade layers nor `color-mix` and
+  every other test would stay green while these silently died. Twice, because only the
+  `--minify` build ships (`build:css`) and Lightning CSS is a different code path: it drops
+  quotes from simple attribute selectors, shortens `::before` to `:before`, and un-nests the
+  `@supports` fallback it generates around `color-mix` into a sibling rule - so a selector
+  legitimately appears both at the top level and one block deep, and the minified assertion is
+  "inside no `@layer`" rather than "at depth zero". `theme-contract.test.tsx` guards the class
+  hooks against a rename.
+- **The focus ring is offset, and the offset is half the fix.** The 75% opacity is the ring
+  against the *surface*; on a filled control its other neighbour is the control's own fill, and
+  the ring is a tinted version of the same token - destructive 1.38:1 light and 1.32:1 dark,
+  checked switch 2.05 / 1.60, primary button 2.11. So the corrections also set
+  `--tw-ring-offset-width: 2px` and restate `--tw-ring-offset-shadow`, which only the
+  `ring-offset-*` utility would otherwise set. All three are custom properties, so the offset
+  costs nothing under the rule above. The destructive ring's offset colour is **white, not the
+  surface**: `dark:bg-destructive/60` composites to `#973030` on a near-black card, 2.48:1 from
+  it, so a card-coloured gap is invisible against the fill; white is the variant's own hardcoded
+  text colour and makes the indicator two-tone (7.55 / 5.74 / 3.27). In light mode white *is*
+  the surface, so one declaration covers both schemes.
+- **`--input` is one token doing two jobs and is deliberately not split.** It is a control's
+  border *and* the 30% fill of that same control *and* the whole of the Switch's off-state
+  track, and those pull opposite ways: at `#6e6e6e` the dark border reads 3.71:1 against the
+  card but only 2.68:1 against its own `bg-input/30` fill. Splitting it into a border token
+  and a fill token abandons the Switch, whose track *is* `bg-input` - back to 1.13:1 against
+  the sidebar in light and 1.13:1 at `/80` against the card in dark. The comment beside each
+  value carries the full set of measurements.
 
 The `tsx` fences in this package's `README.md`, in `docs/guides/frontend.md`, in
 `docs/index.md`, in the root `README.md` and in `docs/guides/tutorial-open-meteo.md` are
@@ -261,9 +434,22 @@ in `pyproject.toml`, which rebuilds it with pnpm when missing), so `pip install`
 
 The shell owns the page's structure, which the primitives cannot: the sidebar's markup is
 all `div`s, so the device menu is wrapped in a `nav aria-label="Devices"` (without it the
-only means of moving between devices sits outside every landmark), and `AlertAnnouncer` is
+only means of moving between devices sits outside every landmark), and `StatusAnnouncer` is
 mounted here rather than inside `DevicePanel` so it covers every device and not just the
 selected one.
+
+Two smaller things the shell owns for the same reason, both found by an axe sweep of the state
+nothing else reaches - `indi-nexus serve` with no `--device`:
+
+- **The empty state is a sentence, not a list.** "No devices connected." was a `<p>` directly
+  inside `SidebarMenu`'s `<ul>`, where the only legal child is an `<li>`. The menu is now
+  rendered only when there is a menu; `DeviceConfigDialog` needs no separate guard, because
+  nothing can be selected while nothing is connected.
+- **The group heading names its colour.** `SidebarGroupLabel` draws in
+  `text-sidebar-foreground/70` (6.29:1 light, 5.61:1 dark), and `DESIGN.md` puts body-size
+  secondary text on the AAA tier, so the shell passes `text-muted-foreground` (7.63 / 8.64).
+  Not corrected in `theme.css`: `color` is a real property and an unlayered rule on it would
+  beat every state variant the element can be in.
 
 **Tailwind source detection is rooted at the Vite root, not at the CSS file.** The demo
 configs set `root: "demo"`, so without the explicit `@source "./**/*.{ts,tsx}"` in

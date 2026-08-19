@@ -218,10 +218,11 @@ export function App() {
 }
 ```
 
-Numbers get their units and limits, switches become radio buttons or checkboxes
-according to the INDI rule, lights become coloured dots, BLOBs become download links,
-and read-only properties are not editable. For a purpose-built screen instead, the same
-data is on hooks. [Building a frontend](guides/frontend.md) covers both.
+Numbers get their units and limits, switches become radio buttons or checkboxes according
+to the INDI rule, lights become a coloured dot with its state written beside it, BLOBs
+become download links, and read-only properties are not editable. For a purpose-built
+screen instead, the same data is on hooks. [Building a frontend](guides/frontend.md)
+covers both.
 
 ## How the pieces fit
 

@@ -79,6 +79,15 @@ export const MANIFEST = [
           after: ["}"],
         },
       },
+      {
+        name: "client-readme-on-write",
+        match: "const stop = client.onWrite(",
+        imports: ['import type { IndiClient } from "@indi-nexus/client";'],
+        wrap: {
+          before: ["export function traceWrites(client: IndiClient) {"],
+          after: ["}"],
+        },
+      },
     ],
   },
   {
@@ -105,6 +114,7 @@ export const MANIFEST = [
         match: "function ShutterButtons() {",
         imports: ['import { useIndiClient } from "@indi-nexus/react";'],
       },
+      { name: "frontend-last-command", match: "function LastCommand() {" },
       {
         name: "frontend-wait-for",
         match: "await client.waitFor(",
