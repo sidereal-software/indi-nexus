@@ -1,0 +1,607 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-18T19:59:28Z",
+  "title": "Design System: INDINexus",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Viridis Violet",
+        "canonical": "oklch(34.5% 0.1157 289.4)",
+        "tonalRamp": [
+          "oklch(15% 0.0766 289.4)",
+          "oklch(26% 0.1031 289.4)",
+          "oklch(37% 0.1157 289.4)",
+          "oklch(48% 0.1157 289.4)",
+          "oklch(59% 0.1157 289.4)",
+          "oklch(70% 0.1127 289.4)",
+          "oklch(82% 0.0838 289.4)",
+          "oklch(95% 0.0525 289.4)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "Viridis Violet (dark)",
+        "canonical": "oklch(72.7% 0.1067 292.9)",
+        "tonalRamp": [
+          "oklch(15% 0.0706 292.9)",
+          "oklch(26% 0.0950 292.9)",
+          "oklch(37% 0.1067 292.9)",
+          "oklch(48% 0.1067 292.9)",
+          "oklch(59% 0.1067 292.9)",
+          "oklch(70% 0.1039 292.9)",
+          "oklch(82% 0.0773 292.9)",
+          "oklch(95% 0.0484 292.9)"
+        ]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Signal Cyan",
+        "canonical": "oklch(53.6% 0.0398 196.0)",
+        "tonalRamp": [
+          "oklch(15% 0.0263 196.0)",
+          "oklch(26% 0.0354 196.0)",
+          "oklch(37% 0.0398 196.0)",
+          "oklch(48% 0.0398 196.0)",
+          "oklch(59% 0.0398 196.0)",
+          "oklch(70% 0.0387 196.0)",
+          "oklch(82% 0.0288 196.0)",
+          "oklch(95% 0.0181 196.0)"
+        ]
+      },
+      "secondary-dark": {
+        "role": "secondary",
+        "displayName": "Signal Cyan (dark)",
+        "canonical": "oklch(73.6% 0.1156 214.0)",
+        "tonalRamp": [
+          "oklch(15% 0.0765 214.0)",
+          "oklch(26% 0.1030 214.0)",
+          "oklch(37% 0.1156 214.0)",
+          "oklch(48% 0.1156 214.0)",
+          "oklch(59% 0.1156 214.0)",
+          "oklch(70% 0.1126 214.0)",
+          "oklch(82% 0.0838 214.0)",
+          "oklch(95% 0.0525 214.0)"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "Fault Red",
+        "canonical": "oklch(57.7% 0.2152 27.3)",
+        "tonalRamp": [
+          "oklch(15% 0.1424 27.3)",
+          "oklch(26% 0.1917 27.3)",
+          "oklch(37% 0.2152 27.3)",
+          "oklch(48% 0.2152 27.3)",
+          "oklch(59% 0.2152 27.3)",
+          "oklch(70% 0.2096 27.3)",
+          "oklch(82% 0.1559 27.3)",
+          "oklch(95% 0.0977 27.3)"
+        ]
+      },
+      "destructive-dark": {
+        "role": "tertiary",
+        "displayName": "Fault Red (dark)",
+        "canonical": "oklch(63.7% 0.2078 25.3)",
+        "tonalRamp": [
+          "oklch(15% 0.1376 25.3)",
+          "oklch(26% 0.1852 25.3)",
+          "oklch(37% 0.2078 25.3)",
+          "oklch(48% 0.2078 25.3)",
+          "oklch(59% 0.2078 25.3)",
+          "oklch(70% 0.2024 25.3)",
+          "oklch(82% 0.1506 25.3)",
+          "oklch(95% 0.0944 25.3)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Instrument Ink",
+        "canonical": "oklch(21.0% 0.0318 264.7)",
+        "tonalRamp": [
+          "oklch(15% 0.0210 264.7)",
+          "oklch(26% 0.0283 264.7)",
+          "oklch(37% 0.0318 264.7)",
+          "oklch(48% 0.0318 264.7)",
+          "oklch(59% 0.0318 264.7)",
+          "oklch(70% 0.0309 264.7)",
+          "oklch(82% 0.0230 264.7)",
+          "oklch(95% 0.0144 264.7)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Bezel Grey",
+        "canonical": "oklch(42.2% 0.0204 259.4)",
+        "tonalRamp": [
+          "oklch(15% 0.0135 259.4)",
+          "oklch(26% 0.0182 259.4)",
+          "oklch(37% 0.0204 259.4)",
+          "oklch(48% 0.0204 259.4)",
+          "oklch(59% 0.0204 259.4)",
+          "oklch(70% 0.0199 259.4)",
+          "oklch(82% 0.0148 259.4)",
+          "oklch(95% 0.0093 259.4)"
+        ]
+      },
+      "muted-foreground-dark": {
+        "role": "neutral",
+        "displayName": "Bezel Grey (dark)",
+        "canonical": "oklch(75.7% 0 89.9)",
+        "tonalRamp": [
+          "oklch(15% 0 89.9)",
+          "oklch(26% 0 89.9)",
+          "oklch(37% 0 89.9)",
+          "oklch(48% 0 89.9)",
+          "oklch(59% 0 89.9)",
+          "oklch(70% 0 89.9)",
+          "oklch(82% 0 89.9)",
+          "oklch(95% 0 89.9)"
+        ]
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Control Edge",
+        "canonical": "oklch(62.6% 0.0064 264.5)",
+        "tonalRamp": [
+          "oklch(15% 0.0043 264.5)",
+          "oklch(26% 0.0057 264.5)",
+          "oklch(37% 0.0064 264.5)",
+          "oklch(48% 0.0064 264.5)",
+          "oklch(59% 0.0064 264.5)",
+          "oklch(70% 0.0063 264.5)",
+          "oklch(82% 0.0047 264.5)",
+          "oklch(95% 0.0029 264.5)"
+        ]
+      },
+      "input-dark": {
+        "role": "neutral",
+        "displayName": "Control Edge (dark)",
+        "canonical": "oklch(59.0% 0 89.9)",
+        "tonalRamp": [
+          "oklch(15% 0 89.9)",
+          "oklch(26% 0 89.9)",
+          "oklch(37% 0 89.9)",
+          "oklch(48% 0 89.9)",
+          "oklch(59% 0 89.9)",
+          "oklch(70% 0 89.9)",
+          "oklch(82% 0 89.9)",
+          "oklch(95% 0 89.9)"
+        ]
+      },
+      "state-idle": {
+        "role": "neutral",
+        "displayName": "Standby Grey",
+        "canonical": "oklch(71.4% 0.0192 261.3)",
+        "tonalRamp": [
+          "oklch(15% 0.0127 261.3)",
+          "oklch(26% 0.0171 261.3)",
+          "oklch(37% 0.0192 261.3)",
+          "oklch(48% 0.0192 261.3)",
+          "oklch(59% 0.0192 261.3)",
+          "oklch(70% 0.0187 261.3)",
+          "oklch(82% 0.0139 261.3)",
+          "oklch(95% 0.0087 261.3)"
+        ]
+      },
+      "state-ok": {
+        "role": "tertiary",
+        "displayName": "Nominal Green",
+        "canonical": "oklch(62.7% 0.1699 149.2)",
+        "tonalRamp": [
+          "oklch(15% 0.1125 149.2)",
+          "oklch(26% 0.1514 149.2)",
+          "oklch(37% 0.1699 149.2)",
+          "oklch(48% 0.1699 149.2)",
+          "oklch(59% 0.1699 149.2)",
+          "oklch(70% 0.1655 149.2)",
+          "oklch(82% 0.1231 149.2)",
+          "oklch(95% 0.0771 149.2)"
+        ]
+      },
+      "state-busy": {
+        "role": "tertiary",
+        "displayName": "Working Amber",
+        "canonical": "oklch(66.6% 0.1574 58.3)",
+        "tonalRamp": [
+          "oklch(15% 0.1042 58.3)",
+          "oklch(26% 0.1402 58.3)",
+          "oklch(37% 0.1574 58.3)",
+          "oklch(48% 0.1574 58.3)",
+          "oklch(59% 0.1574 58.3)",
+          "oklch(70% 0.1533 58.3)",
+          "oklch(82% 0.1140 58.3)",
+          "oklch(95% 0.0715 58.3)"
+        ]
+      },
+      "state-alert": {
+        "role": "tertiary",
+        "displayName": "Fault Red (Alert state)",
+        "canonical": "oklch(63.7% 0.2078 25.3)",
+        "tonalRamp": [
+          "oklch(15% 0.1376 25.3)",
+          "oklch(26% 0.1852 25.3)",
+          "oklch(37% 0.2078 25.3)",
+          "oklch(48% 0.2078 25.3)",
+          "oklch(59% 0.2078 25.3)",
+          "oklch(70% 0.2024 25.3)",
+          "oklch(82% 0.1506 25.3)",
+          "oklch(95% 0.0944 25.3)"
+        ]
+      },
+      "state-ok-ink": {
+        "role": "tertiary",
+        "displayName": "Ok Ink",
+        "canonical": "oklch(55.6% 0.1434 151.2)",
+        "tonalRamp": [
+          "oklch(15% 0.0950 151.2)",
+          "oklch(26% 0.1278 151.2)",
+          "oklch(37% 0.1434 151.2)",
+          "oklch(48% 0.1434 151.2)",
+          "oklch(59% 0.1434 151.2)",
+          "oklch(70% 0.1397 151.2)",
+          "oklch(82% 0.1039 151.2)",
+          "oklch(95% 0.0651 151.2)"
+        ]
+      },
+      "state-ok-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Ok Ink (dark)",
+        "canonical": "oklch(72.3% 0.1920 149.6)",
+        "tonalRamp": [
+          "oklch(15% 0.1272 149.6)",
+          "oklch(26% 0.1711 149.6)",
+          "oklch(37% 0.1920 149.6)",
+          "oklch(48% 0.1920 149.6)",
+          "oklch(59% 0.1920 149.6)",
+          "oklch(70% 0.1870 149.6)",
+          "oklch(82% 0.1391 149.6)",
+          "oklch(95% 0.0872 149.6)"
+        ]
+      },
+      "state-alert-ink": {
+        "role": "tertiary",
+        "displayName": "Alert Ink",
+        "canonical": "oklch(43.3% 0.1777 29.2)",
+        "tonalRamp": [
+          "oklch(15% 0.1177 29.2)",
+          "oklch(26% 0.1583 29.2)",
+          "oklch(37% 0.1777 29.2)",
+          "oklch(48% 0.1777 29.2)",
+          "oklch(59% 0.1777 29.2)",
+          "oklch(70% 0.1731 29.2)",
+          "oklch(82% 0.1288 29.2)",
+          "oklch(95% 0.0807 29.2)"
+        ]
+      },
+      "state-alert-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Alert Ink (dark)",
+        "canonical": "oklch(78.1% 0.1217 20.2)",
+        "tonalRamp": [
+          "oklch(15% 0.0806 20.2)",
+          "oklch(26% 0.1084 20.2)",
+          "oklch(37% 0.1217 20.2)",
+          "oklch(48% 0.1217 20.2)",
+          "oklch(59% 0.1217 20.2)",
+          "oklch(70% 0.1185 20.2)",
+          "oklch(82% 0.0882 20.2)",
+          "oklch(95% 0.0553 20.2)"
+        ]
+      },
+      "chart-1": {
+        "role": "neutral",
+        "displayName": "Muted Teal",
+        "canonical": "oklch(59.4% 0.0443 196.0)",
+        "tonalRamp": [
+          "oklch(15% 0.0293 196.0)",
+          "oklch(26% 0.0395 196.0)",
+          "oklch(37% 0.0443 196.0)",
+          "oklch(48% 0.0443 196.0)",
+          "oklch(59% 0.0443 196.0)",
+          "oklch(70% 0.0431 196.0)",
+          "oklch(82% 0.0321 196.0)",
+          "oklch(95% 0.0201 196.0)"
+        ]
+      },
+      "chart-2": {
+        "role": "neutral",
+        "displayName": "Ember Orange",
+        "canonical": "oklch(72.1% 0.1337 50.0)",
+        "tonalRamp": [
+          "oklch(15% 0.0885 50.0)",
+          "oklch(26% 0.1191 50.0)",
+          "oklch(37% 0.1337 50.0)",
+          "oklch(48% 0.1337 50.0)",
+          "oklch(59% 0.1337 50.0)",
+          "oklch(70% 0.1302 50.0)",
+          "oklch(82% 0.0968 50.0)",
+          "oklch(95% 0.0607 50.0)"
+        ]
+      },
+      "chart-3": {
+        "role": "neutral",
+        "displayName": "Sunlit Sand",
+        "canonical": "oklch(87.2% 0.0864 68.5)",
+        "tonalRamp": [
+          "oklch(15% 0.0572 68.5)",
+          "oklch(26% 0.0770 68.5)",
+          "oklch(37% 0.0864 68.5)",
+          "oklch(48% 0.0864 68.5)",
+          "oklch(59% 0.0864 68.5)",
+          "oklch(70% 0.0842 68.5)",
+          "oklch(82% 0.0626 68.5)",
+          "oklch(95% 0.0392 68.5)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The wallboard's headline reading. One per screen, sized in viewport units because it is read from four metres away."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The wallboard's secondary readings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Property card titles, rendered as level-3 headings. Small on purpose: it names one card in a grid of thirty."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "The default for the whole interface."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase group headings, the debug detail line, the driver-internals disclosure, wallboard field captions."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "Every numeric or wire-derived value. Always tabular figures so live telemetry does not appear to twitch."
+      }
+    },
+    "shadows": [
+      {
+        "name": "xs",
+        "value": "0px 1px 4px 0px rgb(0 0 0 / 0.03)",
+        "purpose": "Inputs and outline buttons. Observed, not prescribed: the elevation philosophy is undecided."
+      },
+      {
+        "name": "sm",
+        "value": "0px 1px 4px 0px rgb(0 0 0 / 0.05), 0px 1px 2px -1px rgb(0 0 0 / 0.05)",
+        "purpose": "Every card. Below the threshold of perception in practice; the hairline border is what actually separates a card from the page."
+      },
+      {
+        "name": "lg",
+        "value": "0px 1px 4px 0px rgb(0 0 0 / 0.05), 0px 4px 6px -1px rgb(0 0 0 / 0.05)",
+        "purpose": "Larger second layer, same near-invisible first layer."
+      },
+      {
+        "name": "2xl",
+        "value": "0px 1px 4px 0px rgb(0 0 0 / 0.13)",
+        "purpose": "The only step in the scale that reads at all."
+      },
+      {
+        "name": "sm-dark",
+        "value": "0 1px 3px 0px rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08)",
+        "purpose": "Dark mode runs the same scale at roughly double the alpha, which on a near-black background is even less perceptible."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-pulse",
+        "value": "state-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "purpose": "The Busy indicator, on [data-indi-pulse]::after. An outline that scales 1 -> 1.5 and fades 0.6 -> 0, so the badge's own contrast is identical at every frame and only transform and opacity animate. An outline paints outside the pseudo-element's box, so no animated pixel touches the label. Declared inside prefers-reduced-motion: no-preference, so it does not exist under reduce."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition-property whitelist + accordion animation-duration: 1ms",
+        "purpose": "Under prefers-reduced-motion: reduce the theme keeps colour, box-shadow and opacity transitions and drops everything that moves. Not a blanket animation kill, which would take the focus ring's transition with it. The accordion height animation is neutralised on the element at 1ms rather than 0, so Radix Presence still receives animationend and unmounts."
+      },
+      {
+        "name": "accordion",
+        "value": "0.2s ease-out",
+        "purpose": "Height expand/collapse for the driver-internals fold and the message strip."
+      },
+      {
+        "name": "sidebar-slide",
+        "value": "200ms linear",
+        "purpose": "Sidebar collapse and off-canvas transition."
+      },
+      {
+        "name": "control-state",
+        "value": "transition-property: color, box-shadow",
+        "purpose": "Default transition for inputs, badges and toggles. Buttons transition all properties."
+      }
+    ],
+    "breakpoints": [
+      { "name": "card-grid-2col", "value": "36rem (container query)" },
+      { "name": "card-grid-3col", "value": "56rem (container query)" },
+      { "name": "sidebar-drawer", "value": "768px (viewport)" },
+      { "name": "wallboard-fixed", "value": "1024px (viewport)" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Identity-coloured filled button. Sparingly is an understatement: nothing on the panel's own surface is one. It appears inside DeviceConfigDialog and nowhere else - Save is that modal's primary action, and the Load / Restore confirmations use it for their confirming button - because violet marks the action of a surface an operator opened deliberately, and a screen of live instrument readings has no such action.",
+      "html": "<button class=\"ds-btn-primary\">Save</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border: none; border-radius: 10px; background: var(--primary, #3a2a70); color: var(--primary-foreground, #ffffff); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; cursor: pointer; transition: all 0.15s ease; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, #3a2a70) 90%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #ffffff), 0 0 0 5px color-mix(in oklab, var(--ring, #3a2a70) 75%, transparent); }"
+    },
+    {
+      "name": "Secondary (Set) Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The action colour. Means 'this does something to the instrument': the Set button, and the selected member of a switch vector. Nothing else may wear it. In light mode it holds its fill under the pointer: the registry's 80% hover took white-on-secondary from 5.05:1 to 3.38:1, below AA on the control that writes to the instrument.",
+      "html": "<button class=\"ds-btn-secondary\">Set</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: none; border-radius: 10px; background: var(--secondary, #527575); color: var(--secondary-foreground, #ffffff); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s ease; } .ds-btn-secondary:hover { background: var(--secondary, #527575); } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #ffffff), 0 0 0 5px color-mix(in oklab, var(--ring, #3a2a70) 75%, transparent); }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Deletes a saved configuration with no undo. Its focus ring is deliberately stronger than the shadcn registry's, which composites to 1.37:1 on a white card in light and 1.72:1 on a dark one - the weakest indicator in the theme on the button with no undo. It is also held 2px off the control in white, because at 75% the ring still sat flush against its own fill (1.38:1 light, 1.32:1 dark) and in dark mode the /60 fill is only 2.48:1 from the card, so a surface-coloured gap would be invisible; white is the variant's own text colour and makes the indicator two-tone. The correction lives in theme.css, unlayered, so `ui/button.tsx` stays registry-exact.",
+      "html": "<button class=\"ds-btn-destructive\">Delete saved config</button>",
+      "css": ".ds-btn-destructive { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border: none; border-radius: 10px; background: var(--destructive, #dc2626); color: #ffffff; font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s ease; } .ds-btn-destructive:hover { background: color-mix(in oklab, var(--destructive, #dc2626) 90%, transparent); } .ds-btn-destructive:focus-visible { outline: none; box-shadow: 0 0 0 2px #ffffff, 0 0 0 5px color-mix(in oklab, var(--destructive, #dc2626) 75%, transparent); }"
+    },
+    {
+      "name": "State Badge",
+      "kind": "custom",
+      "refersTo": "badge-state-ok",
+      "description": "An INDI vector state. Colour comes from a data attribute the theme resolves, so the mapping exists in exactly one place. The state is always written out, never carried by colour alone. Busy rings outward from an ::after rather than fading the badge, so the label's contrast is identical at every frame; the ring's first frame is visible, hugging the badge's outside edge.",
+      "html": "<span class=\"ds-badge-state\" data-indi-state=\"Ok\">Ok</span> <span class=\"ds-badge-state\" data-indi-state=\"Busy\">Busy</span> <span class=\"ds-badge-state\" data-indi-state=\"Alert\">Alert</span> <span class=\"ds-badge-state\" data-indi-state=\"Idle\">Idle</span>",
+      "css": ".ds-badge-state { display: inline-flex; align-items: center; justify-content: center; padding: 2px 8px; margin-right: 6px; border: 1px solid transparent; border-radius: 9999px; font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.75rem; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; position: relative; overflow: visible; } .ds-badge-state[data-indi-state=\"Idle\"] { background: var(--state-idle, #9ca3af); color: var(--state-idle-foreground, #0f1319); } .ds-badge-state[data-indi-state=\"Ok\"] { background: var(--state-ok, #16a34a); color: var(--state-ok-foreground, #00250f); } .ds-badge-state[data-indi-state=\"Busy\"] { background: var(--state-busy, #d97706); color: var(--state-busy-foreground, #150e00); } .ds-badge-state[data-indi-state=\"Alert\"] { background: var(--state-alert, #ef4444); color: var(--state-alert-foreground, #280505); } @media (prefers-reduced-motion: no-preference) { .ds-badge-state[data-indi-state=\"Busy\"]::after { content: \"\"; position: absolute; inset: 0; outline: 2px solid var(--state-busy, #d97706); outline-offset: 0; border-radius: inherit; pointer-events: none; animation: ds-state-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } } @keyframes ds-state-pulse { 0% { transform: scale(1); opacity: 0.6; } 70% { transform: scale(1.5); opacity: 0; } 100% { transform: scale(1.5); opacity: 0; } }"
+    },
+    {
+      "name": "Property Vector Card",
+      "kind": "card",
+      "refersTo": "card-property",
+      "description": "The signature component. One INDI property vector: title, state badge, and a kind-specific control. Its accessible name is the title and the badge together, so it arrives as 'Exposure, Alert' rather than as a title with a coloured shape nearby.",
+      "html": "<div class=\"ds-card\" role=\"group\" aria-label=\"Exposure, Busy\"><div class=\"ds-card-head\"><div class=\"ds-card-titles\"><div class=\"ds-card-title\">Exposure</div><div class=\"ds-card-sub\">CCD_EXPOSURE &middot; rw</div></div><span class=\"ds-badge-state\" data-indi-state=\"Busy\">Busy</span></div><div class=\"ds-card-body\"><div class=\"ds-row\"><span class=\"ds-row-label\">Seconds</span><span class=\"ds-row-value\">12.500</span></div><div class=\"ds-row\"><span class=\"ds-row-label\">Remaining</span><span class=\"ds-row-value\">4.250</span></div></div></div>",
+      "css": ".ds-card { display: flex; flex-direction: column; gap: 12px; padding: 16px 0; border: 1px solid var(--border, #e5e7eb); border-radius: 16px; background: var(--card, #ffffff); color: var(--card-foreground, #111827); box-shadow: 0px 1px 4px 0px rgb(0 0 0 / 0.05), 0px 1px 2px -1px rgb(0 0 0 / 0.05); font-family: var(--font-sans, ui-monospace, monospace); max-width: 340px; } .ds-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 0 16px; } .ds-card-titles { min-width: 0; } .ds-card-title { font-size: 0.875rem; font-weight: 600; line-height: 1; } .ds-card-sub { margin-top: 4px; font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--muted-foreground, #474e59); } .ds-card-body { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; } .ds-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; } .ds-row-label { font-size: 0.875rem; color: var(--muted-foreground, #474e59); } .ds-row-value { font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Switch Vector Control",
+      "kind": "custom",
+      "refersTo": "toggle-switch-member",
+      "description": "A fieldset of independent toggle buttons styled to look joined. Deliberately not a radio group: nothing goes on the wire until a member is pressed, and the ARIA radio pattern would announce that focus alone had changed the selection.",
+      "html": "<fieldset class=\"ds-switch\" aria-label=\"Connection\"><button type=\"button\" class=\"ds-switch-member\" aria-pressed=\"true\" data-state=\"on\">Connect</button><button type=\"button\" class=\"ds-switch-member\" aria-pressed=\"false\" data-state=\"off\">Disconnect</button></fieldset>",
+      "css": ".ds-switch { display: flex; flex-wrap: wrap; align-items: center; width: fit-content; min-width: 0; margin: 0; padding: 0; border: none; border-radius: 10px; } .ds-switch-member { height: 32px; padding: 0 12px; border: 1px solid var(--input, #86888c); border-left: none; border-radius: 0; background: transparent; color: var(--foreground, #111827); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; } .ds-switch-member:first-child { border-left: 1px solid var(--input, #86888c); border-top-left-radius: 10px; border-bottom-left-radius: 10px; } .ds-switch-member:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; } .ds-switch-member:hover { background: var(--muted, #f3f4f6); color: var(--foreground, #111827); } .ds-switch-member[data-state=\"on\"] { background: var(--secondary, #527575); color: var(--secondary-foreground, #ffffff); font-weight: 600; } .ds-switch-member[data-state=\"on\"]:hover { background: var(--secondary, #527575); color: var(--secondary-foreground, #ffffff); } .ds-switch-member:focus-visible { outline: none; z-index: 10; position: relative; box-shadow: 0 0 0 2px var(--background, #ffffff), 0 0 0 5px color-mix(in oklab, var(--ring, #3a2a70) 75%, transparent); }"
+    },
+    {
+      "name": "Value Input Field",
+      "kind": "input",
+      "refersTo": "input-value",
+      "description": "Two deterministic lines per element: a header pairing the label with the live current value, then a full-width input for the requested new value. Nothing competes for a single row, so a long label and a sexagesimal reading both fit.",
+      "html": "<div class=\"ds-field\"><div class=\"ds-field-head\"><label class=\"ds-field-label\" for=\"ds-ra\">RA (hh:mm:ss)</label><span class=\"ds-field-current\" title=\"Current value\">12:34:56</span></div><input class=\"ds-input\" id=\"ds-ra\" type=\"text\" value=\"12:34:56\" /></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; max-width: 320px; font-family: var(--font-sans, ui-monospace, monospace); } .ds-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; } .ds-field-label { flex-shrink: 0; font-size: 0.875rem; color: var(--muted-foreground, #474e59); } .ds-field-current { min-width: 0; font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; } .ds-input { width: 100%; height: 36px; padding: 4px 12px; border: 1px solid var(--input, #86888c); border-radius: 10px; background: transparent; color: var(--foreground, #111827); font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; box-shadow: 0px 1px 4px 0px rgb(0 0 0 / 0.03); transition: color 0.15s ease, box-shadow 0.15s ease; } .ds-input:focus-visible { outline: none; border-color: var(--ring, #3a2a70); box-shadow: 0 0 0 2px var(--background, #ffffff), 0 0 0 5px color-mix(in oklab, var(--ring, #3a2a70) 75%, transparent); } .ds-input:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Connection Status",
+      "kind": "nav",
+      "refersTo": "badge-state-ok",
+      "description": "Two dots in the sidebar header: browser-to-bridge and bridge-to-indiserver. Connected is a filled disc, offline is a hollow ring, and offline is written out on screen - a visually hidden word serves a screen reader and nobody who is merely colour-blind, and green against red is 1.08:1 under simulated deuteranopia. The connected fill is Ok Ink rather than the Ok state fill, which measures 2.99:1 on the sidebar as a bare graphic.",
+      "html": "<div class=\"ds-conn\"><span class=\"ds-conn-item\"><span class=\"ds-conn-dot ds-conn-dot--on\"></span><span>bridge</span><span class=\"ds-sr\">connected</span></span><span class=\"ds-conn-item\"><span class=\"ds-conn-dot ds-conn-dot--off\"></span><span>indiserver</span><span>offline</span></span></div>",
+      "css": ".ds-conn { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.75rem; color: var(--muted-foreground, #474e59); } .ds-conn-item { display: flex; align-items: center; gap: 6px; } .ds-conn-dot { flex-shrink: 0; box-sizing: border-box; width: 10px; height: 10px; border-radius: 9999px; border: 2px solid transparent; } .ds-conn-dot--on { border-color: var(--state-ok-ink, #128a45); background: var(--state-ok-ink, #128a45); } .ds-conn-dot--off { border-color: var(--state-alert, #ef4444); } .ds-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }"
+    },
+    {
+      "name": "Message Log Entry",
+      "kind": "custom",
+      "refersTo": "reading",
+      "description": "A docked terminal tail. Each entry stacks a timestamp and device name over the message body, so wrapped lines start at the margin rather than mid-row. The viewport is a polite additions-only live region with a tab stop.",
+      "html": "<div class=\"ds-log\" role=\"log\" aria-label=\"INDI messages\" tabindex=\"0\"><div class=\"ds-log-entry\"><div class=\"ds-log-head\"><span class=\"ds-log-time\">21:04:17</span><span class=\"ds-log-device\">Dome</span></div><span class=\"ds-log-body\">Shutter opening.</span></div><div class=\"ds-log-entry\"><div class=\"ds-log-head\"><span class=\"ds-log-time\">21:04:22</span><span class=\"ds-log-device\">Mount</span></div><span class=\"ds-log-body\">Slew complete. Tracking at sidereal rate.</span></div></div>",
+      "css": ".ds-log { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 10px; background: var(--background, #ffffff); font-family: var(--font-mono, monospace); font-size: 0.75rem; max-width: 420px; } .ds-log:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #ffffff), 0 0 0 5px color-mix(in oklab, var(--ring, #3a2a70) 75%, transparent); } .ds-log-entry { display: flex; flex-direction: column; gap: 2px; } .ds-log-head { display: flex; align-items: baseline; gap: 8px; } .ds-log-time { flex-shrink: 0; font-variant-numeric: tabular-nums; color: var(--muted-foreground, #474e59); } .ds-log-device { color: var(--primary, #3a2a70); } .ds-log-body { white-space: pre-wrap; overflow-wrap: break-word; color: var(--foreground, #111827); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Night Watch",
+    "overview": "An operator is alone at 3am, a hundred miles from the instrument, and this interface is the only thing that will tell them what is happening. That is the whole brief. Every decision in this system answers to it: the interface is not here to be liked, it is here to be read correctly by someone tired, in the dark, possibly on a phone, with nobody else to ask.\n\nThe register is instrument-grade, dense and professional. This is closer to a control desk than to a consumer app. Information density is a feature rather than a failure of restraint, because the operator is an expert and slowing them down for the sake of breathing room costs them the night. The whole interface is set in monospace, so a column of readings aligns by default and a value never shifts as its digits change. Chrome recedes. Colour is rationed and almost never decorative: four hues are reserved for instrument state and are effectively frozen, which means every other surface has to earn attention some other way.\n\nWhat makes this system unusual is that its palette was not chosen by eye. Nearly every colour token in theme.css carries its measured contrast ratio and a note on the value it replaced and why that one failed. The brand violet exists because an earlier orange measured 3.12:1 under white text and sat only 8.3 CIEDE2000 from the Busy amber, which made the brand colour a near-miss for a status colour. That is the standard: a value is defended by measurement, and taste does not overrule a ratio. Future work inherits the obligation, not just the values.",
+    "keyCharacteristics": [
+      "Monospace throughout, so numeric readings align and never jitter.",
+      "Four frozen state hues (Idle / Ok / Busy / Alert), tuned for separation under colour-vision deficiency and never adjusted for contrast.",
+      "Colour never carries meaning on its own: every state is written out as well as coloured.",
+      "Flat surfaces with hairline borders; four tonal surface steps do the work depth usually does.",
+      "One accent for actions, one for identity, and a hard distance between both and every state hue.",
+      "Density over comfort. Cards are compact, the grid is tight, and the shell pins to the viewport.",
+      "Light and dark are equal citizens, each measured independently rather than derived."
+    ],
+    "rules": [
+      {
+        "name": "The Measured Value Rule",
+        "body": "A colour token clears its bar on every surface it is used over, not on the lightest one, and the bar is AAA wherever AAA is arithmetically reachable. muted-foreground was #6b7280, which passed on a white card at 4.83:1 and failed on the sidebar at 4.39:1 and on accent at 4.17:1, which is precisely where it labels the connection state; then #616974, which cleared AA on all three and AAA on none. Re-measure against all of them or do not change it. Three pairs clear their bar by under 5% and each carries a re-measure note in theme.css: Control Edge against accent in light (3.06) and dark (3.07), and the dark Switch track against its thumb (3.10).",
+        "section": "colors"
+      },
+      {
+        "name": "The Brand Is Not A Status Rule",
+        "body": "An identity colour keeps a hard CIEDE2000 distance from all four state fills, in normal, deuteranomalous and protanomalous vision. This is why the original orange was rejected and why the current violet and cyan were chosen. A new accent that lands near Busy amber or Alert red is disqualified regardless of how it looks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fill Is Frozen Rule",
+        "body": "The four state fills are tuned for separation from each other, so contrast is fixed on the foreground and never on the fill. Darkening the fills enough to carry white text squeezes all four into one band of lightness and collapses exactly the separation they exist for: Busy against Alert fell from 7.0 to 3.3 CIEDE2000 under simulated deuteranopia when it was tried. Change a foreground, not a fill.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Any number that updates while the operator is looking at it is set in tabular figures. Telemetry arrives continuously, and proportional digits make a stable reading appear to twitch, which reads as instability in the instrument rather than in the font.",
+        "section": "typography"
+      },
+      {
+        "name": "The Label Is Not The Name Rule",
+        "body": "Human-facing text always comes from the display label helper, never from the raw INDI name. Wire names appear in exactly one place, the debug detail line under a card title, and only when the operator has asked for them. The wire truth is available; it is not the default reading.",
+        "section": "typography"
+      },
+      {
+        "name": "The Container Query Rule",
+        "body": "Column counts are measured from the container, never the viewport. Any component that can sit beside a docked panel counts its own width.",
+        "section": "layout"
+      },
+      {
+        "name": "The Heading Chain Rule",
+        "body": "The outline is shell h1, group h2, card title h3, with no step skipped. A property that carries no group still emits a visually hidden h2, because dropping it would step h1 straight to h3 and break the outline that is the only fast way to navigate thirty cards without a mouse.",
+        "section": "layout"
+      },
+      {
+        "name": "The Pill Means Readout Rule",
+        "body": "Fully round is reserved for things that report and cannot be pressed - state badges, status dots, the unread count. Anything an operator can act on carries the 10px control radius. Never round a control to a pill; it reads as a status.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Never Colour Alone Rule",
+        "body": "Alert and Busy are 4.4 CIEDE2000 apart under deuteranopia, which is not a reliable distinction. Every state is therefore written out in text as well as coloured: the badge carries its own name, and the status dot is decorative and marked hidden because its label sits beside it. The word has to be one a sighted reader can see. The connection dots broke that for a release by putting 'connected' and 'disconnected' in a visually hidden span - which serves a screen reader and nobody who is merely colour-blind, while green against red is 1.08:1 under simulated deuteranopia. They now differ in shape too (a filled disc for connected, a hollow ring for offline) and the failing state is written on screen: 'bridge offline'. The healthy state stays visually hidden, because two permanent extra words in a 16rem sidebar for the state that is true almost always is a cost paid every night for a reading nobody needs.",
+        "section": "components"
+      },
+      {
+        "name": "The Ring Stands Off The Control Rule",
+        "body": "A focus ring is measured against both its neighbours, not just the surface. On a filled control the ring's other neighbour is the control's own fill, and because the ring is a tinted version of the same token the two sit on top of each other - destructive 1.38:1 light and 1.32:1 dark, checked switch 2.05 light and 1.60 dark, primary button 2.11 light - while SC 2.4.13 asks 3:1 of an indicator against the colours it touches. So every ring is offset 2px in the surface colour, which puts the surface on both sides of it (12.03 primary light, 8.37 secondary dark, 4.83 destructive light). The destructive ring's offset is white rather than the surface: dark:bg-destructive/60 composites to #973030 on a near-black card, 2.48:1 from it, so a card-coloured gap is invisible against the fill; white is the variant's own hardcoded text colour and makes the indicator two-tone (7.55 / 5.74 / 3.27). In light mode white is the surface, so one declaration serves both schemes.",
+        "section": "components"
+      },
+      {
+        "name": "The Registry Is Corrected In CSS, Not In Place Rule",
+        "body": "The shadcn primitives in web/packages/react/src/ui/ come from the CLI and stay registry-exact, so a shadcn add can never silently revert an accessibility fix. Where the registry's contrast decisions are wrong they are overruled from theme.css, outside every @layer, which outranks every layered rule regardless of specificity. Two constraints come with that: hook the utility class and never data-slot, because data-slot does not survive asChild; and an unlayered rule setting a real property beats everything on that element, so it must restate every variant of that property or be narrowed to something that cannot be in them. Custom properties such as --tw-ring-color are always safe; border-color, position and background-color are not, and each has a rejected attempt behind it. CSS reaches styling and only styling: scroll-area.tsx and sidebar.tsx are edited in place, each marked DEVIATION, because what is wrong with them is behaviour. The test is simple - if a rule in theme.css could fix it, it does not belong in src/ui/.",
+        "section": "components"
+      },
+      {
+        "name": "The Target Is Bigger Than The Control Rule",
+        "body": "Every interactive target is 44x44 (SC 2.5.5), and how it gets there depends on who owns the box. Where the app composes the control it grows for real in className - the theme toggle and the sidebar trigger are size-11, the sidebar footer rows are min-h-11 - so the hover tint and the focus ring grow with the target. Where the box belongs to a published primitive, the theme adds a transparent ::before overlay sized max(100%, 2.75rem), which is inert wherever the control is already big enough. The overlay grows the target but not the feedback. The exceptions are enumerated rather than hidden: the Switch's track stays 32x18.4 because that is the control's design, each modal close stays a 16px icon where the registry anchored it, and the sidebar's device rows, the configuration dialog's trigger and action buttons, the switch-vector members and the Set button are still 32px - all at least 24px, so SC 2.5.8 is met and only 2.5.5 is not.",
+        "section": "components"
+      },
+      {
+        "name": "The One Action Colour Rule",
+        "body": "Signal Cyan means 'this acts on the instrument', and nothing else may wear it. A selected switch member is the instrument's state, so mistaking it is a real error rather than an aesthetic one; it therefore has to be a colour no unselected member can take on, in any interaction state.",
+        "section": "components"
+      },
+      {
+        "name": "The Confirmation Names The Consequence Rule",
+        "body": "A destructive confirmation names what it will do - 'Delete saved config' - and never says 'OK'. The button text is asserted by tests, because on these controls the copy is the safety mechanism.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do re-measure a colour on every surface it appears over before changing it, and leave the measured ratio in a comment beside the value, as every existing token does.",
+      "Do write every state out in text as well as colouring it, in text a sighted reader can see. A visually hidden word serves a screen reader and nobody who is merely colour-blind.",
+      "Do use tabular figures for anything numeric that updates live.",
+      "Do reach for a hairline border or one of the four surface tones when you need separation.",
+      "Do count grid columns from the container's width, using container queries.",
+      "Do keep the heading chain unbroken (h1 to h2 to h3), emitting a visually hidden heading rather than skipping a level.",
+      "Do give every control the same 10px radius and the same 3px focus ring at 75% opacity, held 2px off the control so it never touches its own fill, and let the border shift beside it stand - focus is two signals, never one.",
+      "Do correct a vendored primitive from theme.css, unlayered and hooked on the utility class it emits, rather than by editing src/ui/.",
+      "Do grow fixed edges by their safe-area inset, and remember the underscore spacing Tailwind needs inside calc() around env().",
+      "Do keep the panel and the documentation on the same identity colours; they are one product and the values are shared deliberately."
+    ],
+    "donts": [
+      "Don't adjust a --state-* fill to fix a contrast problem. Change the foreground.",
+      "Don't introduce an accent that lands near Busy amber or Alert red under any simulated colour-vision deficiency, however good it looks in isolation.",
+      "Don't animate by fading opacity on anything carrying text. Fading a badge to 0.5 measured 1.75:1, and no fill colour survives it. Move the motion to a pseudo-element instead.",
+      "Don't write an unlayered rule that sets a real property - border-color, position, background-color - without restating every state that property can be in, or narrowing the selector to something that cannot be in them. Custom properties are the safe case.",
+      "Don't turn the switch control back into a radio group, or let an unselected member reach the selected member's colour on hover.",
+      "Don't round a control to a pill or square off a badge; the two shapes carry the pressable/reportable distinction.",
+      "Don't turn this into a data-visualisation dashboard. Wall-to-wall charts, sparklines on every reading and neon series colours on near-black are the confirmed anti-reference: INDI properties are mostly discrete state rather than time series, and drawing them as telemetry streams misrepresents what the instrument is saying.",
+      "Don't cite the shadow scale as evidence of an elevation philosophy. It is inherited and undecided; see Elevation & Depth.",
+      "Don't put colour in an architecture diagram. Those render on GitHub and the docs site in both schemes, and a hardcoded palette becomes unreadable in one of them."
+    ]
+  }
+}
