@@ -44,14 +44,20 @@ exists for the first publish and skips a version already on the registry.
 
 ### The next version is 0.3.0 and the release PR is waiting
 
-Three commits since `indi-nexus-v0.2.0` carry a breaking change: the client refusing a
-send while disconnected, the `/ws` guarding, and the removal of `DeviceConfigCard` from
-`@indi-nexus/react`. `bump-minor-pre-major` is set, so the next release is 0.3.0 rather
-than 0.2.1. The open release PR's checks sit at `action_required` and will not run until
-approved.
+Four commits since `indi-nexus-v0.2.0` carry a breaking change: the client refusing a
+send while disconnected, the `/ws` guarding, the removal of `DeviceConfigCard` from
+`@indi-nexus/react`, and the rename of `AlertAnnouncer` to `StatusAnnouncer`.
+`bump-minor-pre-major` is set, so the next release is 0.3.0 rather than 0.2.1. The open
+release PR's checks sit at `action_required` and will not run until approved.
 
-**Resolved by:** reading the three `BREAKING CHANGE:` footers, approving the checks, and
-merging - or deciding to hold the release, in which case say so here.
+The rename was taken deliberately at this moment rather than deferred: `AlertAnnouncer`
+had grown to announce three things and only one of them is an alert, and renaming an
+exported symbol is free only until the first publish. Nothing has published yet.
+
+**Resolved by:** reading the four `BREAKING CHANGE:` footers, approving the checks, and
+merging - or deciding to hold the release, in which case say so here. Note the two
+entries above: a merged release PR still publishes nothing until the trusted publisher
+and the manual npm first publish exist.
 
 ### The panel has no favicon
 
