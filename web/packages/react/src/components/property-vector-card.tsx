@@ -1,7 +1,7 @@
 /** A card presenting one INDI property vector: header + kind-specific control. */
 
 import { displayLabel, type Vector } from "@indi-nexus/client";
-import { useId } from "react";
+import { memo, useId } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { useDisplaySettings } from "../display-settings";
@@ -29,10 +29,18 @@ export interface PropertyVectorCardProps {
  * shape floating near it. `CardTitle` renders a plain `div`, so the heading role
  * is declared on it rather than by swapping the vendored primitive's element.
  *
+ * Memoised, because a device publishes thirty of these and a `set` frame changes
+ * one. `PropertyStore` merges immutably - a `set` replaces only the vector it
+ * touched and leaves every other reference alone - so the default shallow compare
+ * is exactly the right test and re-rendering is confined to the card that moved.
+ *
  * @param props - The vector and an optional class name.
  * @returns The card element.
  */
-export function PropertyVectorCard({ vector, className }: PropertyVectorCardProps) {
+export const PropertyVectorCard = memo(function PropertyVectorCard({
+  vector,
+  className,
+}: PropertyVectorCardProps) {
   const { showDebug } = useDisplaySettings();
   const perm = "perm" in vector ? vector.perm : undefined;
   const id = useId();
@@ -65,4 +73,4 @@ export function PropertyVectorCard({ vector, className }: PropertyVectorCardProp
       </CardContent>
     </Card>
   );
-}
+});

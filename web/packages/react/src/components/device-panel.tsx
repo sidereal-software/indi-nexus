@@ -1,6 +1,7 @@
 /** All of one device's properties, grouped by INDI group, as a grid of cards. */
 
 import type { Vector } from "@indi-nexus/client";
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/ui/accordion";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/ui/empty";
@@ -74,19 +75,27 @@ export interface DevicePanelProps {
  */
 export function DevicePanel({ device, className }: DevicePanelProps) {
   const properties = useDevice(device);
-  const all = Object.values(properties);
-  const machinery = byName(
-    all.filter(
-      (vector) => !CONFIG_PROPERTIES.has(vector.name) && DRIVER_MACHINERY.has(vector.name),
-    ),
-  );
-  const groups = groupVectors(
-    all.filter(
-      (vector) => !CONFIG_PROPERTIES.has(vector.name) && !DRIVER_MACHINERY.has(vector.name),
-    ),
-  );
+  // Above the early return, or the hook order changes between the empty and the
+  // populated render. Both lists derive from the same `Object.values` pass and
+  // both re-sort, so they are memoised together: splitting them would leave
+  // `machinery` rebuilding on every `set` frame anyway.
+  const { machinery, groups } = useMemo(() => {
+    const all = Object.values(properties);
+    return {
+      machinery: byName(
+        all.filter(
+          (vector) => !CONFIG_PROPERTIES.has(vector.name) && DRIVER_MACHINERY.has(vector.name),
+        ),
+      ),
+      groups: groupVectors(
+        all.filter(
+          (vector) => !CONFIG_PROPERTIES.has(vector.name) && !DRIVER_MACHINERY.has(vector.name),
+        ),
+      ),
+    };
+  }, [properties]);
 
-  if (all.length === 0) {
+  if (Object.keys(properties).length === 0) {
     return (
       <Empty className={cn("border-none", className)}>
         <EmptyHeader>
