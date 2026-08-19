@@ -263,15 +263,38 @@ describe("the device menu's markup", () => {
     expect(illegalListChildren(nav())).toEqual([]);
   });
 
-  it("keeps the list legal with the configuration entry in it", () => {
-    // `DeviceConfigDialog` brings its own `<li>` precisely so it can vanish
-    // without leaving a gap; this is the assertion that it really does.
+  it("keeps configuration out of the devices landmark", () => {
+    // Configuration acts *on* a device and is not one. It used to be the last
+    // `<li>` of this menu, which put it inside `nav aria-label="Devices"` - so a
+    // screen reader walking that landmark was told it was a third device, and a
+    // sighted operator read it as one. The assertion is deliberately in two
+    // halves: present on the page, absent from the landmark. Asserting only the
+    // first is what let it live in the wrong place.
     const { socket } = renderApp();
     defineProperty(socket, "CCD Simulator", "EXPOSURE");
     defineConfigProcess(socket, "CCD Simulator");
 
-    expect(within(nav()).getByRole("button", { name: /Configuration/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Configuration/ })).toBeInTheDocument();
+    expect(within(nav()).queryByRole("button", { name: /Configuration/ })).toBeNull();
     expect(illegalListChildren(nav())).toEqual([]);
+  });
+
+  it("shows no configuration section for a device that has none", () => {
+    // `DeviceConfigDialog` declines to render without CONFIG_PROCESS, so a group
+    // wrapped around it unconditionally would leave a labelled, empty section.
+    // The demo's dome is exactly that case, and every libindi driver is not.
+    const { socket } = renderApp();
+    defineProperty(socket, "CCD Simulator", "EXPOSURE");
+
+    expect(screen.queryByRole("button", { name: /Configuration/ })).toBeNull();
+    // "Absent, not empty" is the claim, and the name alone cannot test it: the
+    // device legitimately appears twice already, in the sidebar list and as the
+    // panel's own heading. What must not exist is a *group label* carrying it,
+    // which is the section that would otherwise stand there with nothing in it.
+    const groupLabels = [...document.querySelectorAll('[data-slot="sidebar-group-label"]')].map(
+      (el) => el.textContent,
+    );
+    expect(groupLabels).toEqual(["Devices"]);
   });
 });
 

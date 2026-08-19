@@ -241,7 +241,7 @@ which is also what owns device selection, and opens in a `Dialog`. So the compon
 `device: string | null` and renders **nothing at all** when nothing is selected or the
 selected device has no `CONFIG_PROCESS` - an entry that opens an empty modal is worse than
 no entry. With no `children` the trigger is a `SidebarMenuButton` inside its own
-`SidebarMenuItem` (it brings the `<li>` so it can vanish without leaving a gap in the menu,
+`SidebarMenuItem` (it brings the `<li>` so it can vanish without leaving a gap in its menu,
 and it therefore needs a `SidebarProvider` and a `TooltipProvider` above it, which its tests
 supply); pass `children` and that element becomes the trigger, for a consumer's own shell.
 The purge confirmation is now an `AlertDialog` **inside** the `Dialog`: Radix stacks
@@ -450,6 +450,22 @@ nothing else reaches - `indikit serve` with no `--device`:
   secondary text on the AAA tier, so the shell passes `text-muted-foreground` (7.63 / 8.64).
   Not corrected in `theme.css`: `color` is a real property and an unlayered rule on it would
   beat every state variant the element can be in.
+- **Configuration is outside the `Devices` landmark.** `DeviceConfigDialog` was the last
+  `<li>` of the device menu, so it sat inside `nav aria-label="Devices"` - announced as a
+  device to anyone walking that landmark, and read as one by anyone looking at it, since it
+  carries the same `SidebarMenuButton` the devices do. It now has its own `SidebarGroup`
+  under a "Selected device" heading. The shell asks `useProperty(active, "CONFIG_PROCESS")`
+  itself so the group is *absent* rather than empty: the dialog already declines to render
+  without that property, and a labelled section wrapped round nothing is worse than the
+  entry it replaced. The demo's dome is exactly that case; every libindi driver is not.
+
+**The docked message strip is `h-auto max-h-56`, and the `h-auto` is load bearing.** It was
+`h-56`, which charged the strip 224px whether it held two lines or two hundred - and the
+instrument grid pays for that out of its own scroll area. At 1440x950 the grid was cut to
+613px against 1089px of content, and the cut landed on a group heading: `ALMANAC` sat one
+pixel above the strip with its card below the fold, reading as a label for the log rather
+than for the instrument. `MessageLog` carries `h-full` for consumers who give it a sized
+box, so overriding the height needs `h-auto` and not merely a `max-h-*` beside it.
 
 **Tailwind source detection is rooted at the Vite root, not at the CSS file.** The demo
 configs set `root: "demo"`, so without the explicit `@source "./**/*.{ts,tsx}"` in

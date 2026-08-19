@@ -45,6 +45,7 @@ import {
   TooltipTrigger,
   useDevices,
   useIndiClient,
+  useProperty,
 } from "@indikit/react";
 import { MessageSquareText, Moon, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -122,6 +123,11 @@ function DeviceSidebar({
   debug: boolean;
   onDebugChange: (on: boolean) => void;
 }) {
+  // Asked here as well as inside the dialog, so the group around it can be
+  // absent rather than empty. `useProperty` is a hook and cannot be called
+  // conditionally, so a null selection is asked about as the empty device -
+  // which no device answers to.
+  const hasConfig = useProperty(active ?? "", "CONFIG_PROCESS") !== undefined;
   return (
     <Sidebar>
       <SidebarHeader className="gap-3 p-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))]">
@@ -173,16 +179,40 @@ function DeviceSidebar({
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
-                  {/* Configuration acts on the selected device, so it sits at the
-                      end of the same menu the selection lives in. It renders
-                      nothing when nothing is selected or the device has no
-                      CONFIG_PROCESS. */}
-                  <DeviceConfigDialog device={active} />
                 </SidebarMenu>
               )}
             </nav>
           </SidebarGroupContent>
         </SidebarGroup>
+        {/* Configuration acts *on* the selected device; it is not one. It used to
+            be the last `<li>` of the menu above, which put it inside
+            `nav aria-label="Devices"` - so it read as a third device to a sighted
+            operator and was announced as one inside the Devices landmark. Its own
+            group, with its own heading, says what it is in both directions.
+
+            The group is rendered only when the selected device actually has
+            CONFIG_PROCESS. `DeviceConfigDialog` already declines to render
+            without it, but an absent dialog inside a present group leaves a
+            labelled, empty section - which is worse than the entry it replaced.
+            Every libindi driver publishes the property; the demo's dome does not,
+            which is exactly the case that would show the hole. */}
+        {hasConfig ? (
+          <SidebarGroup>
+            {/* The heading is the device's own name rather than "Configuration"
+                or "Selected device": what an operator needs to know before
+                pressing anything here is *whose* configuration this is, and
+                every action behind it writes one device's file. It truncates
+                because a device name is the driver's to choose. */}
+            <SidebarGroupLabel className="truncate text-muted-foreground">
+              {active}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <DeviceConfigDialog device={active} />
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
       {/* Both footer rows are 44px tall for SC 2.5.5. The Switch's own track stays
           32x18.4 - that is the control's design - and the theme gives it a 44px
@@ -261,7 +291,18 @@ function MessagesPanel({
             </span>
           </AccordionTrigger>
           <AccordionContent className="p-0">
-            <MessageLog className="h-56" limit={MESSAGE_LIMIT} />
+            {/* `h-auto max-h-56`, not `h-56`. A fixed height charged the strip
+                224px whether it held two lines or two hundred, and the panel
+                above it pays for that out of its own scroll area: at 1440x950
+                the instrument grid was cut to 613px against 1089px of content,
+                landing the cut on a group heading. "ALMANAC" then sat one pixel
+                above this strip with its card below the fold, reading as a label
+                for the log rather than for the instrument.
+
+                `h-auto` overrides the `h-full` MessageLog carries for the case
+                where a consumer gives it a sized box; the cap keeps a busy night
+                from eating the panel, and the log scrolls inside it as before. */}
+            <MessageLog className="h-auto max-h-56" limit={MESSAGE_LIMIT} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
