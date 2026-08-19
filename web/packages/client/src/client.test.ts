@@ -6,6 +6,7 @@ import { FakeSocket, fakeFactory } from "./testing/fake-socket";
 import {
   CLIENT_PROTOCOL_VERSION,
   type DefVector,
+  type NewVector,
   type NumberVector,
   type SetVector,
 } from "./types";
@@ -511,6 +512,150 @@ describe("IndiClient send helpers", () => {
     const socket = FakeSocket.latest();
     socket.open();
     expect(socket.sent.some((f) => f.includes("getProperties"))).toBe(true);
+  });
+});
+
+describe("IndiClient.onWrite", () => {
+  /**
+   * Subscribe a recorder and hand back the list it fills.
+   *
+   * @param client - The client to watch.
+   * @returns The `(device, name)` pairs seen so far, in the order they fired.
+   */
+  function writesOf(client: IndiClient): [string, string][] {
+    const writes: [string, string][] = [];
+    client.onWrite((device, name) => writes.push([device, name]));
+    return writes;
+  }
+
+  it("reports a new frame a caller assembled itself", () => {
+    // Reported from `send`, not from the four helpers, so a consumer building
+    // its own frame - which the type allows - is covered by the same rule.
+    const { client } = connectedClient();
+    const writes = writesOf(client);
+
+    client.send({ tag: "new", vector: numVec(3.0) } satisfies NewVector);
+
+    expect(writes).toEqual([["CCD", "EXPOSURE"]]);
+  });
+
+  it.each([
+    ["setNumber", (client: IndiClient) => client.setNumber("Dome", "SHUTTER", { secs: 1 })],
+    ["setText", (client: IndiClient) => client.setText("Dome", "SHUTTER", { note: "open" })],
+    ["setSwitch", (client: IndiClient) => client.setSwitch("Dome", "SHUTTER", { OPEN: true })],
+    ["setBlob", (client: IndiClient) => client.setBlob("Dome", "SHUTTER", { frame: "AAAA" })],
+  ])("reports the write %s puts on the wire", (_name, write) => {
+    const { client } = connectedClient();
+    const writes = writesOf(client);
+
+    write(client);
+
+    expect(writes).toEqual([["Dome", "SHUTTER"]]);
+  });
+
+  it("reports one write per frame, not one per element", () => {
+    // The unit of a write is the vector: INDI applies a `new` atomically and the
+    // operator pressed one button, so three elements are still one action.
+    const { client } = connectedClient();
+    const writes = writesOf(client);
+
+    client.setSwitch("Dome", "SHUTTER", { OPEN: true, CLOSE: false, ABORT: false });
+
+    expect(writes).toEqual([["Dome", "SHUTTER"]]);
+  });
+
+  it("stays silent for the outbound frames that are not writes", () => {
+    // These three go out over the same socket and none of them asks the
+    // instrument to change: a consumer told about them would arm on a page load.
+    const { client, socket } = connectedClient();
+    const writes = writesOf(client);
+
+    client.getProperties("CCD", "EXPOSURE");
+    client.enableBlob("CCD", "CCD1", "Only");
+
+    // Including the enableBLOB replay a reconnect sends by itself, which no
+    // operator asked for at all.
+    vi.useFakeTimers();
+    socket.close();
+    vi.advanceTimersByTime(2000);
+    FakeSocket.latest().open();
+    vi.useRealTimers();
+
+    expect(writes).toEqual([]);
+  });
+
+  it("stays silent for inbound frames, including one tagged new", () => {
+    // The point of the callback is telling apart what this browser asked for
+    // from what arrived on its own, so a frame coming *in* can never fire it -
+    // not even the one carrying the same tag a write does.
+    const { client, socket } = connectedClient();
+    const writes = writesOf(client);
+
+    socket.receive(JSON.stringify({ tag: "def", vector: numVec(1.0) }));
+    socket.receive(JSON.stringify({ tag: "set", vector: numVec(2.0, "Busy") }));
+    socket.receive(JSON.stringify({ tag: "new", vector: numVec(3.0) }));
+
+    expect(writes).toEqual([]);
+  });
+
+  it("fires while the socket is down, because the frame is only buffered", () => {
+    // Documented contract: the callback fires on the send rather than on any
+    // acknowledgement. The connection buffers while offline and the operator
+    // pressed the button regardless, so a consumer waiting for the socket would
+    // silently lose the write that most needs reporting.
+    FakeSocket.reset();
+    const client = new IndiClient({ url: "ws://x/ws", webSocketFactory: fakeFactory });
+    const writes = writesOf(client);
+
+    client.setSwitch("Dome", "SHUTTER", { OPEN: true });
+
+    expect(writes).toEqual([["Dome", "SHUTTER"]]);
+    expect(FakeSocket.instances).toEqual([]);
+
+    // And the frame really was buffered rather than dropped.
+    client.connect();
+    const socket = FakeSocket.latest();
+    socket.open();
+    expect(socket.sent.some((frame) => frame.includes('"tag":"new"'))).toBe(true);
+  });
+
+  it("delivers to every subscriber", () => {
+    const { client } = connectedClient();
+    const first = writesOf(client);
+    const second = writesOf(client);
+
+    client.setNumber("CCD", "EXPOSURE", { secs: 1 });
+
+    expect(first).toEqual([["CCD", "EXPOSURE"]]);
+    expect(second).toEqual([["CCD", "EXPOSURE"]]);
+  });
+
+  it("stops delivering to an unsubscribed callback and leaves the others", () => {
+    const { client } = connectedClient();
+    const dropped: string[] = [];
+    const kept: string[] = [];
+    const unsubscribe = client.onWrite((_device, name) => dropped.push(name));
+    client.onWrite((_device, name) => kept.push(name));
+
+    client.setNumber("CCD", "EXPOSURE", { secs: 1 });
+    unsubscribe();
+    client.setNumber("CCD", "COOLER", { on: 1 });
+
+    expect(dropped).toEqual(["EXPOSURE"]);
+    expect(kept).toEqual(["EXPOSURE", "COOLER"]);
+  });
+
+  it("is idempotent on repeated unsubscribe, leaving other callbacks alone", () => {
+    const { client } = connectedClient();
+    const kept: string[] = [];
+    const unsubscribe = client.onWrite(() => {});
+    client.onWrite((_device, name) => kept.push(name));
+
+    unsubscribe();
+    unsubscribe();
+    client.setNumber("CCD", "EXPOSURE", { secs: 1 });
+
+    expect(kept).toEqual(["EXPOSURE"]);
   });
 });
 

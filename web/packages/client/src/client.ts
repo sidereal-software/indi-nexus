@@ -62,6 +62,15 @@ export type MessageCallback = (message: Message) => void;
 /** A callback for connection-state transitions. */
 export type ConnectionCallback = (state: ConnectionState) => void;
 
+/**
+ * A callback for each `new` vector this client sends.
+ *
+ * The device and property name of what was written, and nothing else: the point
+ * is not what the value was but that *this browser* asked for it, which is what
+ * separates the vector's next state from telemetry.
+ */
+export type WriteCallback = (device: string, name: string) => void;
+
 /** A predicate over a vector, used by {@link IndiClient.waitFor}. */
 export type Predicate = (vector: Vector) => boolean;
 
@@ -135,6 +144,7 @@ export class IndiClient {
   private readonly connection: ReconnectingConnection;
   private readonly messageSubs = new Map<number, MessageCallback>();
   private readonly connSubs = new Map<number, ConnectionCallback>();
+  private readonly writeSubs = new Map<number, WriteCallback>();
   private nextSubId = 0;
 
   /** Remembered BLOB policies, replayed on every (re)connect. */
@@ -258,6 +268,28 @@ export class IndiClient {
   }
 
   /**
+   * Register a callback for each `new` vector this client sends.
+   *
+   * A property's state changing is telemetry - a driver emits `set` frames
+   * continuously and nothing may treat them as events worth reporting. The
+   * exception is a vector this browser has just written to, whose next state is
+   * the answer to that write rather than more of the stream, and only the sender
+   * can tell the two apart. It fires on the send, not on the acknowledgement:
+   * the socket buffers while offline, and the operator pressed the button
+   * either way.
+   *
+   * @param callback - Called with the device and property name of each write.
+   * @returns An unsubscribe function.
+   */
+  onWrite(callback: WriteCallback): () => void {
+    const token = this.nextSubId++;
+    this.writeSubs.set(token, callback);
+    return () => {
+      this.writeSubs.delete(token);
+    };
+  }
+
+  /**
    * Resolve once a property exists (and satisfies `predicate`).
    *
    * Resolves immediately if the cached property already matches; rejects with a
@@ -302,6 +334,13 @@ export class IndiClient {
   /** Queue an arbitrary message to send upstream. */
   send(message: IndiMessage): void {
     this.connection.send(JSON.stringify(message));
+    // Reported here rather than from the four `setX` helpers, so a caller
+    // building its own `new` frame is covered by the same rule.
+    if (message.tag === "new") {
+      for (const callback of this.writeSubs.values()) {
+        callback(message.vector.device, message.vector.name);
+      }
+    }
   }
 
   /** Ask the server to (re-)send property definitions. */

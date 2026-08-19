@@ -15,6 +15,7 @@ export type {
   MessageCallback,
   Predicate,
   SwitchInput,
+  WriteCallback,
 } from "./client";
 // The client.
 export { IndiClient } from "./client";
