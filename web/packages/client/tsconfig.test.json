@@ -1,0 +1,16 @@
+{
+  // The tests, which `tsconfig.json` excludes so that what they pull in through
+  // `vitest` cannot become ambient over the browser library. `pnpm typecheck`
+  // runs both projects.
+  //
+  // `types` is deliberately left inherited (`[]`): nothing here imports a Node
+  // module, and the globals these files do see arrive through vite's own
+  // `/// <reference types="node" />` rather than through this field - which is
+  // the whole reason the exclusion above had to exist.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"],
+  "exclude": []
+}

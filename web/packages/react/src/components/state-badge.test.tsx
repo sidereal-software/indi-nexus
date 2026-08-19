@@ -20,24 +20,21 @@ describe("StateBadge", () => {
     },
   );
 
-  it("pulses only while Busy, and only when motion is welcome", () => {
+  it("marks only Busy as pulsing", () => {
+    // The animation itself lives on `[data-indi-pulse]::after` in the theme, held
+    // behind a `prefers-reduced-motion: no-preference` query, so this attribute is
+    // the whole of the component's half of the contract. What the theme then does
+    // with it - that the keyframes move nothing but transform and opacity, and
+    // that they apply to a pseudo-element - is asserted in `theme-contract.test.tsx`,
+    // which can read the stylesheet that jsdom cannot.
     render(<StateBadge state="Busy" />);
-    expect(screen.getByText("Busy")).toHaveClass("motion-safe:animate-state-pulse");
+    expect(screen.getByText("Busy")).toHaveAttribute("data-indi-pulse", "");
 
     for (const state of [IPState.Idle, IPState.Ok, IPState.Alert]) {
       cleanup();
       render(<StateBadge state={state} />);
-      expect(screen.getByText(state).className).not.toContain("animate-");
+      expect(screen.getByText(state)).not.toHaveAttribute("data-indi-pulse");
     }
-  });
-
-  it("never pulses by fading, which would take the label's contrast with it", () => {
-    // `animate-pulse` drops the whole badge to opacity 0.5, which composites the
-    // text as well as the fill: the badge measured 1.75:1 at the dimmest frame,
-    // and no fill colour can survive that (solid black at 0.5 over white reaches
-    // 3.95:1). The ring animation leaves the badge's own colours alone.
-    render(<StateBadge state="Busy" />);
-    expect(screen.getByText("Busy").className).not.toContain("animate-pulse");
   });
 
   it("merges a caller-supplied class name", () => {

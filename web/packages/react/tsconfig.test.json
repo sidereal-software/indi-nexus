@@ -1,0 +1,13 @@
+{
+  // The tests, which are the only files here allowed to see Node's globals.
+  // `tsconfig.json` excludes them precisely so `@types/node` cannot drift into
+  // the browser library; this config puts them back with `node` scoped in, and
+  // `pnpm typecheck` runs both projects.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": []
+}

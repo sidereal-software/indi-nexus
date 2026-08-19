@@ -38,8 +38,11 @@
      surface is tinted: 4.39:1 on the sidebar and 4.17:1 on `--accent`, and the
      sidebar is where it labels the connection state and the two footer settings.
      A token has to clear AA on every surface it is used over, not on the lightest
-     one. 5.55 / 5.05 / 4.79:1 on white, the sidebar and the accent. */
-  --muted-foreground: #616974;
+     one. Then #616974, which cleared AA on all three (5.55 / 5.05 / 4.79:1) and
+     cleared AAA on none of them - and PRODUCT.md commits to AAA wherever it is
+     reachable, which for body-size secondary text it is. 8.39 on the card, 7.63
+     on the sidebar, 7.23 on `--accent`. */
+  --muted-foreground: #474e59;
   --accent: #eeeeee;
   --accent-foreground: #111827;
   /* Was #ef4444, which is 3.76:1 under the `text-white` the destructive button
@@ -49,7 +52,24 @@
      and measures 7.60:1. */
   --destructive: #dc2626;
   --border: #e5e7eb;
-  --input: #e5e7eb;
+  /* Was #e5e7eb, byte-identical to `--border` and 1.24:1 against a white card -
+     invisible as the edge of a control, and SC 1.4.11 asks 3:1 of anything that
+     tells you where a control is. This is the edge of the Input, of the switch
+     vector's members, and it *is* the Switch's whole off-state track, so the same
+     failure appeared on five surfaces at once.
+     3.55 on the card and the background, 3.23 on the sidebar, 3.06 on `--accent`,
+     and 3.55 as the Switch's unchecked track against its white thumb.
+     RE-MEASURE THIS TOKEN IF `--card`, `--accent` OR `--foreground` MOVES: the
+     3.06 against `--accent` clears 3:1 by 2%, so a surface tweak can take it under
+     without touching this line.
+     Deliberately NOT split into a border token and a fill token. One token has to
+     serve as a control's border AND as the 30% fill of that same control, and the
+     two pull opposite ways: at #6e6e6e the dark border reads 3.71:1 against the
+     card but only 2.68:1 against its own `bg-input/30` fill. #7d7d7d (dark) and
+     this value satisfy every pair at once. Splitting them would also leave the
+     Switch behind, because the Switch's track *is* `bg-input` - so what looks like
+     a conflict between two roles is five surfaces failing in one direction. */
+  --input: #86888c;
   --ring: #3a2a70;
   --chart-1: #5f8787;
   --chart-2: #e78a53;
@@ -105,6 +125,23 @@
   --state-busy-foreground: #150e00;
   --state-alert: #ef4444;
   --state-alert-foreground: #280505;
+  /* Ok *as a bare mark on a surface*, which the fill cannot do. `--state-ok` is
+     the only one of the four that fails SC 1.4.11 when it is drawn as a graphic
+     with no foreground of its own: as the connection dot it measures 2.99:1 on
+     the sidebar and 2.84:1 on `--accent` (3.30 on a white card). Idle, Busy and
+     Alert all clear 3:1 on every light surface, which is why only this one has
+     an ink. Same hue taken down until it clears with margin rather than by
+     hundredths: 4.42 on the card, 4.02 on the sidebar, 3.81 on `--accent`. It is
+     an ink, never a fill - the badge keeps `--state-ok`. */
+  --state-ok-ink: #128a45;
+  /* Alert *as text on a surface*, which the fill cannot do: `--state-alert` is
+     tuned to be read behind `--state-alert-foreground`, and set as 12px type on
+     the sidebar it measures 3.42:1 - below AA. The one place that needs it is the
+     protocol mismatch line in `ConnectionStatus`, which lives on the sidebar.
+     Same hue taken down until it clears AAA everywhere it can land: 8.77 on the
+     card, 7.97 on the sidebar, 7.56 on `--accent`. It is an ink, never a fill -
+     do not use it as a background. */
+  --state-alert-ink: #9b0000;
 }
 
 .dark {
@@ -133,7 +170,12 @@
   --secondary: #38bcd6;
   --secondary-foreground: #121113;
   --muted: #222222;
-  --muted-foreground: #888888;
+  /* Was #888888: 5.28:1 on the card and 4.49:1 on `--muted`, which is AA to the
+     second decimal and nothing more, on the token that labels the connection
+     state, the log timestamps and both footer settings. 8.64 on the card and
+     7.34 on `--muted` now, so secondary text clears AAA in dark mode as it does
+     in light. */
+  --muted-foreground: #b0b0b0;
   --accent: #333333;
   --accent-foreground: #c1c1c1;
   /* Was #5f8787: byte-identical to `--secondary` above, so a destructive button and a
@@ -142,7 +184,22 @@
      `--state-alert` - related, as danger should be, without being the same swatch. */
   --destructive: #ef4444;
   --border: #222222;
-  --input: #222222;
+  /* Was #222222 - see the light value for why this token is not split. 4.55 on
+     the card, 3.11 against its own `bg-input/30` fill, 3.07 on `--accent`, and
+     as the Switch's unchecked track 3.34 at `/80` against the card and 3.10
+     against the `#c1c1c1` thumb. That last pair is the composited track, not the
+     bare token: bare against the thumb is 2.29:1, but nothing ever draws the
+     bare token as a track, because the primitive's dark rule is
+     `dark:data-[state=unchecked]:bg-input/80`.
+     RE-MEASURE IF `--card`, `--accent` OR `--foreground` MOVES: 3.07 and 3.10
+     both clear 3:1 by under 4%.
+     LARGEST VISUAL CHANGE IN THIS THEME: `dark:bg-input/30` is the fill of the
+     dark Input and the dark outline Button, so it goes #171717 -> #323232, and
+     `dark:hover:bg-input/50` goes #1a1a1a -> #484848. That is a near-invisible
+     lift becoming a field you can see the edges of. Nothing regresses on it:
+     `--foreground` 7.12:1 on the new fill, `--muted-foreground` (placeholder)
+     5.91:1, and `--foreground` 5.08:1 on the hover fill. */
+  --input: #7d7d7d;
   --ring: #a99ae4;
   --chart-1: #5f8787;
   --chart-2: #e78a53;
@@ -170,11 +227,26 @@
   --state-idle: #6b7280;
   --state-idle-foreground: #ffffff;
   --state-ok: #22c55e;
-  --state-ok-foreground: #052e16;
+  /* Was #052e16 at 6.54:1. The fill is frozen, so the only way to reach AAA on
+     this badge is to take the ink further down its own hue: 7.57:1. */
+  --state-ok-foreground: #032010;
   --state-busy: #f59e0b;
   --state-busy-foreground: #1c1300;
   --state-alert: #f87171;
-  --state-alert-foreground: #450a0a;
+  /* Was #450a0a at 5.84:1; 7.26:1 now, by the same route as `--state-ok-foreground`. */
+  --state-alert-foreground: #150303;
+  /* Deliberately the same value as `--state-ok` above, which the light mode's
+     ink is not. Ok as a bare mark fails 3:1 only against light surfaces; against
+     every dark one the fill already clears it (8.22 on the card and the sidebar,
+     6.98 on `--muted`, 5.54 on `--accent`), so lifting it here would darken
+     nothing and would put a second green in the palette for no measurement. The
+     token exists in both schemes because the utility that reads it does. */
+  --state-ok-ink: #22c55e;
+  /* Alert as text on a surface rather than as a fill - see the light value. The
+     dark fill reads 6.77:1 as type on the sidebar, which is AA but not the AAA
+     PRODUCT.md asks for where it is reachable. 7.59 on `--muted`, 8.93 on the
+     card. */
+  --state-alert-ink: #fc9797;
 }
 
 @theme inline {
@@ -218,6 +290,8 @@
   --color-state-busy-foreground: var(--state-busy-foreground);
   --color-state-alert: var(--state-alert);
   --color-state-alert-foreground: var(--state-alert-foreground);
+  --color-state-ok-ink: var(--state-ok-ink);
+  --color-state-alert-ink: var(--state-alert-ink);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -243,33 +317,6 @@
   --tracking-wide: calc(var(--tracking-normal) + 0.025em);
   --tracking-wider: calc(var(--tracking-normal) + 0.05em);
   --tracking-widest: calc(var(--tracking-normal) + 0.1em);
-
-  /*
-   * The Busy indicator: a ring expanding out of whatever wears `data-indi-state`.
-   *
-   * It cannot be Tailwind's `animate-pulse`. That fades the element's opacity to
-   * 0.5, which composites the fill *and* the text it carries towards the page, and
-   * measured 1.75:1 at the dimmest frame. No fill colour survives it - even solid
-   * black at 0.5 over white reaches only 3.95:1 - so a badge that passes AA at rest
-   * still fails half the time it is animating. Moving the motion into a ring leaves
-   * the badge itself untouched, so its contrast is the same at every frame.
-   *
-   * `--indi-state` is set on the animating element by the mapping at the bottom of
-   * this file, so one keyframe serves all four states.
-   */
-  --animate-state-pulse: state-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-
-  @keyframes state-pulse {
-    0% {
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--indi-state) 60%, transparent);
-    }
-    70% {
-      box-shadow: 0 0 0 5px color-mix(in srgb, var(--indi-state) 0%, transparent);
-    }
-    100% {
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--indi-state) 0%, transparent);
-    }
-  }
 
   /* Expand/collapse animations for the shadcn Accordion (per its v4 docs). */
   --animate-accordion-down: accordion-down 0.2s ease-out;
@@ -342,4 +389,300 @@
 [data-indi-state="Alert"] {
   --indi-state: var(--state-alert);
   --indi-state-foreground: var(--state-alert-foreground);
+}
+
+/*
+ * ============================================================================
+ * Registry corrections: where the vendored shadcn primitives are overruled.
+ * ============================================================================
+ *
+ * Everything below this line is deliberately OUTSIDE every `@layer`. Tailwind
+ * puts its own output in `@layer theme, base, components, utilities`, and an
+ * unlayered rule outranks every layered one regardless of specificity or source
+ * order. That is the whole mechanism: it means an accessibility fix lives here,
+ * in a file the shadcn CLI never writes, and the next `shadcn add button` cannot
+ * silently revert it. `src/ui/` stays registry-exact and nothing has to be
+ * re-applied by hand.
+ *
+ * THE HOOK IS THE UTILITY CLASS, NOT `data-slot`. `data-slot` is set by the
+ * primitive's own element and does not survive `asChild`: the Slot merges the
+ * child's props over the parent's, so `<AlertDialogAction variant="destructive">`
+ * renders `data-slot="alert-dialog-action"` and `<TooltipTrigger asChild><Button>`
+ * renders `data-slot="tooltip-trigger"` - the destructive button that deletes a
+ * saved configuration, and the panel's theme toggle, are exactly the two elements
+ * a `data-slot` hook would miss. `className` is not merged but concatenated, so
+ * the utility class the registry emits is on the element in every composition.
+ * `[class~="…"]` matches one whole space-separated token, so it cannot half-match
+ * `focus-visible:ring-ring/50` inside some longer class.
+ *
+ * THE RULE THAT GOVERNS THIS SECTION. An unlayered rule setting a REAL property
+ * beats every layered rule on that element - including the registry's own state
+ * variants and anything a consumer passes. So such a rule must either restate
+ * every variant of that property the element can be in, or be narrowed to
+ * something that cannot be in those states. A custom property like
+ * `--tw-ring-color` has no competitor and is always safe; `border-color`,
+ * `position` and `background-color` are not. `[data-variant="outline"] {
+ * border-color: var(--input) }` was tried here and REJECTED: unlayered, it also
+ * beat `focus-visible:border-ring` and `aria-invalid:border-destructive`, so it
+ * destroyed the focus indicator it existed to strengthen. Switch-vector members
+ * need no rule at all - they use `border-input`, so the token change reaches them.
+ */
+
+/* Focus ring against the surrounding surface. The registry's `/50` composites to
+   2.85:1 on a white card and 2.75:1 on a dark one; its destructive ring is `/20`
+   in light (1.37:1 on white) and `/40` in dark (1.72:1 on a card) - every one of
+   them below SC 1.4.11's 3:1, on the indicator that says where the keyboard is.
+   75% clears 3:1 on every surface either ring lands on, in both schemes: violet
+   5.68 (white) / 5.37 (sidebar) / 4.71 (dark card) / 3.55 (dark accent);
+   destructive 3.49 (white) / 3.25 (dark card). 66% was measured and rejected -
+   destructive lands at 3.01 light and 2.76 dark, which is not a margin.
+
+   RE-MEASURE THE DESTRUCTIVE RING IF `--destructive` OR THE SURFACE THE
+   CONFIRMATION MODAL DRAWS ON MOVES. It is the closest ring to its floor in both
+   schemes - 3.49 against white in light and 3.27 against the card in dark, which
+   is 16% and 9% of headroom over SC 1.4.11's 3:1, where the violet ring carries
+   between 18% (dark accent) and 89% (white). Both figures are a tint of
+   `--destructive` measured against that surface, so either token moving takes
+   them with it, and the room to absorb it is not there: 66% of the same token
+   was already tried and landed at 3.01 / 2.76.
+   These set only a custom property, so they cannot disturb the border shift
+   `focus-visible:border-ring` supplies alongside them; focus is still two signals
+   and never the ring alone. The `/20` hook also covers dark, where the registry
+   asks for `/40`: an unlayered custom property outranks that utility too.
+
+   THE RING IS ALSO OFFSET, and that is the other half of the fix. Those ratios
+   are the ring against the surface *around* the control. On a FILLED control the
+   ring's other neighbour is the control's own fill, and it is a tinted version
+   of the same token, so the two sit on top of each other: destructive 1.38:1
+   light and 1.32:1 dark, checked Switch 2.05 light and 1.60 dark, primary button
+   2.11 light. SC 2.4.13 asks 3:1 of an indicator against the colours it touches,
+   and a ring flush against its own fill has to be hunted for - measured beside an
+   outline Cancel button, whose violet ring on white is unmistakable.
+   `--tw-ring-offset-width` and `--tw-ring-offset-color` are custom properties, so
+   the offset costs nothing under THE RULE; `--tw-ring-offset-shadow` has to be
+   restated because only the `ring-offset-*` utility sets it, and the compiled
+   `box-shadow` list paints it over the ring's inner 2px. Tailwind already grows
+   `--tw-ring-shadow` by the offset width, so the ring stays 3px and gains a 2px
+   gap. With that gap the ring's neighbours are the surface on both sides:
+   violet 5.69 (white) / 5.40 (sidebar) / 4.73 (dark background) / 3.55 (dark
+   accent), and the fill is now separated from the gap by the control's own edge
+   contrast - 12.03 primary light, 8.37 secondary dark, 4.83 destructive light.
+
+   The destructive ring's gap is WHITE rather than the surface, and that is the
+   one case the surface could not solve. `dark:bg-destructive/60` composites to
+   #973030 on a near-black card, which is 2.48:1 from it - so a card-coloured gap
+   is invisible against the fill and the ring reads as flush again. White is the
+   button's own text colour (the variant hardcodes `text-white`), which makes the
+   indicator two-tone: 7.55 white-against-fill, 5.74 ring-against-white, 3.27
+   ring-against-card. In light mode white *is* the surface, so the same
+   declaration is a no-op there and the rule needs no scheme branch. */
+[class~="focus-visible:ring-ring/50"]:focus-visible {
+  --tw-ring-color: color-mix(in oklab, var(--ring) 75%, transparent);
+  --tw-ring-offset-width: 2px;
+  --tw-ring-offset-color: var(--background);
+  --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width)
+    var(--tw-ring-offset-color);
+}
+[class~="focus-visible:ring-destructive/20"]:focus-visible {
+  --tw-ring-color: color-mix(in oklab, var(--destructive) 75%, transparent);
+  --tw-ring-offset-width: 2px;
+  --tw-ring-offset-color: #ffffff;
+  --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width)
+    var(--tw-ring-offset-color);
+}
+
+/* The Set button and any secondary button, LIGHT ONLY. The registry fades the
+   fill toward the surface on hover, which takes white-on-secondary from 5.05:1 to
+   3.38:1 - below AA, on the control that writes to the instrument. Dark is 5.71:1
+   at `/80` and keeps its hover: killing it there would buy nothing and cost the
+   affordance. Holding the fill is what SWITCH_MEMBER_CLASSES already does for the
+   selected member, so the action vocabulary stays consistent; the cost is that
+   light hover carries no colour change and the cursor and the focus ring are the
+   affordance, exactly as on the switch. `.dark` is toggled on <html>
+   (apps/panel/src/use-theme.ts).
+   Safe as a real property, by the second half of THE RULE: the hook IS the
+   registry's own hover class, so a consumer passing their own `hover:bg-*` makes
+   twMerge drop `hover:bg-secondary/80` and this rule stops matching them. */
+html:not(.dark) [class~="hover:bg-secondary/80"]:hover {
+  background-color: var(--secondary);
+}
+
+/*
+ * The mobile drawer's close button, which the registry renders and then hides.
+ *
+ * `ui/sidebar.tsx` passes `[&>button]:hidden` to its `SheetContent`, so the
+ * Sheet's close exists and is `display: none` - leaving an overlay tap and
+ * Escape as the only ways out of an 18rem drawer, on a device with no Escape key
+ * whose overlay is `aria-hidden` and so unreachable by a VoiceOver swipe.
+ * Reproduced at 390x844.
+ *
+ * This was a third `DEVIATION` in `src/ui/sidebar.tsx` and did not need to be.
+ * `[&>button]:hidden` compiles to `.\[\&\>button\]\:hidden > button { display:
+ * none }` inside `@layer utilities`, so an unlayered rule here outranks it and
+ * the vendored file goes back to registry-exact. That is the test the file's own
+ * rule states: if a rule here could fix it, it does not belong in `src/ui/`.
+ *
+ * `revert`, not `inline-block`. The registry sets no display on this button at
+ * all, so the honest statement is "no author display, ask the UA" rather than a
+ * hardcoded copy of the answer the UA gives today. Which answer that is does not
+ * matter here: the close is `absolute`, and absolute positioning blockifies, so
+ * `inline` and `inline-block` both compute to `block` and the only thing this
+ * rule has to achieve is "not none". Confirmed in Chrome at 390x844 - computed
+ * `display: block`, a 16x16 box at the drawer's top right, and the 44px
+ * `::before` below still on it. `revert-layer` is the lookalike that does
+ * not work: from unlayered author styles it rolls back into the last layer,
+ * which is `utilities`, which is where `hidden` lives.
+ *
+ * A real property, and safe under THE RULE by being unreachable rather than by
+ * restating variants. The hook is the drawer's own `data-mobile`; the close is
+ * `SheetContent`'s own child and the only direct button child it has, because a
+ * consumer's children go inside the `flex-col` wrapper. So `display: none` is
+ * the single state this element can be in, and this rule is what put it there.
+ */
+[data-mobile="true"] > [class~="ring-offset-background"] {
+  display: revert;
+}
+
+/*
+ * Target size (SC 2.5.5, 44x44 CSS px), for the controls the app cannot grow
+ * from outside.
+ *
+ * Where a control's box belongs to this project, it is grown for real in
+ * `className` (see `apps/panel/src/App.tsx`), so the hover and focus feedback
+ * grows with the target. These three cannot be: the Switch's track is 32x18.4
+ * because that IS the control's design, and each modal close is a bare button
+ * around a `size-4` icon at 16x16 whose position the registry owns. They get a
+ * transparent `::before` overlay instead, which is a pseudo-element that would
+ * not otherwise exist and so competes with nothing.
+ *
+ * `max(100%, 2.75rem)` makes every one of these rules inert wherever the control
+ * is already big enough, which is what makes the sheet-close selector safe even
+ * though `asChild` can put a `SheetClose` on a full-size Button.
+ *
+ * The hook for the closes is parent slot + class token, not `data-slot`, because
+ * `ui/sheet.tsx` renders `SheetPrimitive.Close` with no `data-slot` at all (the
+ * live registry `sheet.json` has none either, so `shadcn add sheet` will not add
+ * one). Both closes are direct children of the element carrying
+ * `data-slot="dialog-content"` / `"sheet-content"` and both carry
+ * `ring-offset-background`.
+ *
+ * The sidebar's mobile drawer needs its own selector even though it *is* a
+ * `SheetContent`: `ui/sidebar.tsx` spreads `data-slot="sidebar"` over the
+ * primitive's own `data-slot="sheet-content"`, so the sheet hook above never
+ * matches it. `[data-mobile="true"]` is what separates the drawer from the two
+ * desktop branches, which carry the same slot.
+ *
+ * One limit, recorded rather than claimed past: the overlay grows the target but
+ * NOT the hover/focus feedback. The close button's only hover affordance is
+ * `opacity-70` -> `100` on a 16px icon, so a pointer 20px away is inside the
+ * target with no visual confirmation. Growing the real box and re-anchoring
+ * `top`/`right` was rejected: it couples this theme to four registry magic
+ * numbers to avoid moving the X by 14px.
+ */
+
+/* The Switch is the only one of the three needing a containing block: Radix
+   Switch sets no `position`, while both closes are already `absolute`. The
+   `:not()` is cheap insurance under THE RULE above - an unlayered `position`
+   would otherwise beat a consumer's own `absolute` on a Switch. */
+[data-slot="switch"]:not([class*="absolute"]):not([class*="fixed"]) {
+  position: relative;
+}
+
+[data-slot="switch"]::before,
+[data-slot="dialog-content"] > [class~="ring-offset-background"]::before,
+[data-slot="sheet-content"] > [class~="ring-offset-background"]::before,
+[data-mobile="true"] > [class~="ring-offset-background"]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: max(100%, 2.75rem);
+  height: max(100%, 2.75rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A whitelist, not a kill. Only these properties move, so the focus ring still
+     fades in and colours still cross-fade while transform, height and width snap.
+     The blanket `* { animation-duration: 0.01ms !important }` is deliberately not
+     used: it takes the ring transition with it, and the ring is an accessibility
+     affordance rather than decoration.
+     Verified safe at specificity (0,0,0): sonner ships its own
+     `@media (prefers-reduced-motion) { [data-sonner-toast] { transition: none
+     !important } }` at (0,1,0) and still wins; the sidebar collapse, the switch
+     thumb and the SidebarRail all snap to their end state with no JS gate. */
+  *,
+  *::before,
+  *::after {
+    transition-property: color, background-color, border-color, outline-color,
+      text-decoration-color, fill, stroke, box-shadow, opacity !important;
+  }
+
+  /* The one live keyframe animation left: the driver-internals fold and the
+     docked message strip animate `height`. `@theme inline` inlines the shorthand
+     into the utility itself (compiled: `animation: accordion-down 0.2s ease-out`),
+     so redefining `--animate-accordion-*` in here would do nothing - it has to be
+     neutralised on the element. 1ms rather than 0 so Radix Presence, which reads
+     `animationName` only, still receives `animationend` and unmounts. */
+  [data-slot="accordion-content"] {
+    animation-duration: 1ms !important;
+  }
+}
+
+/*
+ * The Busy indicator: a ring expanding out of whatever wears `data-indi-pulse`.
+ *
+ * It cannot be Tailwind's `animate-pulse`. That fades the element's opacity to
+ * 0.5, which composites the fill *and* the text it carries towards the page, and
+ * measured 1.75:1 at the dimmest frame. No fill colour survives it - even solid
+ * black at 0.5 over white reaches only 3.95:1 - so a badge that passes AA at rest
+ * still fails half the time it is animating. Moving the motion into a ring leaves
+ * the badge itself untouched, so its contrast is identical at every frame.
+ *
+ * `--indi-state` comes from the `[data-indi-state]` mapping above, so one keyframe
+ * serves all four states. The `position: relative` this pseudo-element needs is
+ * set in each component's own `cn()` and deliberately NOT here: an unlayered,
+ * state-conditional `position` would beat a consumer's `absolute` on a StateDot,
+ * and only while the instrument was Busy, so their dot would jump when it went
+ * busy and settle back when it did not.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /* An `outline` on `::after`, and the choice of property is what preserves the
+     contrast guarantee. An outline paints entirely OUTSIDE the pseudo-element's
+     box, which here equals the badge's border box, so at scale(1) not one
+     animated pixel lands on the badge or on its line box, for any padding a
+     consumer passes. A 2px `border` at `inset: 0` does not: the badge measures
+     46.9x22.0 with 2px of vertical padding around a 16px line box, so the ring
+     would occupy y=1..3 and y=19..21 flush against a line box at y=3..19, and
+     `py-0` would put it on the text. `z-index: -1` was tried too and is wrong -
+     a negative-z pseudo paints at step 2 of the nearest ancestor STACKING
+     CONTEXT, which is the document root here, so it lands under the card's own
+     background and disappears.
+     `transform` and `opacity` are the only animated properties, both composited,
+     replacing a box-shadow spread that repainted the badge every frame. */
+  [data-indi-pulse]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    outline: 2px solid var(--indi-state);
+    outline-offset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    animation: state-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@keyframes state-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
 }

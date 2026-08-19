@@ -8,7 +8,7 @@
  *   read and watch live INDI state;
  * - INDI-aware components ({@link PropertyVectorCard}, {@link VectorControl},
  *   {@link DevicePanel}, {@link DeviceConfigDialog}, {@link StateBadge},
- *   {@link ConnectionStatus}, {@link MessageLog}, {@link AlertAnnouncer});
+ *   {@link ConnectionStatus}, {@link MessageLog}, {@link StatusAnnouncer});
  * - the underlying shadcn/ui primitives (Button, Card, Sidebar, ...).
  *
  * The whole `@indi-nexus/client` surface is re-exported too, so applications can

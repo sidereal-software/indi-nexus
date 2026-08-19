@@ -8,7 +8,23 @@
       "@/*": ["./src/*"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    // `@types/node` is a devDependency here (`theme-cascade.test.ts` shells out
+    // to the Tailwind CLI) and without this it is ambient over the whole
+    // package. This library ships to browsers, so nothing under `src` may reach
+    // for `process`, `Buffer` or `__dirname`, and `skipLibCheck` means a stray
+    // one would typecheck in silence and fail at runtime in somebody's app.
+    // `packages/client` has carried the same line for the same reason. The tests
+    // that genuinely need Node are compiled by `tsconfig.test.json`, which is
+    // this config with the exclusions lifted and `node` scoped back in.
+    "types": []
   },
-  "include": ["src"]
+  "include": ["src"],
+  // `types: []` only stops TypeScript from *auto-including* `@types/*`; a
+  // `/// <reference types="node" />` inside a `.d.ts` the program already reads
+  // still drags the globals in, and vite's does. So the two test-only files that
+  // reach vitest have to leave this project as well, or `process` is in scope
+  // for the whole library again - verified by probing `process.env` in
+  // `src/lib/utils.ts`, which compiled clean until `setup.ts` was excluded.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/testing/setup.ts"]
 }

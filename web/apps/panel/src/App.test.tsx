@@ -167,6 +167,114 @@ describe("App", () => {
   });
 });
 
+describe("the device menu's markup", () => {
+  /** Define one property on a device, so the sidebar has an entry to draw. */
+  function defineProperty(socket: FakeWebSocket, device: string, name: string) {
+    act(() =>
+      socket.receive(
+        JSON.stringify({
+          tag: "def",
+          vector: {
+            kind: "number",
+            device,
+            name,
+            label: name,
+            state: "Idle",
+            perm: "rw",
+            elements: [{ kind: "number", name: "secs", value: 1.5 }],
+          },
+        }),
+      ),
+    );
+  }
+
+  /** libindi's universal configuration property, which the menu grows an entry for. */
+  function defineConfigProcess(socket: FakeWebSocket, device: string) {
+    act(() =>
+      socket.receive(
+        JSON.stringify({
+          tag: "def",
+          vector: {
+            kind: "switch",
+            device,
+            name: "CONFIG_PROCESS",
+            label: "Configuration",
+            group: "Options",
+            state: "Idle",
+            perm: "rw",
+            rule: "AtMostOne",
+            elements: [
+              { kind: "switch", name: "CONFIG_LOAD", value: "Off" },
+              { kind: "switch", name: "CONFIG_SAVE", value: "Off" },
+            ],
+          },
+        }),
+      ),
+    );
+  }
+
+  /**
+   * The children of every list under `root` that a list may not legally have.
+   *
+   * This is axe's `list` rule written out: the only element children of a `<ul>`
+   * are `<li>`, `<script>` and `<template>`. Kept as a sweep rather than a count
+   * so it covers whatever the menu grows next.
+   */
+  function illegalListChildren(root: HTMLElement): string[] {
+    const offenders: string[] = [];
+    for (const list of root.querySelectorAll("ul, ol")) {
+      for (const child of list.children) {
+        if (!["LI", "SCRIPT", "TEMPLATE"].includes(child.tagName)) {
+          offenders.push(`${child.tagName} in ${list.tagName}`);
+        }
+      }
+    }
+    return offenders;
+  }
+
+  /** The device list's landmark. */
+  function nav(): HTMLElement {
+    return screen.getByRole("navigation", { name: "Devices" });
+  }
+
+  it("keeps the empty state out of the list entirely", () => {
+    // This was a real axe violation, serious: "No devices connected." was a `<p>`
+    // sitting directly inside `SidebarMenu`'s `<ul>`, where the only legal child
+    // is an `<li>`. It renders identically either way, so nothing but this notices.
+    renderApp();
+    const empty = screen.getByText("No devices connected.");
+
+    expect(empty.tagName).toBe("P");
+    expect(nav()).toContainElement(empty);
+    expect(empty.closest("ul")).toBeNull();
+    // Not merely "outside the list": there is no list at all until there is
+    // something to put in it, so wrapping the sentence in an `<li>` is not a
+    // passing answer either.
+    expect(nav().querySelectorAll("ul")).toHaveLength(0);
+    expect(illegalListChildren(nav())).toEqual([]);
+  });
+
+  it("renders the menu once a device arrives, with only list items in it", () => {
+    const { socket } = renderApp();
+    defineProperty(socket, "CCD Simulator", "EXPOSURE");
+
+    expect(screen.queryByText("No devices connected.")).not.toBeInTheDocument();
+    expect(nav().querySelectorAll("ul")).toHaveLength(1);
+    expect(illegalListChildren(nav())).toEqual([]);
+  });
+
+  it("keeps the list legal with the configuration entry in it", () => {
+    // `DeviceConfigDialog` brings its own `<li>` precisely so it can vanish
+    // without leaving a gap; this is the assertion that it really does.
+    const { socket } = renderApp();
+    defineProperty(socket, "CCD Simulator", "EXPOSURE");
+    defineConfigProcess(socket, "CCD Simulator");
+
+    expect(within(nav()).getByRole("button", { name: /Configuration/ })).toBeInTheDocument();
+    expect(illegalListChildren(nav())).toEqual([]);
+  });
+});
+
 describe("messages panel", () => {
   it("is docked open by default and streams the INDI log", () => {
     const { socket } = renderApp();

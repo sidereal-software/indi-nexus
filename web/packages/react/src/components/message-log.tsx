@@ -33,7 +33,7 @@ export interface MessageLogProps {
  *   the *right* one: it is polite and announces additions only, so a reader
  *   hears each new entry once instead of the whole panel re-read. A vector
  *   entering Alert is not a message, so it is announced separately - see
- *   {@link AlertAnnouncer}, which is deliberately not this element.
+ *   {@link StatusAnnouncer}, which is deliberately not this element.
  * - Without the tab stop the log cannot be scrolled by keyboard at all, and
  *   since the view follows the newest entry, everything above it is reachable
  *   only with a wheel or a drag.

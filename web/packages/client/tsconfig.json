@@ -4,7 +4,15 @@
     "outDir": "dist",
     "rootDir": "src",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // This library ships to browsers and must not reach for a Node global.
     "types": []
   },
-  "include": ["src"]
+  "include": ["src"],
+  // `types: []` alone did not deliver that. It only stops TypeScript from
+  // *auto-including* `@types/*`; a `/// <reference types="node" />` inside a
+  // `.d.ts` the program already reads still brings the globals in, and vite's
+  // does - which every `*.test.ts` here reaches through `vitest`. So the tests
+  // leave this project and get `tsconfig.test.json` instead. Verified by probing
+  // `process.env` in `src/format.ts`: it compiled clean before this line.
+  "exclude": ["src/**/*.test.ts"]
 }

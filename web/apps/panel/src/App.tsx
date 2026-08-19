@@ -12,7 +12,6 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-  AlertAnnouncer,
   Badge,
   Button,
   ConnectionStatus,
@@ -37,6 +36,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
+  StatusAnnouncer,
   Switch,
   Toaster,
   Tooltip,
@@ -88,7 +88,16 @@ function ThemeToggle() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
+        {/* SC 2.5.5 wants 44x44. `size-11` is the real box, not an overlay, so
+            the hover tint and the focus ring grow with the target; twMerge drops
+            the variant's own `size-9`. The icon stays `size-4`. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          onClick={toggle}
+          aria-label="Toggle theme"
+        >
           {theme === "dark" ? <Sun /> : <Moon />}
         </Button>
       </TooltipTrigger>
@@ -126,18 +135,33 @@ function DeviceSidebar({
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Devices</SidebarGroupLabel>
+          {/* The primitive labels its groups with `text-sidebar-foreground/70`,
+              which measures 6.29:1 in light mode and 5.61:1 in dark - AA, but
+              short of the AAA tier DESIGN.md puts secondary text on and this
+              label is body-size secondary text. `text-muted-foreground` is that
+              tier (7.63 light, 8.64 dark on the sidebar) and twMerge drops the
+              primitive's own colour for it. Fixed here rather than in
+              `theme.css`: `color` is a real property, so an unlayered correction
+              would beat every state variant of it, and this label is one the app
+              composes and can therefore reach directly. */}
+          <SidebarGroupLabel className="text-muted-foreground">Devices</SidebarGroupLabel>
           <SidebarGroupContent>
             {/* The sidebar's own markup is all `div`s, so without this the device
                 list - the page's only means of moving between devices - sits
                 outside every landmark and a landmark walk finds only the main
                 region and the messages strip. */}
             <nav aria-label="Devices">
-              <SidebarMenu>
-                {devices.length === 0 ? (
-                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No devices connected.</p>
-                ) : (
-                  devices.map((device) => (
+              {/* The empty state is a sentence, not a list, and it used to be a
+                  `<p>` directly inside `SidebarMenu`'s `<ul>`, where the only
+                  legal children are `<li>`. Rendering the list only when there
+                  is a list keeps the markup honest without wrapping prose in a
+                  menu item; `DeviceConfigDialog` needs no separate guard,
+                  because nothing can be selected while nothing is connected. */}
+              {devices.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">No devices connected.</p>
+              ) : (
+                <SidebarMenu>
+                  {devices.map((device) => (
                     <SidebarMenuItem key={device}>
                       <SidebarMenuButton
                         isActive={device === active}
@@ -148,26 +172,31 @@ function DeviceSidebar({
                         <span>{device}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  ))
-                )}
-                {/* Configuration acts on the selected device, so it sits at the
-                    end of the same menu the selection lives in. It renders
-                    nothing when nothing is selected or the device has no
-                    CONFIG_PROCESS. */}
-                <DeviceConfigDialog device={active} />
-              </SidebarMenu>
+                  ))}
+                  {/* Configuration acts on the selected device, so it sits at the
+                      end of the same menu the selection lives in. It renders
+                      nothing when nothing is selected or the device has no
+                      CONFIG_PROCESS. */}
+                  <DeviceConfigDialog device={active} />
+                </SidebarMenu>
+              )}
             </nav>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      {/* Both footer rows are 44px tall for SC 2.5.5. The Switch's own track stays
+          32x18.4 - that is the control's design - and the theme gives it a 44px
+          `::before` overlay; the row is what an operator actually aims at, and the
+          `<Label htmlFor>` already activates the Switch, so the whole row is one
+          target. Two 44px rows at `gap-2` stack without overlapping. */}
       <SidebarFooter className="gap-2 p-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))]">
-        <div className="flex items-center justify-between">
+        <div className="flex min-h-11 items-center justify-between">
           <Label htmlFor="debug-info" className="text-xs font-normal text-muted-foreground">
             Debug info
           </Label>
           <Switch id="debug-info" checked={debug} onCheckedChange={onDebugChange} />
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex min-h-11 items-center justify-between">
           <span className="text-xs text-muted-foreground">Appearance</span>
           <ThemeToggle />
         </div>
@@ -218,7 +247,9 @@ function MessagesPanel({
         onValueChange={(value) => onOpenChange(value === "messages")}
       >
         <AccordionItem value="messages" className="border-b-0">
-          <AccordionTrigger className="h-14 items-center rounded-none px-3 py-0">
+          {/* `min-h-14`, not `h-14`: at 200% text zoom (SC 1.4.4) the bar's label
+              and its unread badge outgrow a fixed 56px and get clipped. */}
+          <AccordionTrigger className="min-h-14 items-center rounded-none px-3 py-0">
             <span className="flex items-center gap-2">
               <MessageSquareText className="size-4 text-muted-foreground" />
               Messages
@@ -277,7 +308,7 @@ function AppShell() {
       {/* Page-level on purpose: a vector going into Alert on the device that is
           *not* on screen is the one an operator most needs to hear about, and a
           per-device announcer would only ever cover the selection. */}
-      <AlertAnnouncer />
+      <StatusAnnouncer />
       <DeviceSidebar
         devices={devices}
         active={active}
@@ -289,14 +320,17 @@ function AppShell() {
           own region and the messages strip below it stays visible. */}
       <SidebarInset className="h-svh">
         {/* The bar grows by the notch inset and pads by it, so the title keeps
-            its 3.5rem of bar whether or not the browser reports one. The
-            underscores are Tailwind's spaces: `calc(3.5rem+env(…))` without
-            whitespace around the `+` is invalid CSS and the whole declaration
-            is dropped, which silently collapses the bar to its content. */}
-        <header className="flex h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center gap-3 border-b px-4 pt-[env(safe-area-inset-top)]">
+            its 3.5rem of bar whether or not the browser reports one. `min-h`
+            rather than `h`: at 200% text zoom the 44px sidebar trigger and the
+            title outgrow 3.5rem, and a fixed height clips them. The underscores
+            are Tailwind's spaces: `calc(3.5rem+env(…))` without whitespace around
+            the `+` is invalid CSS and the whole declaration is dropped, which
+            silently collapses the bar to its content. */}
+        <header className="flex min-h-[calc(3.5rem_+_env(safe-area-inset-top))] shrink-0 items-center gap-3 border-b px-4 pt-[env(safe-area-inset-top)]">
           <Tooltip>
             <TooltipTrigger asChild>
-              <SidebarTrigger />
+              {/* SC 2.5.5 again: twMerge drops the primitive's own `size-7`. */}
+              <SidebarTrigger className="size-11" />
             </TooltipTrigger>
             <TooltipContent>Toggle the device sidebar</TooltipContent>
           </Tooltip>

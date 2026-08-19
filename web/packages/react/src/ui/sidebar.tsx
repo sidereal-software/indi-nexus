@@ -40,6 +40,8 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  /** DEVIATION: what had focus when the mobile drawer opened. See below. */
+  mobileOpenerRef: React.RefObject<HTMLElement | null>
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -67,7 +69,27 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void
 }) {
   const isMobile = useIsMobile()
-  const [openMobile, setOpenMobile] = React.useState(false)
+  const [openMobile, setOpenMobileState] = React.useState(false)
+
+  // DEVIATION from the shadcn registry (1 of 2 in this file, both in the mobile
+  // drawer): remember what had focus when the drawer opened. The drawer is a
+  // Sheet with no `Dialog.Trigger` - it is opened by `SidebarTrigger`, which
+  // renders outside it, or by the keyboard shortcut - and Radix's modal close
+  // handler calls `preventDefault()` on FocusScope's own restore and then
+  // focuses its (null) trigger, so the keyboard lands on `<body>` and the tab
+  // order restarts at the top of the document. Reproduced at 390x844 on both
+  // Escape and an overlay tap. Keep this on the next `shadcn add sidebar`.
+  const mobileOpenerRef = React.useRef<HTMLElement | null>(null)
+  const setOpenMobile = React.useCallback(
+    (value: boolean | ((open: boolean) => boolean)) => {
+      const next = typeof value === "function" ? value(openMobile) : value
+      if (next && !openMobile && document.activeElement instanceof HTMLElement) {
+        mobileOpenerRef.current = document.activeElement
+      }
+      setOpenMobileState(next)
+    },
+    [openMobile]
+  )
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -122,6 +144,7 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      mobileOpenerRef,
     }),
     [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
   )
@@ -163,7 +186,8 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile, mobileOpenerRef } =
+    useSidebar()
 
   if (collapsible === "none") {
     return (
@@ -194,6 +218,17 @@ function Sidebar({
             } as React.CSSProperties
           }
           side={side}
+          onCloseAutoFocus={(event) => {
+            // DEVIATION (1 of 2), the other half: put the keyboard back where it
+            // was. Doing nothing is not the same as leaving Radix alone - its own
+            // handler prevents the restore and focuses a trigger that does not
+            // exist - so this only stands aside when the opener has since left
+            // the document, where `<body>` is genuinely all that is left.
+            const opener = mobileOpenerRef.current
+            if (opener === null || !opener.isConnected) return
+            event.preventDefault()
+            opener.focus()
+          }}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Sidebar</SheetTitle>
@@ -522,7 +557,14 @@ function SidebarMenuButton({
     />
   )
 
-  if (!tooltip) {
+  // DEVIATION (2 of 2): the registry always mounts the Tooltip and hides the
+  // content with `hidden={state !== "collapsed" || isMobile}`. A hidden tooltip
+  // is still an OPEN dismissable layer, and it is on top of the drawer's - so in
+  // the mobile sidebar the first Escape closed a tooltip nobody could see and
+  // the drawer needed a second one (reproduced at 390x844). It also has nothing
+  // to say in either hidden case: expanded, the label is already beside the
+  // icon. So the wrapper is not mounted at all rather than mounted invisible.
+  if (!tooltip || state !== "collapsed" || isMobile) {
     return button
   }
 
@@ -535,12 +577,7 @@ function SidebarMenuButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== "collapsed" || isMobile}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" {...tooltip} />
     </Tooltip>
   )
 }
