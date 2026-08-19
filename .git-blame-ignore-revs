@@ -1,0 +1,16 @@
+# Revisions that changed a great many lines without changing what any of them do.
+# `git blame` skips them and attributes each line to the commit that last said
+# something about it. GitHub reads this file from the repository root on its own;
+# locally it needs one command, once per clone:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Only add a commit here if it is genuinely mechanical - a rename, a reformat, a
+# codemod. A commit that changed behaviour belongs in blame, however large it is.
+# Use full 40-character SHAs: git rejects an abbreviated one in this file.
+
+# refactor!: rename the project to INDIkit
+# A sed across 187 files: indi-nexus/indi_nexus -> indikit, INDI_NEXUS_ -> INDIKIT_,
+# INDINexus -> INDIkit, @indi-nexus/* -> @indikit/*, and the two identifiers that are
+# not branding (the synthetic XML root, and NEXUS_CONFIG_PERSISTED on the wire).
+1b5cfd629a17ffd08c92866df6604ddf79b95c73
