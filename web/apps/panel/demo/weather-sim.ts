@@ -113,7 +113,7 @@ const RECORDED = {
 };
 
 /** One decoded Open-Meteo reply, in the shape this simulator reads. */
-interface Payload {
+export interface Payload {
   current_units?: Record<string, string>;
   current?: Record<string, number>;
   daily?: Record<string, (string | number)[]>;
@@ -161,7 +161,6 @@ export class WeatherSimSocket implements WebSocketLike {
   private latitude = 34.0522;
   private longitude = -118.2437;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private live = false;
   private saved = false;
 
   /** Injectable so tests can drive the simulator without a network. */
@@ -467,16 +466,6 @@ export class WeatherSimSocket implements WebSocketLike {
         elements: [],
       } satisfies TextVector,
     });
-  }
-
-  /** Note whether the page is showing live data or the recording. */
-  setLive(live: boolean): void {
-    this.live = live;
-  }
-
-  /** Whether the last fetch reached the real API. */
-  isLive(): boolean {
-    return this.live;
   }
 
   // -- property definitions ------------------------------------------------- //

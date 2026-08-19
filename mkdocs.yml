@@ -32,8 +32,8 @@ theme:
     logo: material/telescope
   features:
     # Instant navigation only rewrites links that appear in sitemap.xml. MkDocs treats the
-    # three demo .html files as static pages and leaves them out of it, so clicking a demo
-    # still does a full page load - which is what those standalone Vite apps need.
+    # demo's .html as a static page and leaves it out, so clicking the demo still does a
+    # full page load - which is what that standalone Vite app needs.
     - navigation.instant
     - navigation.instant.prefetch
     - navigation.instant.progress
@@ -124,5 +124,3 @@ nav:
       - "@indi-nexus/react": reference/typescript/react/index.md
   - Changelog: changelog.md
   - Live demo: demo-app/index.html
-  - Flat panel demo: flat-demo/flat.html
-  - Weather demo: weather-demo/weather.html

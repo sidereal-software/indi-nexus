@@ -2,8 +2,6 @@
   "files": ["web/apps/panel/index.html", "web/apps/panel/demo/**/*.html"],
   "exclude": [
     "docs/demo-app/**",
-    "docs/flat-demo/**",
-    "docs/weather-demo/**",
     "src/indi_nexus/web/static/**"
   ],
   "insertBefore": "</body>",
