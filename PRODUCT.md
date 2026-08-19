@@ -151,9 +151,9 @@ solid, `classDef ext` thin and dashed). Node labels take no HTML beyond `<br/>`.
 
 - Eleven runnable example drivers and clients in `examples/`, every one covered by tests -
   including `openmeteo_device.py`, which drives a live public weather API.
-- Three in-browser demos built from the real panel against simulated devices: the
-  [dome demo](https://indi-nexus.sidereal.software/demo-app/index.html), a flat-panel demo,
-  and a weather demo that shows a custom UI beside the shipping panel.
+- One in-browser [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
+  running a simulated dome and weather station through a single client, with a toggle
+  between the shipping panel and a custom observatory wallboard built on the same library.
 - A published docs site with guides, a porting guide from pyINDI, and generated API
   reference for both Python and TypeScript.
 - Measured accessibility work, verified in a real browser rather than only in unit tests: an
@@ -208,8 +208,29 @@ Established practice that binds future work:
   to, until it settles; and the connection dropping or returning. Everything else arriving
   over the socket is telemetry and stays silent.
 
-**A known, unbuilt requirement: preserving dark adaptation.** Operators at a backyard rig or
-watching a remote rig at night are dark-adapted, and the current light/dark toggle does not
-address this - dark mode is not night vision. A red or low-luminance mode, or a hard ceiling
-on emitted light, is a genuine product need that does not exist yet. Record it as missing;
-do not treat the existing dark theme as satisfying it.
+**A known, unbuilt requirement: a luminance ceiling for night use.** Operators at a backyard
+rig or watching a remote rig at night are dark-adapted, and the current light/dark toggle
+does not address that.
+
+This entry previously said the requirement was a red mode, on the reasoning that dark mode
+is not night vision. Research corrected it, and the correction changes what to build:
+
+- **Scotopic vision operates below 10⁻³ cd/m².** A screen legible at arm's length, let alone
+  at four metres, runs three to five orders of magnitude above that. Nobody reading this
+  interface is dark-adapted *while* they read it, whatever colour it is. The honest claim is
+  narrower: a dim screen costs the room less, and costs less re-adaptation afterwards.
+- **The citable requirement is luminance, not hue.** MIL-STD-1472F §5.2.1.5.6.3, under the
+  heading "Dark adaptation": where colour coding is used, luminance shall be no more than
+  10 cd/m².
+- **Red is actively hostile to some readers.** The same standard, §5.2.1.5.6.2: wavelengths
+  above 650 nm should be avoided where users include protanopes. A monochrome red interface
+  also spends the entire colour channel, leaving text, shape and brightness to carry every
+  distinction.
+- **The field splits by audience.** KStars and Stellarium ship red night modes for someone
+  standing at an eyepiece. Rubin Observatory's operator interface ships a very dark
+  desaturated blue with full colour coding and no night mode at all, for someone in a
+  control room. Our operators are described in Operating Context as being in both places.
+
+So the thing to build is a luminance-capped scheme, not a red one, and the existing dark
+theme is not it. Do not treat "preserves dark adaptation" as something a readable screen can
+claim.

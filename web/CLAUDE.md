@@ -460,13 +460,35 @@ Arbitrary values that wrap `env()` in `calc()` need Tailwind's underscore spacin
 `h-[calc(3.5rem_+_env(safe-area-inset-top))]`. Without whitespace around the `+` the CSS is
 invalid and the whole declaration is silently dropped.
 
-## `apps/panel/demo/` - the documentation demos
+## `apps/panel/demo/` - the documentation demo
 
-`dome-sim.ts`, `weather-sim.ts` and `flat-panel-sim.ts` are TypeScript ports of
-`examples/dome_device.py`, `examples/openmeteo_device.py` and `examples/flat_panel.py`
-behind a fake `WebSocketLike`, so the docs' live demos run with no server. Each has its own
-Vite config (`vite.demo.config.ts`, `vite.weather.config.ts`, `vite.flat.config.ts`) and
-builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
+**There is one demo page.** `demo/index.html` builds through `vite.demo.config.ts` into
+`docs/demo-app/` via `pnpm run docs:demo`; the output is gitignored. It runs **two**
+simulated devices through **one** `IndiClient` and offers two views of them: the stock panel
+`App` and the custom wallboard.
+
+`dome-sim.ts` and `weather-sim.ts` are TypeScript ports of `examples/dome_device.py` and
+`examples/openmeteo_device.py` behind a fake `WebSocketLike`, so the demo runs with no
+server. Each owns exactly one device, because each stands in for one driver.
+
+**`observatory-sim.ts` is the bridge above them, and that layer is the point.** A real
+bridge is not per-driver: `indiserver` multiplexes every driver onto one stream and the
+bridge puts that whole stream on one WebSocket. `ObservatorySimSocket` owns both simulators,
+interleaves their frames onto one `onmessage`, and fans every client write out to both
+(each ignores what is not addressed to it). Three properties are load bearing:
+
+- **Exactly one `hello`, and it leads.** Every control frame (`hello`, `connection`) a child
+  emits is dropped and this class sends its own, because the control frames are the
+  *bridge's* and here it is the bridge. See the `hello` rule below.
+- **The children are constructed inside the opening timer, not in the constructor**, so
+  their own opening bursts are booked after the `hello` and land behind it. They are
+  attached *before* `onopen`, because a client with anything buffered flushes it from that
+  callback and a write with nowhere to go would vanish.
+- **Both simulators keep their own `CONNECTION` lifecycle.** Nothing in the multiplexer
+  connects, disconnects or filters a device write.
+
+`observatory-sim.test.ts` pins the frame ordering, which is wire contract rather than
+rendering and is therefore the one thing tested at this level.
 
 - **The simulators mirror real drivers.** Change a driver's properties or its safety rule and
   change its simulator too, or the demo stops being a demo of anything.
@@ -492,28 +514,49 @@ builds into `docs/` via `pnpm run docs`; the outputs are gitignored.
   does (see `src/indi_nexus/CLAUDE.md`): it is the first thing a client looks for, and a demo
   without one shows visitors a device shape that does not exist in the field. It has to
   behave, not just appear. Writes are refused while disconnected, and disconnecting leaves
-  the instrument safe and its properties `Idle`. These demos are the first contact most
-  people have with the project, so a panel whose Connect button does nothing is worse than
-  no demo.
-- **A simulator opens with the `hello`, before its connection frame and its `def`s**, the
-  way the real bridge does. Skip it and the client logs "the bridge sent no hello frame"
-  into the demo's own message panel, where a visitor reads it as a fault on a page that is
-  most people's first contact with the project.
+  the instrument safe and its properties `Idle`. This demo is the first contact most people
+  have with the project, so a panel whose Connect button does nothing is worse than no demo.
+  It is also why the page **opens on the stock panel**: both devices start disconnected, and
+  the panel is where a visitor presses Connect.
+- **The connection opens with the `hello`, before the connection frame and any `def`**, the
+  way the real bridge does, and there is exactly one of each per socket. Skip it and the
+  client logs "the bridge sent no hello frame" into the demo's own message panel, where a
+  visitor reads it as a fault on a page that is most people's first contact with the project;
+  send two and the bridge has introduced itself mid-stream.
 - **Construct a simulator lazily *inside* `webSocketFactory`.** It starts delivering frames
   the moment it exists, and a client that has not attached its handlers yet misses every
   `def`.
-- The weather page shows the custom UI beside the **real panel `App`**, not a bare
-  `DevicePanel`, so the demo looks like what ships. Both views stay mounted with the inactive
-  one hidden: unmounting takes its `IndiProvider` with it, and the provider closes the client
-  on unmount, which would reset the simulated driver on every switch.
+- The page shows the custom UI beside the **real panel `App`**, not a bare `DevicePanel`, so
+  the demo looks like what ships. Both views stay mounted with the inactive one hidden:
+  unmounting takes its `IndiProvider` with it, and the provider closes the client on unmount,
+  which would reset both simulated drivers on every switch.
 
-`sky-report.tsx` and `sky-visuals.tsx` are the tutorial's custom UI: a **wallboard** (read at
-4 m, no interaction, one screen, readings that blank rather than go stale) plus its drawn
-figures. Below `lg` it reflows to a scrolling column, because a phone is not a wallboard and
-clipping readings is worse than scrolling.
+`observatory-board.tsx` and `board-visuals.tsx` are the tutorial's custom UI: a **wallboard**
+(read at 4 m, no interaction beyond a light/dark toggle, one screen, readings that blank
+rather than go stale) plus its drawn figures. Below `lg` it reflows to a scrolling column,
+because a phone is not a wallboard and clipping readings is worse than scrolling.
 
-- Figures wear theme tokens only (`fill-state-*`, `fill-chart-3`, `stroke-border`) so they
-  follow light and dark. The moon's unlit disc is `fill-foreground/20` deliberately: in dark
-  mode `foreground` is light and would erase the phase.
+- Figures wear theme tokens only (`fill-state-*`, `fill-chart-3`, `stroke-muted-foreground`)
+  so they follow light and dark. Two of those choices are not interchangeable: the moon's
+  unlit disc is `fill-foreground/20` because in dark mode `foreground` is light and would
+  erase the phase, and `DomePlan`'s wall is `muted-foreground` rather than `border` because
+  in dark mode `--border` and `--muted` are the same value, so a bordered wall around a muted
+  floor vanishes and takes the aperture's "gap in the wall" reading with it.
+- **`UNKNOWN` is a first-class third state on the board**, styled neutrally rather than as an
+  alarm, and it is not decorative: aborting a shutter move leaves `DOME_SHUTTER` in Alert
+  with "Status: unknown.", and a disconnected driver is repeating its last reading rather
+  than reporting hardware. Both land on `UNKNOWN`, and the dome figure draws it as a dashed
+  band rather than guessing a position.
+- **`DomePlan`'s rotation takes the shortest angle.** `ABS_DOME_POSITION` wraps and CSS does
+  not know that, so 359° to 1° would animate 358° backwards. `useContinuousBearing` in the
+  board adds the shortest signed step to a running total, and the figure takes that total -
+  which is legitimately outside [0, 360). It writes a ref during render and is safe only
+  because the update is idempotent; keep it that way or `StrictMode` double-counts.
+- **The board's units are its own, and that is forced.** An element's label belongs to its
+  `def`; a `set` carries values and the store merges nothing else, so the unit
+  `openmeteo_device.py` folds into its labels after the first fetch never reaches a browser.
+  The `UNITS` table mirrors what `weather-sim.ts` asks the API for; change the request and
+  change the table.
 - **Status colour never carries meaning alone** - the theme's Alert and Busy are ΔE 4.4 apart
-  under deuteranopia - so every state is written out as well as coloured.
+  under deuteranopia - so every state is written out as well as coloured, and each of the
+  dome figure's three shutter readings differs in *shape* before it differs in hue.

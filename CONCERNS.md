@@ -99,6 +99,8 @@ passing locally is evidence about timing, not evidence the client is right. Note
 never fails the same way twice, so a fix has to be argued from the protocol rather than
 confirmed by one green run.
 
+### `DeviceHarness` needs `config_dir=` and says nothing when it is missing
+
 `driver.run` and `serve --device` resolve `config_dir` from `Settings`; `DeviceHarness`
 does not, because the harness deliberately reads no ambient environment. The consequence
 is that a harness test written without the argument silently exercises the "nowhere to
@@ -111,6 +113,52 @@ The no-ambient rule is right and should stay. The silence is the problem.
 **Resolved by:** either an error from the persistence methods that names `config_dir=` when
 the harness is the caller, or a line in `docs/guides/writing-drivers.md` where the harness
 is introduced. The first is better; the second is cheap.
+
+### `openmeteo_device.py` relabels its elements where no client will ever look
+
+`_label_units` folds the API's unit strings into the `WEATHER_PARAMETERS` element labels
+after the first fetch ("Temperature (°F)"). Nothing reads them. An element's label is
+definition metadata: `client/store.py` says so in as many words - "Only values (and vector
+status) are copied; element metadata such as a label" - and `store.ts` does the same, both
+because INDI's own `oneNumber` carries no label attribute at all. Our JSON `set` happens to
+serialise the whole vector, so the new label does reach a browser, and every conforming
+client drops it on the floor.
+
+It matters because the units are real information a UI wants and the driver looks like it
+publishes them. The documentation demo's wallboard now carries its own `UNITS` table for
+exactly this reason, with a comment pointing here; that table has to be kept in step with
+`weather-sim.ts`'s fetch parameters by hand, which is the cost of the gap.
+
+**Resolved by:** deciding where a unit belongs. Re-announcing the property (`_announce`)
+once the labels change is the cheap answer and makes the existing code work, at the price of
+a second `def` mid-session. Carrying units as their own property, or in the element label at
+*definition* time with the driver naming the units it requests, are the other two. Whichever
+is chosen, `_label_units` as it stands is dead effort and should not be left looking like it
+works.
+
+### A safe range never reaches a client, so a reading cannot be drawn against its limits
+
+`openmeteo_device.py` judges every reading against a safe range - the low and high in its
+`READINGS` table - and publishes the verdict as one light per element in `WEATHER_STATUS`.
+The range itself is published nowhere. `WEATHER_PARAMETERS` defines its elements as
+`Number(name=..., label=..., format="%.1f")`, and `min`/`max` default to `None`, so what a
+browser gets for each reading is a number and one bit saying whether the driver likes it.
+
+That is the whole reason the wallboard's per-tile bar carries the status light and nothing
+else - a full-width bar for one bit, six times over. ISA's High Performance HMI guidance
+asks for an analog representation of a measurement "relative to normal, abnormal, and alarm
+conditions", and Las Cumbres draws min/max lines on every chart on its own board; a bar
+showing where in its safe range a value sits would say far more for the same ink. It is not
+drawn, because the numbers to draw it against do not exist on the wire, and a range invented
+in the UI sits behind a readout an operator closes a dome on.
+
+INDI's `min`/`max` would not be those numbers even if the driver set them: they bound what a
+client may *write*, which is not a safe range and means nothing on a read-only vector.
+
+**Resolved by:** the driver publishing the limits it judges against, rather than only its
+verdict - a `WEATHER_LIMITS` number vector with a low and a high per element name would let
+any client draw the reading against them, the panel included. This is the same "where does
+this metadata belong" question as the units entry above, and probably wants the same answer.
 
 ### The light outline Button's hairline is 1.24:1
 
