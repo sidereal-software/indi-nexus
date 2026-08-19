@@ -6,10 +6,30 @@ import { Empty, EmptyTitle } from "@/ui/empty";
 import { ScrollArea } from "@/ui/scroll-area";
 import { useMessages } from "../hooks";
 
-/** Render an ISO timestamp as a local time string, or empty when absent. */
+/**
+ * Render an INDI timestamp as a local time string, or empty when absent.
+ *
+ * **An INDI timestamp with no zone designator is UTC, and `new Date()` reads it
+ * as local.** INDI 1.7 stamps `YYYY-MM-DDTHH:MM:SS` in UTC and writes no `Z`
+ * (`indi_now()` says so on the Python side), but ECMAScript parses a date-time
+ * form without an offset as local time and only the `Z` form as UTC. So a
+ * conforming driver's message rendered here was displaced by the reader's whole
+ * UTC offset, silently, and a driver that happened to append a `Z` rendered
+ * correctly beside it - two clocks in one log, hours apart, which is exactly how
+ * this was found: the demo's two devices disagreed by seven hours on screen.
+ *
+ * A timestamp is one of the few things in a message log that an operator uses to
+ * reason about causality at 3am, so it gets the spec's reading rather than the
+ * language's default.
+ *
+ * @param timestamp - An INDI timestamp, with or without a zone designator.
+ * @returns The local time string, or empty when the stamp is absent or unusable.
+ */
 function formatTime(timestamp: string | null | undefined): string {
   if (!timestamp) return "";
-  const date = new Date(timestamp);
+  // Anything already carrying a zone (`Z`, `+01:00`, `-0500`) is left alone.
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/.test(timestamp);
+  const date = new Date(zoned ? timestamp : `${timestamp}Z`);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString();
 }
 

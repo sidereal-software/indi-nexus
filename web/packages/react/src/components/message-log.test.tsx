@@ -86,3 +86,33 @@ describe("MessageLog", () => {
     expect(screen.getByText("three")).toBeInTheDocument();
   });
 });
+
+describe("INDI timestamps", () => {
+  // Found on screen rather than in a test: the demo's two simulated devices
+  // stamped the same instant seven hours apart in one log, because one of them
+  // appended a `Z` and the other followed the spec. INDI writes UTC with no
+  // zone designator; ECMAScript reads that form as local.
+  it("reads an offsetless stamp as UTC, matching the same instant with a Z", () => {
+    const { socket } = renderConnected(<MessageLog />);
+
+    // 12:00:00 UTC, written both ways.
+    receive(socket, {
+      tag: "message",
+      device: "A",
+      timestamp: "2026-08-19T12:00:00",
+      message: "spec form",
+    });
+    receive(socket, {
+      tag: "message",
+      device: "B",
+      timestamp: "2026-08-19T12:00:00Z",
+      message: "with a Z",
+    });
+
+    const times = [...document.querySelectorAll(".tabular-nums")].map((el) => el.textContent);
+    expect(times).toHaveLength(2);
+    // Same instant, so the same rendered time. Before the fix these differed by
+    // the reader's whole UTC offset.
+    expect(times[0]).toBe(times[1]);
+  });
+});
