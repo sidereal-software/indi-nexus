@@ -97,11 +97,16 @@ def test_panel_drives_a_real_cpp_driver(panel):
             page.goto(panel.url, wait_until="networkidle")
             page.wait_for_selector(f"text={DEVICE}", timeout=30_000)
 
-            # A OneOfMany switch renders as a radio group, so the members are radios
-            # rather than plain buttons.
-            connect = page.get_by_role("radio", name="Connect", exact=True).first
+            # A switch vector renders as a fieldset of toggle buttons, so the members
+            # are buttons carrying `aria-pressed` - not radios carrying `aria-checked`.
+            # That is deliberate and is the assertion, not an implementation detail:
+            # the ARIA radio pattern is selection-follows-focus, so arrowing from
+            # Disconnect to Connect would tell a screen reader the selection had moved
+            # while nothing had gone on the wire. See `web/CLAUDE.md`. If this ever
+            # reads `radio` again, the panel has regressed rather than the test.
+            connect = page.get_by_role("button", name="Connect", exact=True).first
             connect.wait_for(timeout=30_000)
-            assert connect.get_attribute("aria-checked") == "false", (
+            assert connect.get_attribute("aria-pressed") == "false", (
                 "the simulator should start disconnected"
             )
 
@@ -109,9 +114,9 @@ def test_panel_drives_a_real_cpp_driver(panel):
 
             page.wait_for_function(
                 """() => {
-                    const el = [...document.querySelectorAll('[role=radio]')]
+                    const el = [...document.querySelectorAll('[aria-pressed]')]
                         .find((e) => e.textContent.trim() === 'Connect');
-                    return el && el.getAttribute('aria-checked') === 'true';
+                    return el && el.getAttribute('aria-pressed') === 'true';
                 }""",
                 timeout=30_000,
             )
