@@ -104,11 +104,14 @@ nav:
   - Getting started: getting-started.md
   - Docker: docker.md
   - Guides:
+      # The two halves of the project sit together at the top on purpose: the nav
+      # used to put the frontend guide fifth of six, below "The examples", which
+      # said the React layer was an afterthought as loudly as the old home page did.
       - Writing a driver: guides/writing-drivers.md
+      - Building a frontend: guides/frontend.md
       - 'Tutorial: real data, custom UI': guides/tutorial-open-meteo.md
       - Porting from pyINDI: guides/porting-from-pyindi.md
       - The examples: guides/examples.md
-      - Building a frontend: guides/frontend.md
       - Protocol concepts: guides/protocol.md
   - Python API:
       - Exceptions: reference/python/exceptions.md

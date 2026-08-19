@@ -130,12 +130,22 @@ export const MANIFEST = [
   {
     file: "docs/index.md",
     pkg: "react",
-    snippets: [{ name: "index-flat-panel", match: '<DevicePanel device="Flat Panel" />' }],
+    snippets: [
+      {
+        name: "index-focus-readout",
+        match: "function Focus() {",
+        imports: ['import { useIndiClient, useNumber } from "@indikit/react";'],
+      },
+      { name: "index-generated-panel", match: '<DevicePanel device="Focuser" />' },
+    ],
   },
   {
     file: "README.md",
     pkg: "react",
-    snippets: [{ name: "root-readme-app", match: '<DevicePanel device="Mount" />' }],
+    snippets: [
+      { name: "root-readme-app", match: '<DevicePanel device="Mount" />' },
+      { name: "root-readme-pointing", match: "export const Pointing = () => {" },
+    ],
   },
   {
     file: "docs/guides/tutorial-open-meteo.md",

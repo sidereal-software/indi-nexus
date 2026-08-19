@@ -42,101 +42,154 @@ reacts when a client asks to change one.
 
 ## A complete driver
 
-Here is a working driver for a flat-field lamp: a light panel with a brightness dial.
-Every line is explained underneath.
+Here is a working driver for a focuser: it drives the drawtube to a position, nudges it a
+step at a time, and stops when told. Every line is explained underneath.
 
 ```python
-from indikit.driver import Device, on_new
+from indikit.driver import Device, every, on_new
 from indikit.protocol import (
     IPState, ISRule, ISState, Number, NumberVector, Switch, SwitchVector,
 )
 
-class FlatPanel(Device):
-    """A flat-field lamp: on/off, and a brightness dial."""
+POS = "FOCUS_ABSOLUTE_POSITION"
 
-    name = "Flat Panel"                                            # (1)
+class Focuser(Device):
+    """A focuser: drive to a position, nudge a step, or stop."""
 
-    async def setup(self) -> None:                                 # (2)
-        self.define_connection()                                   # (3)
-        self.define_switch(
-            "LIGHT_CONTROL",
-            [Switch(name="ON", label="On"),
-             Switch(name="OFF", label="Off", value=ISState.ON)],   # (4)
-            rule=ISRule.ONE_OF_MANY,                               # (5)
-            label="Lamp",
-            group="Main Control",                                  # (6)
-        )
+    name = "Focuser"                                               # (1)
+
+    def __init__(self, name: str | None = None) -> None:
+        super().__init__(name)
+        self._target: float | None = None                          # (2)
+
+    async def setup(self) -> None:                                 # (3)
+        self.define_connection()                                   # (4)
         self.define_number(
-            "LIGHT_BRIGHTNESS",
-            [Number(name="BRIGHTNESS", label="Brightness",
-                    format="%.0f", min=0, max=255, value=128)],    # (7)
-            label="Brightness",
+            "ABS_FOCUS_POSITION",                                  # (5)
+            [Number(name=POS, label="Position",
+                    format="%.0f", min=0, max=50000, value=25000)], # (6)
+            label="Absolute position",
+            group="Main Control",                                  # (7)
+        )
+        self.define_switch(
+            "FOCUS_MOTION",
+            [Switch(name="FOCUS_INWARD", label="In"),
+             Switch(name="FOCUS_OUTWARD", label="Out",
+                    value=ISState.ON)],                            # (8)
+            rule=ISRule.ONE_OF_MANY,                               # (9)
+            label="Nudge",
             group="Main Control",
         )
-        self.message("Flat panel ready.")                          # (8)
-
-    async def on_disconnect(self) -> None:                         # (9)
-        self["LIGHT_CONTROL"].set({"OFF": ISState.ON}, state=IPState.IDLE)
-        self.message("Lamp turned off on disconnect.")
-
-    @on_new("LIGHT_CONTROL")                                       # (10)
-    async def _switch_lamp(self, vector: SwitchVector) -> None:
-        if not self.require_connected():                           # (11)
-            return
-        on = vector.selected() == "ON"                             # (12)
-        self["LIGHT_CONTROL"].set(                                 # (13)
-            {"ON" if on else "OFF": ISState.ON}, state=IPState.OK,
+        self.define_switch(
+            "FOCUS_ABORT_MOTION",
+            [Switch(name="ABORT", label="Stop")],
+            rule=ISRule.AT_MOST_ONE,                               # (10)
+            label="Abort",
+            group="Main Control",
         )
-        self.message(f"Lamp turned {'on' if on else 'off'}.")
+        self.message("Focuser ready.")                             # (11)
 
-    @on_new("LIGHT_BRIGHTNESS")
-    async def _set_brightness(self, vector: NumberVector) -> None:
+    async def on_disconnect(self) -> None:                         # (12)
+        self._halt()
+
+    @on_new("ABS_FOCUS_POSITION")                                  # (13)
+    async def _goto(self, vector: NumberVector) -> None:
+        if not self.require_connected():                           # (14)
+            return
+        wanted = vector.get(POS, 0.0)                              # (15)
+        self._target = max(0, min(50000, wanted))                  # (16)
+        self["ABS_FOCUS_POSITION"].set(state=IPState.BUSY)         # (17)
+
+    @on_new("FOCUS_MOTION")
+    async def _nudge(self, vector: SwitchVector) -> None:
         if not self.require_connected():
             return
-        wanted = vector.get("BRIGHTNESS", 0.0)                     # (14)
-        self["LIGHT_BRIGHTNESS"].set(
-            BRIGHTNESS=max(0, min(255, wanted)),                   # (15)
-            state=IPState.OK,
-        )
+        inward = vector.selected() == "FOCUS_INWARD"               # (18)
+        here = self["ABS_FOCUS_POSITION"].value(POS)               # (19)
+        self._target = max(0, min(50000, here + (-500 if inward else 500)))
+        self["ABS_FOCUS_POSITION"].set(state=IPState.BUSY)
+
+    @on_new("FOCUS_ABORT_MOTION")
+    async def _abort(self, vector: SwitchVector) -> None:
+        if not self.require_connected():
+            return
+        self._halt()                                               # (20)
+
+    @every(seconds=0.2, when_connected=True)                       # (21)
+    async def _step(self) -> None:
+        if self._target is None:                                   # (22)
+            return
+        here = self["ABS_FOCUS_POSITION"].value(POS)
+        if abs(self._target - here) <= 250:
+            arrived, self._target = self._target, None
+            self["ABS_FOCUS_POSITION"].set({POS: arrived},
+                                           state=IPState.OK)       # (23)
+            return
+        onward = here + (250 if self._target > here else -250)
+        self["ABS_FOCUS_POSITION"].set({POS: onward},
+                                       state=IPState.BUSY)
+
+    def _halt(self) -> None:
+        self._target = None
+        self["ABS_FOCUS_POSITION"].set(state=IPState.IDLE)
 
 if __name__ == "__main__":
-    FlatPanel.run()                                                # (16)
+    Focuser.run()                                                  # (24)
 ```
 
 1. The name clients see. Omit it and the class name is used.
-2. `setup()` runs once, when a client first asks what this device has. Everything the
+2. A focuser move takes time, so the driver has to remember where it is going. This is the
+   only state it keeps; everything else lives in the properties.
+3. `setup()` runs once, when a client first asks what this device has. Everything the
    device exposes is declared here.
-3. Every INDI device has a Connect button, and this one line is it. The
+4. Every INDI device has a Connect button, and this one line is it. The
    [next section](#connecting-and-disconnecting) covers what it brings with it.
-4. Elements carry a `name` (what the protocol uses) and a `label` (what a human reads).
-   This one starts Off.
-5. `ONE_OF_MANY` means exactly one of these is on, so a UI draws radio buttons. The other
-   rules are `AT_MOST_ONE` (zero or one) and `ANY_OF_MANY` (independent checkboxes).
-6. `group` is the section a UI files the property under.
-7. Numbers can declare a display `format` and a valid range, and a UI will respect both.
-8. `message()` sends a line to every client's log.
-9. `on_disconnect()` runs when the operator disconnects. Leave the instrument safe here: a
-   flat panel left lit fogs every exposure taken after the client went away.
-10. `@on_new("NAME")` is called when a client asks to change that property. Nothing changes
+5. These are libindi's own property names. Use the standard name where one exists and
+   KStars, Ekos and every other INDI client recognise the device without being told.
+6. Elements carry a `name` (what the protocol uses) and a `label` (what a human reads).
+   Numbers can also declare a display `format` and a valid range, and a UI respects both.
+7. `group` is the section a UI files the property under.
+8. This one starts On, so the vector has a selection from the first frame.
+9. `ONE_OF_MANY` means exactly one of these is on, so a UI draws radio buttons.
+10. `AT_MOST_ONE` means zero or one, which is what a momentary button wants: nothing is
+    ever "currently aborting", so the control springs back instead of latching. The third
+    rule is `ANY_OF_MANY`, independent checkboxes.
+11. `message()` sends a line to every client's log.
+12. `on_disconnect()` runs when the operator disconnects. Leave the instrument safe here: a
+    drawtube still travelling when the client walked away keeps going until it hits a hard
+    stop.
+13. `@on_new("NAME")` is called when a client asks to change that property. Nothing changes
     until you say so. The client is *requesting*.
-11. Commands are refused while the link is down. `require_connected()` sends the standard
+14. Commands are refused while the link is down. `require_connected()` sends the standard
     "not connected" error to the client, so the guard is these two lines and nothing else.
-12. `selected()` answers "which member did they turn on?". Use it rather than checking a
-    specific element, because a client usually sends only the one it changed.
-13. `set()` writes the values **and** tells every client, in one call. Turning one member
-    on automatically turns the others off, because the rule says so.
-14. `get(name, default)` reads a requested value without assuming it was sent.
-15. Hold the request to the `min`/`max` declared above rather than passing it straight
+15. `get(name, default)` reads a requested value without assuming it was sent.
+16. Hold the request to the `min`/`max` declared above rather than passing it straight
     through. A client may ask for anything, and that range is a promise about the hardware.
-16. `run()` serves the driver over standard input/output, which is how `indiserver`
+17. `Busy`, not `Ok`. The tube has not arrived, and a client drawing this as settled would
+    be telling the operator the move finished before it started. `Ok` comes at (23).
+18. `selected()` answers "which member did they turn on?". Use it rather than checking a
+    specific element, because a client usually sends only the one it changed.
+19. `value()` reads what a property currently holds, which is how a relative move finds
+    its own starting point.
+20. Abort is not a separate mechanism - it drops the target, and the next tick finds
+    nothing to do. A command that stops something is easiest to get right when it removes
+    the reason to keep going rather than racing whatever is going.
+21. `@every` runs this on a rolling deadline, and `when_connected=True` stops it while
+    disconnected, so the body never has to ask whether anyone is listening. The
+    [timer section](#reading-the-instrument-on-a-timer) covers it properly.
+22. Nothing to do when there is no target. A tick that finds no work is the resting state,
+    not an error.
+23. Land exactly on the target rather than overshooting and coming back, and settle to `Ok`
+    in the same call that publishes the final position.
+24. `run()` serves the driver over standard input/output, which is how `indiserver`
     launches it.
 
-That driver is [`examples/flat_panel.py`](https://github.com/sidereal-software/indikit/blob/main/examples/flat_panel.py)
-in the repository, and the test suite covers it, so it cannot quietly stop working. Run it
-in the reference panel:
+That driver is [`examples/focuser_device.py`](https://github.com/sidereal-software/indikit/blob/main/examples/focuser_device.py)
+in the repository - which names its constants and carries its docstrings - and the test
+suite covers it, so it cannot quietly stop working. Run it in the reference panel:
 
 ```bash
-indikit serve --device examples.flat_panel:FlatPanel
+indikit serve --device examples.focuser_device:Focuser
 ```
 
 ## Connecting and disconnecting
@@ -145,7 +198,7 @@ Instruments are not always plugged in, so INDI gives every device a standard Con
 button. `define_connection()` above is the whole of it: the switch, the two hooks that
 run on each transition, and the guard the handlers use.
 
-The flat panel has no link to open, so it overrides only `on_disconnect`. A driver with
+The focuser has no link to open, so it overrides only `on_disconnect`. A driver with
 hardware behind it overrides both:
 
 ```python
@@ -158,7 +211,7 @@ async def on_disconnect(self) -> None:
 
 `on_disconnect` is for leaving the instrument safe, not only for dropping a handle. The
 client is walking away, and anything still running keeps running unattended. That is why
-the panel puts the lamp out first.
+the focuser halts the motor before anything else.
 
 Three more things come with the connection switch:
 
@@ -202,8 +255,13 @@ Real instruments have to be asked. `@every` runs a method on a schedule:
 @every(seconds=1)
 async def poll(self) -> None:
     reading = self.read_hardware()
-    self["LIGHT_BRIGHTNESS"].set(BRIGHTNESS=reading, state=IPState.OK)
+    self["FOCUS_TEMPERATURE"].set(TEMPERATURE=reading, state=IPState.OK)
 ```
+
+A focuser is a good example of why this is a separate job rather than something the move
+handler does: the drawtube's position is whatever the driver last commanded, but the
+temperature beside it is a reading only the hardware knows, and it changes whether or not
+anybody is driving the instrument.
 
 A tick that fails is reported to the client and the driver carries on, so one bad reading
 never kills a driver. Ticks are scheduled against a rolling deadline rather than by
@@ -539,15 +597,23 @@ A driver is an ordinary object, so a test can drive it and check what it told it
 ```python
 from indikit.testing import DeviceHarness
 
-async def test_lamp_turns_on():
-    harness = DeviceHarness(FlatPanel())
+async def test_focuser_stops_when_told():
+    harness = DeviceHarness(Focuser())
     await harness.setup()                           # what indiserver sends at startup
     await harness.write("CONNECTION", CONNECT=True) # the operator presses Connect
 
-    await harness.write("LIGHT_CONTROL", ON=True)   # and then clicks the lamp on
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=40000)
+    await harness.tick("_step")                     # one turn of the motor, no waiting
+    moving = harness.latest("ABS_FOCUS_POSITION")
+    assert moving.state is IPState.BUSY
 
-    assert harness.latest("LIGHT_CONTROL").get("ON") is ISState.ON
-    assert "turned on" in harness.messages[-1]
+    await harness.write("FOCUS_ABORT_MOTION", ABORT=True)
+    assert harness.latest("ABS_FOCUS_POSITION").state is IPState.IDLE
+
+    await harness.tick("_step")                     # the tick now finds nothing to do
+    assert harness.latest("ABS_FOCUS_POSITION").get(
+        "FOCUS_ABSOLUTE_POSITION"
+    ) == moving.get("FOCUS_ABSOLUTE_POSITION")
 ```
 
 - `setup()` triggers the device's own `setup()`, capturing every property it defines.

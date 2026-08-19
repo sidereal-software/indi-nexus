@@ -84,9 +84,16 @@ export const Readout = () => {
 };
 ```
 
-There are hooks for each property kind (`useNumber`, `useText`, `useSwitch`, `useLight`),
-for whole properties and devices (`useProperty`, `useDevice`, `useDevices`), and for the
-bridge's message log (`useMessages`).
+Ten hooks in all: one per property kind, already narrowed to that kind's type
+(`useNumber`, `useText`, `useSwitch`, `useLight`); one for a single element with its type
+intact (`useElement`); the structural ones (`useProperty`, `useDevice`, `useDevices`,
+`useConnection`); and the bridge's message log (`useMessages`). Each subscribes narrowly
+enough that a changing number re-renders the component showing that number and nothing
+else.
+
+All ten are read-only. Writes go through `useIndiClient()` and its `setNumber`, `setText`,
+`setSwitch` and `setBlob` - so the call that moves an instrument is visible where it
+happens, rather than hidden behind a setter that looks like local state.
 
 ## The components
 
@@ -112,7 +119,7 @@ that browser alone whenever it refuses to forward a frame: `indiserver` is down,
 is full, or the frame is not one a client may send.
 
 Nothing retries it, no control changes appearance, and the log line is the only surface the
-failure has. Leaving it out leaves a user watching a control that simply does not move.
+failure has. Leaving it out leaves a user watching a control that never moves.
 
 `DeviceConfigDialog` is the one that is more than a rendering of a property. It offers
 `CONFIG_PROCESS`, which every libindi driver carries, from a sidebar entry that opens a

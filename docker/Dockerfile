@@ -143,7 +143,7 @@ WORKDIR /home/indi
 # device with a Connect button, coordinates and a slew. A C++ driver nobody here wrote
 # is the better default: it makes the out-of-the-box view a demonstration of interop
 # rather than of our own serializer talking to our own parser. Point INDI_DRIVERS at
-# /opt/indikit/examples/flat_panel.py to see an INDIkit driver instead.
+# /opt/indikit/examples/focuser_device.py to see an INDIkit driver instead.
 ENV INDI_DRIVERS=indi_simulator_telescope
 
 EXPOSE 8000 7624

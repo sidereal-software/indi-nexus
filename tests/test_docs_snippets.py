@@ -134,16 +134,19 @@ CLAIMS = [
     Claim("README.md", "class Mount(Device)", RUNS, "test_readme_mount_driver_runs"),
     Claim("README.md", "from my_driver import MyDriver", RUNS, "test_readme_harness_snippet_runs"),
     # -- docs/index.md ------------------------------------------------------ #
-    Claim("docs/index.md", "MIN_BRIGHTNESS = 0", EXCERPT, "examples/flat_panel.py"),
+    Claim("docs/index.md", "class Focuser(Device)", RUNS, "test_index_focuser_driver_runs"),
     Claim(
-        "docs/index.md", "async def test_lamp_turns_on", RUNS, "test_index_page_test_snippet_runs"
+        "docs/index.md",
+        "async def test_focuser_travels_to_its_target",
+        RUNS,
+        "test_index_page_test_snippet_runs",
     ),
     # -- docs/guides/writing-drivers.md ------------------------------------- #
     Claim(
         "docs/guides/writing-drivers.md",
-        "class FlatPanel(Device)",
+        "class Focuser(Device)",
         RUNS,
-        "test_driver_guide_flat_panel_runs",
+        "test_driver_guide_focuser_runs",
     ),
     Claim(
         "docs/guides/writing-drivers.md",
@@ -219,7 +222,7 @@ CLAIMS = [
     ),
     Claim(
         "docs/guides/writing-drivers.md",
-        "async def test_lamp_turns_on",
+        "async def test_focuser_stops_when_told",
         RUNS,
         "test_driver_guide_test_snippet_runs",
     ),
@@ -609,76 +612,111 @@ async def test_readme_harness_snippet_runs(tmp_path: Any) -> None:
         sys.modules.pop("my_driver", None)
 
 
+async def test_index_focuser_driver_runs() -> None:
+    """Run the front page's driver column, exactly as the page prints it.
+
+    The page shows it without imports, so the driver and protocol names are
+    supplied the way the surrounding prose says they are imported - the same
+    treatment the README's mount gets.
+    """
+    code = snippet("docs/index.md", "class Focuser(Device)")
+    scope = execute(code, dict(_DRIVER_NAMES))
+
+    harness = DeviceHarness(scope["Focuser"]())
+    await harness.setup()
+    await harness.write("CONNECTION", CONNECT=True)
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=31000)
+
+    assert harness.latest("ABS_FOCUS_POSITION").get("FOCUS_ABSOLUTE_POSITION") == 31000
+
+
 async def test_index_page_test_snippet_runs() -> None:
     """Run the front page's example test, exactly as written.
 
-    It imports ``flat_panel``, so ``examples/`` goes on the path the way a
+    It imports ``focuser_device``, so ``examples/`` goes on the path the way a
     reader's own directory would be.
     """
-    code = snippet("docs/index.md", "async def test_lamp_turns_on")
+    code = snippet("docs/index.md", "async def test_focuser_travels_to_its_target")
     sys.path.insert(0, str(REPO_ROOT / "examples"))
     try:
         scope = execute(code)
-        await scope["test_lamp_turns_on"]()
+        await scope["test_focuser_travels_to_its_target"]()
     finally:
         sys.path.remove(str(REPO_ROOT / "examples"))
-        sys.modules.pop("flat_panel", None)
+        sys.modules.pop("focuser_device", None)
 
 
-def _guide_flat_panel() -> type[Device]:
-    """Return the driver guide's complete FlatPanel, built from the page.
+def _guide_focuser() -> type[Device]:
+    """Return the driver guide's complete Focuser, built from the page.
 
     Returns
     -------
     cls : type
-        The ``FlatPanel`` class the guide's first fence defines.
+        The ``Focuser`` class the guide's first fence defines.
     """
-    code = snippet("docs/guides/writing-drivers.md", "class FlatPanel(Device)")
-    return execute(code, dict(_DRIVER_NAMES))["FlatPanel"]
+    code = snippet("docs/guides/writing-drivers.md", "class Focuser(Device)")
+    return execute(code, dict(_DRIVER_NAMES))["Focuser"]
 
 
-async def test_driver_guide_flat_panel_runs() -> None:
+async def test_driver_guide_focuser_runs() -> None:
     """Run the driver guide's complete driver and check every claim under it.
 
-    The numbered notes below the fence promise an exclusive switch, a clamped
-    brightness, a refusal while disconnected, and a lamp that goes out on
-    disconnect. All four are asserted here, because a snippet that merely
-    imports proves none of them.
+    The numbered notes below the fence promise a refusal while disconnected, a
+    clamped target, Busy while travelling and Ok on arrival, an abort that
+    leaves later ticks with nothing to do, and a halt when the client goes away.
+    All of them are asserted here, because a snippet that merely imports proves
+    none of them.
     """
-    harness = DeviceHarness(_guide_flat_panel()())
+    harness = DeviceHarness(_guide_focuser()())
     await harness.setup()
+    start = harness.latest("ABS_FOCUS_POSITION").get("FOCUS_ABSOLUTE_POSITION")
 
-    # (11) "Commands are refused while the link is down."
-    await harness.write("LIGHT_CONTROL", ON=True)
-    assert harness.latest("LIGHT_CONTROL").get("ON") is ISState.OFF
+    # (14) "Commands are refused while the link is down."
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=30000)
+    await harness.tick("_step")
+    assert harness.latest("ABS_FOCUS_POSITION").get("FOCUS_ABSOLUTE_POSITION") == start
 
     await harness.write("CONNECTION", CONNECT=True)
-    await harness.write("LIGHT_CONTROL", ON=True)
-    # (13) "Turning one member on automatically turns the others off."
-    assert harness.latest("LIGHT_CONTROL").get("ON") is ISState.ON
-    assert harness.latest("LIGHT_CONTROL").get("OFF") is ISState.OFF
-    assert "turned on" in harness.messages[-1]
 
-    # (15) "hold the request to it rather than passing it straight through"
-    await harness.write("LIGHT_BRIGHTNESS", BRIGHTNESS=9000.0)
-    assert harness.latest("LIGHT_BRIGHTNESS").get("BRIGHTNESS") == pytest.approx(255.0)
+    # (16) "hold the request to the min/max declared above"
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=9_000_000.0)
+    # (17) "Busy, not Ok. The tube has not arrived"
+    assert harness.latest("ABS_FOCUS_POSITION").state is IPState.BUSY
+    for _ in range(4):
+        await harness.tick("_step")
+    here = harness.latest("ABS_FOCUS_POSITION").get("FOCUS_ABSOLUTE_POSITION")
+    assert here <= 50000  # never past the advertised maximum
 
-    # (9) "a flat panel left lit fogs every exposure taken after the client went away"
+    # (20) abort "drops the target, and the next tick finds nothing to do"
+    await harness.write("FOCUS_ABORT_MOTION", ABORT=True)
+    assert harness.latest("ABS_FOCUS_POSITION").state is IPState.IDLE
+    stopped = harness.latest("ABS_FOCUS_POSITION").get("FOCUS_ABSOLUTE_POSITION")
+    await harness.tick("_step")
+    assert harness.latest("ABS_FOCUS_POSITION").get("FOCUS_ABSOLUTE_POSITION") == stopped
+
+    # (23) "Land exactly on the target ... and settle to Ok"
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=stopped + 250)
+    await harness.tick("_step")
+    landed = harness.latest("ABS_FOCUS_POSITION")
+    assert landed.get("FOCUS_ABSOLUTE_POSITION") == stopped + 250
+    assert landed.state is IPState.OK
+
+    # (12) "a drawtube still travelling when the client walked away keeps going"
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=40000)
     await harness.write("CONNECTION", DISCONNECT=True)
-    assert harness.latest("LIGHT_CONTROL").get("OFF") is ISState.ON
-    assert harness.latest("LIGHT_CONTROL").state is IPState.IDLE
+    assert harness.latest("ABS_FOCUS_POSITION").state is IPState.IDLE
 
 
 async def test_driver_guide_test_snippet_runs() -> None:
     """Run the guide's own testing example, with the page's driver behind it.
 
-    The snippet names ``FlatPanel`` and ``ISState`` without importing them,
-    because the page introduced both further up. Handing it exactly those two
-    is what a reader following the page top to bottom has.
+    The snippet names ``Focuser`` and ``IPState`` without importing them, because
+    the page introduced both further up. Handing it exactly those two is what a
+    reader following the page top to bottom has.
     """
-    code = snippet("docs/guides/writing-drivers.md", "async def test_lamp_turns_on")
-    scope = execute(code, {"FlatPanel": _guide_flat_panel(), "ISState": ISState})
-    await scope["test_lamp_turns_on"]()
+    code = snippet("docs/guides/writing-drivers.md", "async def test_focuser_stops_when_told")
+    scope = execute(code, {"Focuser": _guide_focuser(), "IPState": IPState})
+    await scope["test_focuser_stops_when_told"]()
 
 
 async def test_driver_guide_connect_time_properties_run() -> None:
@@ -713,14 +751,14 @@ async def test_driver_guide_timer_snippet_runs() -> None:
     code = snippet("docs/guides/writing-drivers.md", "reading = self.read_hardware()")
     setup = (
         "async def setup(self) -> None:\n"
-        '    self.define_number("LIGHT_BRIGHTNESS", [Number(name="BRIGHTNESS")])\n\n'
+        '    self.define_number("FOCUS_TEMPERATURE", [Number(name="TEMPERATURE")])\n\n'
     )
     cls = in_device(setup + code, read_hardware=lambda self: 42.0)
     harness = DeviceHarness(cls())
     await harness.setup()
     await harness.tick("poll")
-    assert harness.latest("LIGHT_BRIGHTNESS").get("BRIGHTNESS") == pytest.approx(42.0)
-    assert harness.latest("LIGHT_BRIGHTNESS").state is IPState.OK
+    assert harness.latest("FOCUS_TEMPERATURE").get("TEMPERATURE") == pytest.approx(42.0)
+    assert harness.latest("FOCUS_TEMPERATURE").state is IPState.OK
 
 
 async def test_driver_guide_non_finite_reading_snippet_runs() -> None:

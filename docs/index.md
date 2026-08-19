@@ -1,118 +1,118 @@
 # INDIkit
 
-INDIkit is a Python toolkit for writing INDI instrument drivers. The plumbing is already
-done. A driver is one Python class, it runs under the `indiserver` you already have, you
-can test all of it with nothing plugged in, and a browser control panel comes with it.
+Control astronomical instruments from Python, and build the screens operators work from.
 
-If INDI itself is new to you, [the protocol page](guides/protocol.md) has the vocabulary.
+Telescopes, domes, cameras, focusers and weather stations at an observatory all speak a
+common language called [INDI](guides/protocol.md). A *driver* sits between each instrument
+and everything else, translating. INDIkit is for writing those drivers in modern Python -
+and for building the interfaces an operator drives them from.
 
-To see it running first, [open the live demo](demo-app/index.html): a simulated dome and a
-simulated weather station, in the real panel, with nothing installed.
+Both halves are first-class. Take one, or both.
 
-Here is a complete driver for a flat-field lamp, a switch and a brightness dial:
+<div class="grid" markdown>
 
-```python title="examples/flat_panel.py, trimmed for this page"
-from indikit.driver import Device, on_new
-from indikit.protocol import (
-    IPState, ISRule, ISState, Number, NumberVector, Switch, SwitchVector,
-)
+<div markdown>
 
-MIN_BRIGHTNESS = 0
-MAX_BRIGHTNESS = 255
+### Write the driver
+
+```python
+POS = "FOCUS_ABSOLUTE_POSITION"
 
 
-class FlatPanel(Device):
-    """A flat-field lamp: on/off, and a brightness dial."""
-
-    name = "Flat Panel"
+class Focuser(Device):
+    name = "Focuser"
 
     async def setup(self) -> None:
-        """Define the connection switch, the lamp and the dial."""
         self.define_connection()
-        self.define_switch(
-            "LIGHT_CONTROL",
-            [
-                Switch(name="ON", label="On"),
-                Switch(name="OFF", label="Off", value=ISState.ON),
-            ],
-            # Exactly one of these is on, so a client draws radio
-            # buttons, and turning one on turns the other off
-            # without the driver saying so.
-            rule=ISRule.ONE_OF_MANY,
-            label="Lamp",
-            group="Main Control",
-        )
         self.define_number(
-            "LIGHT_BRIGHTNESS",
-            [
-                Number(
-                    name="BRIGHTNESS",
-                    label="Brightness",
-                    format="%.0f",
-                    min=MIN_BRIGHTNESS,
-                    max=MAX_BRIGHTNESS,
-                    value=128,
-                )
-            ],
-            label="Brightness",
-            group="Main Control",
+            "ABS_FOCUS_POSITION",
+            [Number(
+                name=POS,
+                min=0,
+                max=50000,
+                value=25000,
+            )],
         )
-        self.message("Flat panel ready.")
 
-    async def on_disconnect(self) -> None:
-        """Turn the lamp off: a panel left lit fogs the next exposure."""
-        self["LIGHT_CONTROL"].set({"OFF": ISState.ON}, state=IPState.IDLE)
-        self.message("Lamp turned off on disconnect.")
-
-    @on_new("LIGHT_CONTROL")
-    async def _switch_lamp(self, vector: SwitchVector) -> None:
-        """Turn the lamp on or off in response to a client write."""
-        if not self.require_connected():
-            return
-        on = vector.selected() == "ON"
-        self["LIGHT_CONTROL"].set(
-            {"ON" if on else "OFF": ISState.ON},
+    @on_new("ABS_FOCUS_POSITION")
+    async def goto(
+        self, v: NumberVector
+    ) -> None:
+        self["ABS_FOCUS_POSITION"].set(
+            {POS: v.get(POS, 0.0)},
             state=IPState.OK,
         )
-        self.message(f"Lamp turned {'on' if on else 'off'}.")
-
-    @on_new("LIGHT_BRIGHTNESS")
-    async def _set_brightness(self, vector: NumberVector) -> None:
-        """Clamp a requested brightness to the advertised range."""
-        if not self.require_connected():
-            return
-        wanted = vector.get("BRIGHTNESS", 0.0)
-        # The advertised min/max is a promise about the hardware.
-        clamped = max(MIN_BRIGHTNESS, min(MAX_BRIGHTNESS, wanted))
-        self["LIGHT_BRIGHTNESS"].set(BRIGHTNESS=clamped, state=IPState.OK)
-
-
-if __name__ == "__main__":
-    FlatPanel.run()
 ```
 
-That is
-[`examples/flat_panel.py`](https://github.com/sidereal-software/indikit/blob/main/examples/flat_panel.py),
-trimmed for this page. The file in the repository carries its module header and fuller
-docstrings, and folds nothing.
+Properties, ranges and labels are declared once. The read loop, the XML, the dispatch and
+the connection lifecycle are already written.
 
-The test suite covers it, and the [driver guide](guides/writing-drivers.md) builds it one
-property at a time.
+</div>
 
-## The plumbing it replaces
+<div markdown>
 
-INDIkit stands in for the driver you would otherwise hand-roll:
+### Build the UI
 
-- the read loop over stdin;
-- the XML parser that has to survive a start tag split across two reads;
-- the dispatch chain on property name;
-- the timer whose period drifts by the length of each tick;
-- the poll that lands on top of a command that arrived while it was out.
+```tsx
+function Focus() {
+  const at = useNumber(
+    "Focuser",
+    "ABS_FOCUS_POSITION",
+    "FOCUS_ABSOLUTE_POSITION",
+  );
+  const client = useIndiClient();
 
-The last two are handled explicitly. `@every` runs against a rolling deadline, so a job's
-period does not drift by the tick's own duration.
-[Ticks and client writes never overlap](guides/writing-drivers.md#serialised-dispatch), so
-a slow poll cannot publish pre-write state over a button the operator just pressed.
+  const nudge = () => {
+    const to = (at ?? 0) + 500;
+    client.setNumber(
+      "Focuser",
+      "ABS_FOCUS_POSITION",
+      { FOCUS_ABSOLUTE_POSITION: to },
+    );
+  };
+
+  return (
+    <>
+      <output>{at ?? "-"}</output>
+      <button onClick={nudge}>
+        Out
+      </button>
+    </>
+  );
+}
+```
+
+Ten typed hooks read the live instrument. Every one re-renders only the components that
+asked for the value that changed.
+
+</div>
+
+</div>
+
+## Or write no UI at all
+
+Every INDI device says what it has: properties, kinds, ranges, labels. So the panel can be
+generated from the device rather than written per instrument.
+
+```tsx
+import { IndiProvider, DevicePanel } from "@indikit/react";
+import "@indikit/react/styles.css";
+
+export function App() {
+  return (
+    <IndiProvider url="ws://localhost:8000/ws">
+      <DevicePanel device="Focuser" />
+    </IndiProvider>
+  );
+}
+```
+
+Numbers get their units and limits. Switches become radio buttons or checkboxes according
+to the INDI rule. Lights become a coloured dot with its state written beside it, BLOBs
+become download links, and read-only properties are not editable.
+
+That panel also ships compiled into the Python wheel, so `indikit serve` puts one in front
+of your driver with no frontend build at all.
 
 ## Install and run
 
@@ -131,7 +131,7 @@ to install first.
 
 [Getting started, a step at a time](getting-started.md){ .md-button .md-button--primary }
 
-## The demo in your browser
+## See it running
 
 One page runs two simulated drivers - a dome and a weather station - through a single
 client, speaking the same JSON the FastAPI bridge speaks. The simulation runs in the page
@@ -143,10 +143,40 @@ recorded reply when the API cannot be reached. The message log narrates what bot
 are saying, the way it would at a real site.
 
 The same two devices are shown two ways, switchable: the panel that generates itself from
-whatever the drivers declare, and a hand-built observatory wallboard. The
-[tutorial](guides/tutorial-open-meteo.md) writes the weather driver and the wallboard.
+whatever the drivers declare, and a hand-built observatory wallboard. The wallboard is
+built from the hooks below, so it is also the worked answer to "what if I want my own
+screen". The [tutorial](guides/tutorial-open-meteo.md) writes both it and the weather
+driver.
 
 [Open the live demo](demo-app/index.html){ .md-button }
+
+## The hooks
+
+`@indikit/react` is a real library, not a wrapper around the panel. Ten hooks read the
+live instrument, each one subscribing narrowly enough that a changing number re-renders
+the component showing that number and nothing else.
+
+| Hook | Returns |
+|---|---|
+| `useConnection()` | whether the bridge is up, and what it is connected to |
+| `useDevices()` | the device names the hub currently knows |
+| `useDevice(device)` | one device's whole property set |
+| `useProperty(device, name)` | a whole vector, with its state and metadata |
+| `useElement(device, name, element)` | one element, with its type intact |
+| `useNumber(device, name, element)` | a number's value |
+| `useText(device, name, element)` | a text element's value |
+| `useSwitch(device, name, element)` | a switch's value, as a boolean |
+| `useLight(device, name, element)` | a light's `IPState` |
+| `useMessages(limit)` | what the devices have been saying |
+
+The read hooks are read-only on purpose. Writes go through `useIndiClient()` and its
+`setNumber` / `setText` / `setSwitch` / `setBlob`, so the thing that mutates an instrument
+is always visible at the call site rather than hidden in a setter.
+
+Components come with it too - `DevicePanel`, `PropertyVectorCard`, the element controls,
+the message log - built on shadcn/ui, and styled by your own Tailwind theme.
+
+[Building a frontend](guides/frontend.md){ .md-button }
 
 ## Testing without hardware
 
@@ -154,21 +184,24 @@ A driver is an ordinary Python object, so a test can drive it and read back what
 its clients:
 
 ```python
-from indikit.protocol import ISState
+from indikit.protocol import IPState
 from indikit.testing import DeviceHarness
 
-from flat_panel import FlatPanel
+from focuser_device import Focuser
 
 
-async def test_lamp_turns_on():
-    harness = DeviceHarness(FlatPanel())
+async def test_focuser_travels_to_its_target():
+    harness = DeviceHarness(Focuser())
     await harness.setup()  # what indiserver sends at startup
     await harness.write("CONNECTION", CONNECT=True)  # the operator presses Connect
 
-    await harness.write("LIGHT_CONTROL", ON=True)  # and clicks On
+    await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=26000)
 
-    assert harness.latest("LIGHT_CONTROL").get("ON") is ISState.ON
-    assert "turned on" in harness.messages[-1]
+    # Busy while it travels, so a client never draws the move as finished early.
+    assert harness.latest("ABS_FOCUS_POSITION").state is IPState.BUSY
+    for _ in range(4):
+        await harness.tick("_step")  # one turn of the @every job, no waiting
+    assert harness.latest("ABS_FOCUS_POSITION").state is IPState.OK
 ```
 
 Nothing in that test opens a socket, starts a subprocess, parses XML or touches an
@@ -177,9 +210,10 @@ instrument.
 `write()` builds the partial vector a real client sends and routes it through the device's
 real dispatch: the `@on_new` map, the device-name guard, the serialisation lock. A handler
 that passes here works under `indiserver`. `tick(job)` runs one iteration of an `@every`
-job without waiting out its interval.
+job without waiting out its interval, which is how a move that takes seconds is tested in
+microseconds.
 
-Every example in the repository is covered this way, the flat panel above included. The
+Every example in the repository is covered this way, the focuser above included. The
 driver guide's [testing section](guides/writing-drivers.md#testing-without-hardware) is
 the full account.
 
@@ -189,30 +223,20 @@ the full account.
     [pytest-asyncio](https://pytest-asyncio.readthedocs.io/) in `asyncio_mode = "auto"`.
     Without that, wrap the body in `asyncio.run`.
 
-## The generated control panel
+## What the driver SDK replaces
 
-Every INDI device says what it has: properties, kinds, ranges, labels. The UI can
-therefore be generated from the device rather than written per instrument.
+INDIkit already contains the parts every driver would otherwise write again:
 
-```tsx
-import { IndiProvider, DevicePanel } from "@indikit/react";
-import "@indikit/react/styles.css";
+- the read loop over stdin;
+- the XML parser that has to survive a start tag split across two reads;
+- the dispatch chain on property name;
+- the timer whose period drifts by the length of each tick;
+- the poll that publishes stale state over a command that arrived while it was running.
 
-export function App() {
-  return (
-    <IndiProvider url="ws://localhost:8000/ws">
-      <DevicePanel device="Flat Panel" />
-    </IndiProvider>
-  );
-}
-```
-
-Numbers get their units and limits. Switches become radio buttons or checkboxes according
-to the INDI rule. Lights become a coloured dot with its state written beside it, BLOBs
-become download links, and read-only properties are not editable.
-
-For a purpose-built screen, the same data is on hooks.
-[Building a frontend](guides/frontend.md) covers both.
+The last two are handled explicitly. `@every` runs against a rolling deadline, so a job's
+period does not drift by the tick's own duration.
+[Ticks and client writes never overlap](guides/writing-drivers.md#serialised-dispatch), so
+a slow poll cannot publish pre-write state over a button the operator just pressed.
 
 ## How the pieces fit
 
@@ -250,7 +274,8 @@ flowchart LR
   and watch from Python.
 - The bridge puts that cache behind a WebSocket so a browser can show it.
 
-You do not need all three. Writing only a driver is the common case.
+You do not need all three. Writing only a driver is the common case, and so is building a
+screen against an observatory somebody else runs.
 
 ## What this does not do
 
@@ -273,9 +298,17 @@ You do not need all three. Writing only a driver is the common case.
 -   **Writing a driver**
 
     Defining properties, polling with `@every`, handling client writes with `@on_new`,
-    the connection lifecycle, and testing the result. Builds the flat panel above.
+    the connection lifecycle, and testing the result. Builds the focuser above.
 
     [Write a driver](guides/writing-drivers.md)
+
+-   **Building a frontend**
+
+    The provider, the ten hooks, writing back through the client, and the generated
+    panel when you would rather not draw one. Builds the observatory wallboard from the
+    demo.
+
+    [Build a frontend](guides/frontend.md)
 
 -   **Coming from pyINDI**
 
@@ -300,6 +333,6 @@ You do not need all three. Writing only a driver is the common case.
     [Driver SDK](reference/python/driver.md) ·
     [Testing](reference/python/testing.md) ·
     [Client](reference/python/client.md) ·
-    [Protocol](reference/python/protocol.md)
+    [`@indikit/react`](reference/typescript/react/index.md)
 
 </div>

@@ -162,8 +162,11 @@ assert harness.latest("TELEMETRY").state is IPState.OK
 
 ## Building a frontend
 
-Install `@indikit/react`, point it at a bridge and name a device. That is a working
-control panel:
+Two ways, and neither is a fallback for the other.
+
+**The panel draws itself.** Every INDI device declares what it has - properties, kinds,
+ranges, labels - so a working control panel needs no per-instrument code, and works for a
+device INDIkit has never seen:
 
 ```tsx
 import { IndiProvider, DevicePanel } from "@indikit/react";
@@ -176,6 +179,32 @@ export const App = () => (
 );
 ```
 
+**Or draw your own.** Ten typed hooks read the live instrument, each subscribing narrowly
+enough that a changing number re-renders the component showing that number and nothing
+else:
+
+```tsx
+import { useNumber } from "@indikit/react";
+
+export const Pointing = () => {
+  const ra = useNumber("Mount", "EQUATORIAL_EOD_COORD", "RA");
+  const dec = useNumber("Mount", "EQUATORIAL_EOD_COORD", "DEC");
+
+  return <p>{ra?.toFixed(4) ?? "-"} / {dec?.toFixed(4) ?? "-"}</p>;
+};
+```
+
+`useConnection`, `useDevices`, `useDevice`, `useProperty` and `useElement` give you the
+structure. `useNumber`, `useText`, `useSwitch` and `useLight` give you one value, already
+narrowed to its type. `useMessages` is what the devices have been saying.
+
+Writes go through `useIndiClient()` and its `setNumber` / `setText` / `setSwitch`, not
+through a setter on the hook - so the call that moves an instrument is visible at the point
+it happens rather than buried in a component's state.
+
+The observatory wallboard in the live demo is built from these, and the
+[frontend guide](https://indikit.sidereal.software/guides/frontend/) builds it with you.
+
 Name your app's origin when you start the bridge:
 
 ```bash
@@ -186,14 +215,11 @@ The bridge accepts only its own origin by default, and your app is served from a
 one. A WebSocket is exempt from the same-origin policy and from CORS, so that check is the
 only thing standing between `/ws` and any page an operator happens to visit.
 
-`DevicePanel` builds itself from whatever the device says it has, so it works for a device
-INDIkit has never seen. For your own layout, the same data is available through hooks.
-The [frontend guide](https://indikit.sidereal.software/guides/frontend/) covers both.
-
 ## The examples
 
-Every example in `examples/` runs and is covered by tests. Start with `flat_panel.py` for
-the shape of a driver, then `weather_device.py`, the one to copy for real hardware.
+Every example in `examples/` runs and is covered by tests. Start with `focuser_device.py`
+for the shape of a driver - a position, a nudge, a stop, and a move that takes time - then
+`weather_device.py`, the one to copy for real hardware.
 
 There are also a dome, a telescope, a CCD, a two-device camera, a driver for a live public
 weather API, and three clients: `monitor_client.py` watches, `scripted_session.py` drives,

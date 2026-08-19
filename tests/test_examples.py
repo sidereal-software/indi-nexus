@@ -13,6 +13,13 @@ from examples.ccd_device import AMBIENT_C, CCDSimulator
 from examples.demo_device import Demo
 from examples.dome_device import PARK_AZ, DomeSimulator
 from examples.flat_panel import MAX_BRIGHTNESS, MIN_BRIGHTNESS, FlatPanel
+from examples.focuser_device import (
+    MAX_POSITION,
+    MIN_POSITION,
+    NUDGE_STEPS,
+    STEPS_PER_TICK,
+    Focuser,
+)
 from examples.guided_camera import MAIN_SIZE, CameraLink, GuideChip, MainChip
 from examples.monitor_client import format_event, monitor
 from examples.scripted_session import session, slew, watch_link
@@ -1396,5 +1403,177 @@ def test_scripted_session_reports_a_send_with_no_link():
         with pytest.raises(NotConnectedError):
             await slew(client, "Telescope Simulator", 1.0, 85.0, timeout=1)
         assert seen == []  # never connected, so nothing was ever announced
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The focuser example (the "Writing a driver" guide)                           #
+# --------------------------------------------------------------------------- #
+async def _focuser(*, connect: bool = True) -> DeviceHarness:
+    """Build a set-up focuser, optionally connected as an operator would first.
+
+    Parameters
+    ----------
+    connect : bool, optional
+        Whether to turn the CONNECTION switch on before handing the harness back.
+
+    Returns
+    -------
+    harness : DeviceHarness
+        The harness wrapping a freshly set-up focuser.
+    """
+    harness = DeviceHarness(Focuser())
+    await harness.setup()
+    if connect:
+        await harness.write("CONNECTION", CONNECT=True)
+    return harness
+
+
+def _position(harness: DeviceHarness) -> float:
+    """Return the focuser's current absolute position.
+
+    Parameters
+    ----------
+    harness : DeviceHarness
+        The harness driving the focuser.
+
+    Returns
+    -------
+    position : float
+        The value of FOCUS_ABSOLUTE_POSITION as last published.
+    """
+    return harness.device["ABS_FOCUS_POSITION"].value("FOCUS_ABSOLUTE_POSITION")
+
+
+def test_focuser_advertises_libindi_property_names_and_a_bounded_range():
+    """Setup declares the standard focuser interface, so any INDI client knows it."""
+
+    async def scenario() -> None:
+        harness = await _focuser(connect=False)
+        focuser = harness.device
+
+        assert focuser["FOCUS_MOTION"].vector.rule is ISRule.ONE_OF_MANY
+        # AT_MOST_ONE, so the stop button springs back rather than latching on.
+        assert focuser["FOCUS_ABORT_MOTION"].vector.rule is ISRule.AT_MOST_ONE
+
+        position = focuser["ABS_FOCUS_POSITION"]["FOCUS_ABSOLUTE_POSITION"]
+        assert (position.min, position.max) == (MIN_POSITION, MAX_POSITION)
+
+    asyncio.run(scenario())
+
+
+def test_focuser_travels_over_several_ticks_and_lands_exactly():
+    """A goto goes Busy, walks a tick at a time, then settles Ok on the target."""
+
+    async def scenario() -> None:
+        harness = await _focuser()
+        start = _position(harness)
+        target = start + (STEPS_PER_TICK * 3)
+
+        await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=target)
+        # Busy immediately: the tube has not arrived, and saying Ok here would
+        # tell the operator the move finished before it began.
+        assert harness.latest("ABS_FOCUS_POSITION").state is IPState.BUSY
+
+        await harness.tick("_step")
+        assert _position(harness) == start + STEPS_PER_TICK
+        assert harness.latest("ABS_FOCUS_POSITION").state is IPState.BUSY
+
+        await harness.tick("_step")
+        await harness.tick("_step")
+        # Lands on the target rather than overshooting and coming back.
+        assert _position(harness) == target
+        assert harness.latest("ABS_FOCUS_POSITION").state is IPState.OK
+
+    asyncio.run(scenario())
+
+
+def test_focuser_nudge_moves_a_fixed_step_in_the_selected_direction():
+    """FOCUS_MOTION sets off toward one nudge's travel, inward or outward."""
+
+    async def scenario() -> None:
+        harness = await _focuser()
+        start = _position(harness)
+
+        await harness.write("FOCUS_MOTION", FOCUS_INWARD=True)
+        for _ in range(NUDGE_STEPS // STEPS_PER_TICK):
+            await harness.tick("_step")
+        assert _position(harness) == start - NUDGE_STEPS
+
+        await harness.write("FOCUS_MOTION", FOCUS_OUTWARD=True)
+        for _ in range(NUDGE_STEPS // STEPS_PER_TICK):
+            await harness.tick("_step")
+        assert _position(harness) == start
+
+    asyncio.run(scenario())
+
+
+def test_focuser_abort_freezes_the_tube_where_it_stands():
+    """ABORT drops the target, so no later tick moves the drawtube."""
+
+    async def scenario() -> None:
+        harness = await _focuser()
+        await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=MAX_POSITION)
+        await harness.tick("_step")
+        moving = _position(harness)
+
+        await harness.write("FOCUS_ABORT_MOTION", ABORT=True)
+        assert harness.latest("ABS_FOCUS_POSITION").state is IPState.IDLE
+        assert "Motion aborted." in harness.messages[-1]
+
+        await harness.tick("_step")
+        assert _position(harness) == moving  # the tick found nothing to do
+
+    asyncio.run(scenario())
+
+
+def test_focuser_abort_pressed_at_rest_says_nothing():
+    """Stopping a stationary tube is not an event worth narrating."""
+
+    async def scenario() -> None:
+        harness = await _focuser()
+        harness.clear()
+
+        await harness.write("FOCUS_ABORT_MOTION", ABORT=True)
+        assert harness.messages == []
+
+    asyncio.run(scenario())
+
+
+def test_focuser_refuses_commands_while_disconnected():
+    """Position and nudge writes are ignored until CONNECTION is on."""
+
+    async def scenario() -> None:
+        harness = await _focuser(connect=False)
+        start = _position(harness)
+
+        await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=MAX_POSITION)
+        await harness.write("FOCUS_MOTION", FOCUS_INWARD=True)
+        await harness.tick("_step")
+
+        assert _position(harness) == start
+        assert any("not connected" in m for m in harness.messages)
+
+    asyncio.run(scenario())
+
+
+def test_focuser_halts_when_the_client_disconnects_mid_travel():
+    """A tube still moving when the client leaves would run into its hard stop."""
+
+    async def scenario() -> None:
+        harness = await _focuser()
+        await harness.write("ABS_FOCUS_POSITION", FOCUS_ABSOLUTE_POSITION=MAX_POSITION)
+        await harness.tick("_step")
+        stopped_at = _position(harness)
+
+        await harness.write("CONNECTION", DISCONNECT=True)
+        assert harness.latest("ABS_FOCUS_POSITION").state is IPState.IDLE
+        assert any("Motion stopped" in m for m in harness.messages)
+
+        # The job is when_connected=True, so it is not running any more - but even
+        # driven by hand it has nothing left to do.
+        await harness.tick("_step")
+        assert _position(harness) == stopped_at
 
     asyncio.run(scenario())

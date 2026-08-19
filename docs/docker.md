@@ -105,7 +105,7 @@ below is the image tag `docker compose` builds:
 
 ```bash
 docker run --rm -p 8000:8000 -p 7624:7624 \
-  -e INDI_DRIVERS="indi_simulator_ccd /opt/indikit/examples/flat_panel.py" \
+  -e INDI_DRIVERS="indi_simulator_ccd /opt/indikit/examples/focuser_device.py" \
   indikit
 ```
 

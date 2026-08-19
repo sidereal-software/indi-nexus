@@ -8,10 +8,10 @@ search:
 Read this page when you want to know what is on the wire. Writing a driver does not need
 it: the [driver guide](writing-drivers.md) covers the vocabulary you use.
 
-## XML to indiserver, JSON to browsers
+## Two encodings, one model
 
-INDIkit speaks canonical INDI 1.7 XML to `indiserver`, and JSON to browsers. Every other
-INDI program expects that XML.
+Canonical INDI 1.7 XML goes to `indiserver`, because that is what every other INDI program
+expects. Typed JSON goes to browsers, because nothing in a browser wants to parse XML.
 
 Both encodings come from one Python model, so they cannot drift apart. A frontend receives
 the protocol itself, not a summary of it.

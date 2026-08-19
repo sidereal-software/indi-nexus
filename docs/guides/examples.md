@@ -6,19 +6,25 @@ search:
 # The examples
 
 Every file in `examples/` runs, and the test suite covers all of them, so none of it can
-quietly rot. There are eleven, which is more than anyone should read in order. This page
+quietly rot. There are twelve, which is more than anyone should read in order. This page
 is the order.
 
 ## Start here, in this order
 
-**`flat_panel.py` first.** A flat-field lamp: a switch to turn it on, a number for its
-brightness, and the standard `CONNECTION` switch. That is the whole instrument, which
-makes it the shortest thing here that is still a real driver. The
-[driver guide](writing-drivers.md) builds it line by line.
+**`focuser_device.py` first.** A position to drive to, a nudge in or out, a stop, and the
+standard `CONNECTION` switch. That is the whole instrument, which makes it the shortest
+thing here that is still a real driver. The [driver guide](writing-drivers.md) builds it
+line by line.
 
-It already shows the shape every real driver needs: commands refused while the link is
-down, and `on_disconnect` leaving the hardware safe. Here that means putting the lamp out,
-because a panel left lit fogs the next exposure.
+It already shows the shape every real driver needs: libindi's own property names, so any
+INDI client recognises it; commands refused while the link is down; a move that takes time
+and therefore reports `Busy` until it arrives; and `on_disconnect` leaving the hardware
+safe. Here that means halting the motor, because a drawtube still travelling when the
+client walked away runs until it hits a hard stop.
+
+**`flat_panel.py` if you want smaller still.** A lamp and a brightness dial, with no timer
+and nothing that takes time. It is the one example with no moving parts, which is the only
+reason to reach for it over the focuser.
 
 **`weather_device.py` second.** Everything after it is a variation on it. The other
 examples simulate their hardware inside the driver, so none of them has to cope with an
