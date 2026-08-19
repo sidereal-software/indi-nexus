@@ -133,12 +133,25 @@ deferred. Read it before starting, and delete an entry in the commit that resolv
 **Name:** INDIkit, package `indikit`. **Owner:** Sidereal Software (MIT, © 2026).
 **Home:** <https://indikit.sidereal.software/>.
 
-**No visual identity is committed.** There is no logo, no wordmark, and no agreed palette.
-The panel currently has no favicon at all, and `CONCERNS.md` records that as an open
-branding call rather than an engineering gap. What ships today - the shadcn token theme in
-`web/packages/react/src/theme.css` and the Material for MkDocs custom palette in
-`docs/stylesheets/palette.css` - is a sensible default, not a decision. Future design work
-is free to propose an identity.
+**A visual identity is now committed: "The Emission Spectrum".** It replaced a palette this
+section used to describe as a sensible default rather than a decision, and `DESIGN.md`
+records it from the built world.
+
+Its governing rule is one line, and it is a product rule before it is an aesthetic one:
+**the brand spends no chroma, so hue on the panel only ever means instrument state.**
+`--primary`, `--secondary` and `--ring` are neutrals in all three schemes. The one reserved
+non-state hue is the documentation site's link cyan, which never appears in the panel,
+because a Read surface's primary interaction is following a link and an uncoloured,
+un-underlined link is not an affordance.
+
+The world is a spectrum, rendered three ways: light is an absorption spectrum (dark marks on
+a bright continuum), dark is emission (bright marks on a dark one), and `night` is emission
+under the luminance ceiling above. The wordmark separates its halves by weight, never by hue,
+for the same reason - a coloured wordmark in the corner of every page would be the single
+exception that unmakes the rule.
+
+Still open: there is no logo, and the panel has no favicon at all. `CONCERNS.md` records the
+favicon as a branding call rather than an engineering gap, and that is still true.
 
 One binding rule that is technical rather than aesthetic: **architecture diagrams carry no
 colour.** Every diagram renders on GitHub and on the docs site, each in light and dark, and
@@ -194,8 +207,12 @@ meets, and any shortfall recorded rather than left implicit.
 
 Established practice that binds future work:
 
-- **Colour never carries meaning alone.** The theme's Alert and Busy sit about ΔE 4.4 apart
-  under simulated deuteranopia, so every state is written out as well as coloured.
+- **Colour never carries meaning alone.** This holds independently of how well the states
+  separate, and they now separate far better than they did: the palette keeps every pair at
+  least ΔE 11.9 apart in the worst of normal, deuteranopic and protanopic vision, where the
+  set before it put dark Ok and dark Alert ΔE 2.3 apart - "fine" and "in Alert" nearly one
+  colour for a deuteranope, in the scheme used at night. Separation is the floor to fall back
+  on, never the message; every state is written out as well as coloured.
 - **Contrast is fixed on the foreground, not the fill.** The four INDI state fills are tuned
   for separation from each other; darkening them enough for white text collapses exactly the
   separation they were chosen for.
@@ -208,9 +225,10 @@ Established practice that binds future work:
   to, until it settles; and the connection dropping or returning. Everything else arriving
   over the socket is telemetry and stays silent.
 
-**A known, unbuilt requirement: a luminance ceiling for night use.** Operators at a backyard
-rig or watching a remote rig at night are dark-adapted, and the current light/dark toggle
-does not address that.
+**A luminance ceiling for night use - built, as a third scheme.** Operators at a backyard rig
+or watching a remote rig at night are dark-adapted, and a light/dark toggle does not address
+that. The panel now carries `night` alongside `light` and `dark`, and the research below is
+what decided its shape.
 
 This entry previously said the requirement was a red mode, on the reasoning that dark mode
 is not night vision. Research corrected it, and the correction changes what to build:
@@ -231,6 +249,27 @@ is not night vision. Research corrected it, and the correction changes what to b
   desaturated blue with full colour coding and no night mode at all, for someone in a
   control room. Our operators are described in Operating Context as being in both places.
 
-So the thing to build is a luminance-capped scheme, not a red one, and the existing dark
-theme is not it. Do not treat "preserves dark adaptation" as something a readable screen can
-claim.
+So the thing built is a luminance-capped scheme, not a red one, and the existing dark theme
+is not it. Do not treat "preserves dark adaptation" as something a readable screen can claim.
+
+**What `night` actually does, and the part CSS cannot do.** The cap and WCAG contrast are
+incompatible at full backlight: 10 cd/m2 on a 400-nit panel is a relative luminance of 0.025,
+and contrast is (L1+0.05)/(L2+0.05), so even pure black against that ceiling yields 1.5:1.
+Chasing the cap with dim colours loses the contrast and still misses the ceiling. Real
+instrument panels dim the *display*, and contrast ratios are relative, so they survive dimming
+untouched. `night` therefore holds AAA for text on a pure-black ground - almost no pixels
+emitting at all - and the operator's brightness control does the rest; its brightest token lands on
+10 cd/m2 at a display peak near 12 cd/m2, roughly 3% of a 400-nit panel. The four state hues
+are unchanged in it, which is the whole reason the ceiling is a luminance rule and not a hue
+one.
+
+**Recorded shortfall: four badge labels reach AA, not AAA.**
+In dark and night, Alert tops out at 5.80:1 and Idle at 5.50:1; in light, Idle tops out at
+4.74:1 and Busy at 4.62:1. All four are ceilings rather than choices - the best ink available,
+black or white, measures exactly that, so no foreground reaches 7:1 on those fills. Getting there needs
+the *fill* darkened, and the four fills were derived together so every pair separates by at
+least 11.94 CIEDE2000 under both dichromacies; compressing Alert down the lightness axis is
+what put the previous palette's dark Ok and dark Alert 2.3 apart. Two labels at AA is the
+price of four states a colour-blind operator can tell apart at a glance, and no badge carries
+its meaning by colour alone in any case. Recorded rather than left implicit, as the standard
+above requires.

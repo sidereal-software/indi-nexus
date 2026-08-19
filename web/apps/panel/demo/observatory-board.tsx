@@ -12,8 +12,10 @@
  *   physical size, so `clamp(...vw...)` is the approximation available, pushed
  *   toward the large end rather than the small one.
  * - **Nobody touches it.** No hover, no tooltips, no controls, with one
- *   exception: a light/dark toggle, because the board is read at 3am as well as
- *   at noon.
+ *   exception: a control cycling light, dark and the luminance-capped night
+ *   scheme. A wallboard is the brightest thing in the room it hangs in, so it
+ *   has the most to gain from the cap - and 3am is the normal case here, not
+ *   the exception.
  * - **One screen or it does not exist**, above `lg`, where a wallboard actually
  *   lives. A phone is not a wallboard, so below that the same board reflows to
  *   one scrolling column rather than clipping half the readings away.
@@ -31,8 +33,11 @@
  *   "unknown" under the slit angle, and the header's own sentence. The figures
  *   need no such care - they are `role="img"`, so their innards are outside the
  *   accessibility tree already and their labels carry the whole reading.
- * - **Colour is never the message.** The theme's Alert and Busy are ΔE 4.4 apart
- *   under deuteranopia - indistinguishable across a room - which is
+ * - **Colour is never the message.** This holds even now the four states are
+ *   separated far better than they were: the palette they were rebuilt into
+ *   keeps every pair at least ΔE 11.9 apart in the worst of normal, deuteranopic
+ *   and protanopic vision, where the set before it put Ok and Alert ΔE 2.3 apart
+ *   in dark mode. Separation is a floor to fall back on, never the message -
  *   `DESIGN.md`'s Never Colour Alone Rule and independently MIL-STD-1472F
  *   §5.4.6.8. Every state is spelled out in words at a size you can read from
  *   the door.
@@ -59,7 +64,7 @@ import {
   useText,
   type Vector,
 } from "@indikit/react";
-import { Moon, Sun } from "lucide-react";
+import { Moon, MoonStar, Sun } from "lucide-react";
 import { useRef } from "react";
 import { useTheme } from "../src/use-theme";
 import {
@@ -202,9 +207,23 @@ function windGeometry(offWind: number): string {
   return "quartering";
 }
 
-/** The one control on the board: light or dark, because 3am is the normal case. */
+/** What each scheme advances to, and what the control says it will do. */
+const BOARD_THEMES = {
+  light: { icon: Moon, label: "Switch to dark" },
+  dark: { icon: MoonStar, label: "Switch to dimmed night" },
+  night: { icon: Sun, label: "Switch to light" },
+} as const;
+
+/**
+ * The one control on the board, cycling light -> dark -> dimmed night.
+ *
+ * A wallboard is the surface with the most to gain from the capped scheme: it
+ * is read from across a room, so it is the brightest thing in that room, and
+ * night is the normal case rather than the exception.
+ */
 function ThemeToggle() {
-  const { theme, toggle } = useTheme();
+  const { theme, cycle } = useTheme();
+  const { icon: Icon, label } = BOARD_THEMES[theme];
   return (
     // SC 2.5.5 wants 44x44; `size-11` is the real box, not an overlay, so the
     // hover tint and the focus ring grow with it. twMerge drops the variant's
@@ -213,10 +232,10 @@ function ThemeToggle() {
       variant="ghost"
       size="icon"
       className="size-11 shrink-0"
-      onClick={toggle}
-      aria-label="Toggle theme"
+      onClick={cycle}
+      aria-label={label}
     >
-      {theme === "dark" ? <Sun /> : <Moon />}
+      <Icon />
     </Button>
   );
 }

@@ -128,7 +128,12 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
           ) : (
             <h2 className="sr-only">Ungrouped properties</h2>
           )}
-          <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
+          {/* `items-start`, so a card is as tall as its own contents. Grid rows
+              stretch by default, which made every card in a row match the
+              tallest one in it - a Shutter card holding one 40px control row
+              stood 250px tall beside a full Speeds card, 84% of it empty. A
+              void that large reads as a loading state rather than a decision. */}
+          <div className="grid items-start gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
             {vectors.map((vector) => (
               <PropertyVectorCard key={vector.name} vector={vector} />
             ))}
@@ -141,7 +146,7 @@ export function DevicePanel({ device, className }: DevicePanelProps) {
             <AccordionTrigger className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Driver internals
             </AccordionTrigger>
-            <AccordionContent className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
+            <AccordionContent className="grid items-start gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
               {machinery.map((vector) => (
                 <PropertyVectorCard key={vector.name} vector={vector} />
               ))}

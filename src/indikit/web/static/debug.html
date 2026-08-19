@@ -19,8 +19,11 @@
     display: flex; align-items: center; gap: 16px; padding: 10px 16px;
     background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap;
   }
-  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .3px; }
-  header h1 span { color: var(--accent); }
+  /* The wordmark separates its halves by weight, not by hue, matching the
+     panel: the theme spends no colour on brand so that hue always means
+     instrument state, and a coloured wordmark would be the lone exception. */
+  header h1 { font-size: 15px; margin: 0; font-weight: 400; letter-spacing: .3px; }
+  header h1 span { font-weight: 700; }
   .pill {
     display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
     border-radius: 999px; background: var(--panel2); border: 1px solid var(--border);

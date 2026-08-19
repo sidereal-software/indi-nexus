@@ -7,8 +7,12 @@
     <script>
       // Apply the saved theme before first paint to avoid a flash.
       try {
-        if (localStorage.getItem("indi-theme") === "dark") {
+        // Three schemes; `night` carries `dark` too, because the theme's
+        // `dark:` variant is what the primitives' own rules hang off.
+        const t = localStorage.getItem("indi-theme");
+        if (t === "dark" || t === "night") {
           document.documentElement.classList.add("dark");
+          if (t === "night") document.documentElement.classList.add("night");
         }
       } catch (_) {}
     </script>

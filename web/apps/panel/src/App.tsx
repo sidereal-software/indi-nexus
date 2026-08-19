@@ -47,7 +47,7 @@ import {
   useIndiClient,
   useProperty,
 } from "@indikit/react";
-import { MessageSquareText, Moon, Radio, Sun, Telescope } from "lucide-react";
+import { MessageSquareText, Moon, MoonStar, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "./use-theme";
 
@@ -83,28 +83,36 @@ function initialDebug(): boolean {
   }
 }
 
-/** An icon button toggling light/dark. */
+/**
+ * What each scheme is called where an operator reads it, and what comes next.
+ *
+ * The label says what pressing the control *does*, not what is currently on,
+ * because the button is an action - and with three schemes "Toggle theme" stops
+ * being true. `night` is named for the thing it actually delivers: it is a
+ * luminance-capped scheme meant to be read with the display dimmed, and calling
+ * it "night vision" would promise dark adaptation that no readable screen keeps.
+ */
+const THEMES = {
+  light: { icon: Moon, next: "dark", label: "Switch to dark" },
+  dark: { icon: MoonStar, next: "night", label: "Switch to dimmed night" },
+  night: { icon: Sun, next: "light", label: "Switch to light" },
+} as const;
+
+/** An icon button cycling light -> dark -> dimmed night. */
 function ThemeToggle() {
-  const { theme, toggle } = useTheme();
+  const { theme, cycle } = useTheme();
+  const { icon: Icon, label } = THEMES[theme];
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         {/* SC 2.5.5 wants 44x44. `size-11` is the real box, not an overlay, so
             the hover tint and the focus ring grow with the target; twMerge drops
             the variant's own `size-9`. The icon stays `size-4`. */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-11"
-          onClick={toggle}
-          aria-label="Toggle theme"
-        >
-          {theme === "dark" ? <Sun /> : <Moon />}
+        <Button variant="ghost" size="icon" className="size-11" onClick={cycle} aria-label={label}>
+          <Icon />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>
-        {theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      </TooltipContent>
+      <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -133,8 +141,17 @@ function DeviceSidebar({
       <SidebarHeader className="gap-3 p-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
           <Telescope className="size-5 text-primary" />
-          <span className="text-sm font-semibold">
-            INDI<span className="text-primary">kit</span>
+          {/* The wordmark separates its halves by weight, not by hue. `kit` used
+              to be `text-primary`, which worked while the brand had a colour;
+              the theme now spends none, so a coloured wordmark would be the one
+              exception to the rule that hue on this screen means instrument
+              state - and an exception in the corner of every page is not a rule.
+              400 against 700 rather than a subtler step: nothing here declares
+              an @font-face, so this renders in whatever mono the machine falls
+              back to, and a fallback may synthesise the weight it lacks. */}
+          <span className="text-sm">
+            <span className="font-normal">INDI</span>
+            <span className="font-bold">kit</span>
           </span>
         </div>
         <ConnectionStatus />

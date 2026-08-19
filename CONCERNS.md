@@ -193,49 +193,6 @@ verdict - a `WEATHER_LIMITS` number vector with a low and a high per element nam
 any client draw the reading against them, the panel included. This is the same "where does
 this metadata belong" question as the units entry above, and probably wants the same answer.
 
-### The light outline Button's hairline is 1.24:1
-
-`--border` is `#e5e7eb`, which measures 1.24:1 against the white card. In light mode the
-outline Button variant draws its edge with a bare `border` off that token, so the one thing
-saying where that control is fails SC 1.4.11's 3:1 by a wide margin. `--input` was retuned
-in the same batch and reaches 3.55:1, which fixes the Input, the switch-vector members and
-the Switch - the outline Button in light mode is what is left, because it does not use
-`--input` there (only `dark:border-input`).
-
-The obvious fix was tried and measured in Chrome, and it is worse than the problem. An
-unlayered `[data-variant="outline"] { border-color: var(--input) }` in `theme.css` also beats
-`focus-visible:border-ring` and `aria-invalid:border-destructive`, so it destroys the focus
-indicator it exists to strengthen; and `data-variant` is not scoped to buttons anyway
-(`ui/badge.tsx` and `ui/toggle-group.tsx` set it too). Narrowing by `data-slot` does not work
-either: `data-slot` does not survive `asChild`, so `AlertDialogCancel` would be missed. There
-is no class hook to use instead, because in light mode the variant emits a bare `border`.
-
-**Resolved by:** either raising `--border` itself - which is the token the base layer puts
-on *every* element, so it has to be re-measured across every surface first - or adding a
-light-mode `border-input` to the outline variant upstream, which gives the correction a
-class to hook. Not by an unlayered `border-color` rule.
-
-### The dark destructive button is nearly invisible until you focus it
-
-`dark:bg-destructive/60` composites `#ef4444` over the card to `#973030`, which is **2.48:1**
-against `#121212`. White on it is 7.60:1, so the *label* is fine and SC 1.4.11 is not failed -
-a control identified by its text needs no boundary contrast - but the most dangerous button in
-the product is the one whose presence reads weakest in dark mode, and an operator scanning a
-modal at 3am finds "Cancel" before "Delete saved config".
-
-The focus ring no longer depends on it: the correction in `theme.css` gives the destructive
-ring a white offset so the indicator is two-tone (see DESIGN.md, The Ring Stands Off The
-Control Rule). This entry is about the resting state.
-
-Raising dark `--destructive` far enough to clear 3:1 was measured and rejected: the composite
-needs roughly `#ff6b6b`, which is a hair from `--state-alert` `#f87171` and collapses the
-CIEDE2000 11.3 the theme keeps between "danger" and "the instrument is in Alert".
-
-**Resolved by:** dropping the `/60` from the dark destructive variant so the fill is the token
-itself (5.00:1) - which is a registry edit, or an upstream change, not something `theme.css`
-can reach, since `background-color` is a real property. Decide whether that is worth a third
-`DEVIATION`.
-
 ### The panel's heading chain skips a level in the empty state
 
 `DESIGN.md`'s Heading Chain Rule promises h1 → h2 → h3 with no step skipped. With no devices
@@ -327,12 +284,16 @@ The fix is not a one-liner, which is why it is here rather than done: reading
 current class, and the interesting questions are what happens when an explicit choice disagrees
 with the OS, whether the OS changing mid-session should move the page under the operator, and
 whether an inline script has to set the class before first paint or the white flash simply
-becomes a dark one. `PRODUCT.md` also records dark-adaptation preservation as a confirmed but
-unbuilt requirement, and a red or luminance-ceiling mode would be a third scheme, so this
-decision should not be taken twice.
+becomes a dark one.
 
-**Resolved by:** answering those three questions and building the result, most likely as part
-of the dark-adaptation work rather than ahead of it.
+The luminance-capped `night` scheme now exists, which makes this harder rather than easier:
+`prefers-color-scheme` has two values and the panel has three, so the OS can express "dark"
+but never "dimmed", and a first-paint rule reading it has to decide which of two dark schemes
+an operator who has never touched the control gets. Answering that badly on a phone at a dark
+site is the case this entry exists for.
+
+**Resolved by:** answering those questions and building the result. The scheme itself is no
+longer the blocker; the mapping from one OS bit to three schemes is.
 
 ### A number input rejected by `max` says so only in the native bubble
 

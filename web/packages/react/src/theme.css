@@ -6,84 +6,145 @@
  * (`styles.css`) and a downstream app both pull it in after importing Tailwind.
  * Exported as `@indikit/react/theme.css`.
  *
- * `--primary` is "Deep Field", the same violet the documentation chrome uses,
- * anchored on viridis 0.15 (#463480) so the panel and the docs read as one
- * product. It replaced an orange that failed on both counts a brand colour has
- * to pass here: white on it measured 3.12:1, below AA, and it sat only 8.3
- * CIEDE2000 from the Busy amber, which made the brand colour a near-miss for a
- * status colour. The violet is 12.03:1 in light mode and no closer than 22.4 to
- * any of the four states. Re-measure before changing it - the ratios are in the
- * comment beside each value, and `--state-*` is tuned separately and is not
- * ours to move.
+ * The world is a spectrum, and the rule that follows from it governs every
+ * value below: **the brand spends no chroma worth the name.** `--primary`,
+ * `--secondary` and `--ring` carry C*ab under 6.4 - a faint cool cast so the
+ * greys do not read dead - against states at C*ab 40 to 80. Calling them "pure
+ * neutrals" would be tidier and false; the claim that matters is that nothing in
+ * the chrome reads as colour beside a state, so every saturated pixel on this
+ * screen is an instrument talking. A brand hue competing with the four states is exactly the
+ * failure the violet before it was one re-measure away from - it sat 22.4
+ * CIEDE2000 from the nearest state, and the orange before *that* sat 8.3.
+ * Removing hue from the brand removes the whole class of failure rather than
+ * managing it.
+ *
+ * Three schemes, one world. An emission spectrum is bright lines on a dark
+ * continuum (`.dark`); an absorption spectrum is dark lines on a bright one
+ * (`:root`); `.night` is emission under MIL-STD-1472F's dark-adaptation
+ * ceiling. Light mode is therefore dark badges on white, not light ones.
+ *
+ * Every ratio in this file was computed, not estimated, composited against the
+ * real ancestor surface, and the state separations are the worst of normal,
+ * deuteranopic and protanopic vision. Re-measure before changing anything.
+ *
+ * ---------------------------------------------------------------------------
+ * DIRECTION CONTRACT (seed f9bbe9ab, direction round, mode operate)
+ *
+ * THESIS: colour on this surface means one thing - what an instrument is doing.
+ * It refuses the category default, a dark dashboard carrying a brand accent that
+ * competes with its own status colours for the operator's eye.
+ *
+ * OWN-WORLD: an emission spectrum. A neutral continuum in three renditions -
+ * absorption (light), emission (dark), emission under a luminance ceiling
+ * (night) - with hue appearing only as narrow, saturated marks at fixed
+ * positions. Two positions hold hue and no others: a property's state badge,
+ * and the sidebar's two connection dots, which report the health of the links
+ * every reading on the page depends on. Both are instrument state in the sense
+ * that matters - something outside the interface is or is not well - and the
+ * dots carry shape and a word besides, so hue is never their only signal.
+ * Monospace throughout, because instrument readouts, IAU circulars and spectra
+ * are all set that way.
+ *
+ * STORY: an operator reads state before they read anything else, and can trust
+ * that anything coloured is the instrument talking rather than the interface.
+ *
+ * FIRST VIEWPORT: a near-neutral ground of property cards, each carrying its
+ * state badge, with the sidebar's connection dots the only other hue on screen;
+ * the wordmark separates by weight, not hue; the sole reserved non-state hue is
+ * the docs site's link cyan, which never appears in the panel.
+ *
+ * FORM: candidate 1 of the grounded list (emission spectra and calibration
+ * lamps), taken over the roll's assignment by the user; seed key f9bbe9ab.
+ *
+ * FINISH: unreviewed and undocumented is unfinished; this build ends with the
+ * finish review, the verdict, DESIGN.md, and every shipping raster carrying its
+ * provenance.
+ * ---------------------------------------------------------------------------
  */
 
 /* Enable `dark:` utilities via the `.dark` class (toggled on <html>). */
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #111827;
+  --background: #fbfcfd;
+  --foreground: #12151a;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #12151a;
   --popover: #ffffff;
-  --popover-foreground: #111827;
-  /* 12.03:1 with white on it, and 12.03 / 10.93 / 10.37:1 as `text-primary` on the
-     background, the sidebar and the accent surfaces. */
-  --primary: #3a2a70;
+  --popover-foreground: #12151a;
+  /* Zero chroma, on purpose: see the header. Read as a fill behind
+     `--primary-foreground` (18.29:1) and as `text-primary` on the background,
+     the sidebar and `--accent` (17.81 / 16.45 / 15.01:1). Its distance from the
+     nearest state is 15.72 CIEDE2000 in the worst of normal, deuteranopic and
+     protanopic vision - and that distance is structural rather than tuned,
+     because a neutral has no hue to collide with. */
+  --primary: #12151a;
   --primary-foreground: #ffffff;
-  --secondary: #527575;
-  --secondary-foreground: #ffffff;
-  --muted: #f3f4f6;
-  /* Was #6b7280, which passes on a white card (4.83:1) and fails everywhere the
-     surface is tinted: 4.39:1 on the sidebar and 4.17:1 on `--accent`, and the
-     sidebar is where it labels the connection state and the two footer settings.
-     A token has to clear AA on every surface it is used over, not on the lightest
-     one. Then #616974, which cleared AA on all three (5.55 / 5.05 / 4.79:1) and
-     cleared AAA on none of them - and PRODUCT.md commits to AAA wherever it is
-     reachable, which for body-size secondary text it is. 8.39 on the card, 7.63
-     on the sidebar, 7.23 on `--accent`. */
-  --muted-foreground: #474e59;
-  --accent: #eeeeee;
-  --accent-foreground: #111827;
-  /* Was #ef4444, which is 3.76:1 under the `text-white` the destructive button
-     variant hardcodes - and that button is the one that deletes a saved
-     configuration with no undo. 4.83:1 now. Dark mode keeps #ef4444 because the
-     variant draws it at `bg-destructive/60` there, which composites to #963031
-     and measures 7.60:1. */
-  --destructive: #dc2626;
-  --border: #e5e7eb;
-  /* Was #e5e7eb, byte-identical to `--border` and 1.24:1 against a white card -
-     invisible as the edge of a control, and SC 1.4.11 asks 3:1 of anything that
-     tells you where a control is. This is the edge of the Input, of the switch
-     vector's members, and it *is* the Switch's whole off-state track, so the same
-     failure appeared on five surfaces at once.
-     3.55 on the card and the background, 3.23 on the sidebar, 3.06 on `--accent`,
-     and 3.55 as the Switch's unchecked track against its white thumb.
+  --secondary: #e6e9ec;
+  --secondary-foreground: #12151a;
+  --muted: #f1f3f5;
+  /* A token has to clear its bar on every surface it is used over, not on the
+     lightest one - the sidebar is where it labels the connection state and the
+     two footer settings, and `--accent` is darker than either. PRODUCT.md
+     commits to AAA wherever it is reachable, which for body-size secondary text
+     it is: 8.96 on the card, 8.06 on the sidebar and on `--muted`, 7.35 on
+     `--accent`. The first draft of this palette sat at #4a525c, which cleared
+     AAA on card and sidebar and landed 6.5 on `--accent` - which is how this
+     rule gets broken, every time. */
+  --muted-foreground: #434a53;
+  --accent: #e6e9ec;
+  --accent-foreground: #12151a;
+  /* Destructive is red and Alert is rose, and the two are 22.27 CIEDE2000 apart
+     in the worst of normal, deuteranopic and protanopic vision. That separation
+     is the whole reason this token could be fixed at all: the old dark value
+     composited to 2.48:1 and every brighter red landed 1.6 dE from the Alert of
+     the day, so danger and "the instrument is in Alert" were fighting over one
+     hue. Moving Alert to rose ended the fight. 7.92:1 under the `text-white` the
+     variant hardcodes, on the button that deletes a saved configuration with no
+     undo. */
+  --destructive: #a3120f;
+  --border: #7c8490;
+  /* 4.66 on the card, 3.82 on `--accent`, and 3.19 against its own
+     `bg-input/30` fill. That fill renders #d3d6d9, with `--foreground` at
+     12.54:1 on it and 9.39:1 on the `/50` hover.
      RE-MEASURE THIS TOKEN IF `--card`, `--accent` OR `--foreground` MOVES: the
-     3.06 against `--accent` clears 3:1 by 2%, so a surface tweak can take it under
-     without touching this line.
+     3.19 against its own fill clears 3:1 by 6%, so a surface tweak can take it
+     under without touching this line.
      Deliberately NOT split into a border token and a fill token. One token has to
      serve as a control's border AND as the 30% fill of that same control, and the
-     two pull opposite ways: at #6e6e6e the dark border reads 3.71:1 against the
-     card but only 2.68:1 against its own `bg-input/30` fill. #7d7d7d (dark) and
-     this value satisfy every pair at once. Splitting them would also leave the
-     Switch behind, because the Switch's track *is* `bg-input` - so what looks like
-     a conflict between two roles is five surfaces failing in one direction. */
-  --input: #86888c;
-  --ring: #3a2a70;
-  --chart-1: #5f8787;
-  --chart-2: #e78a53;
-  --chart-3: #fbcb97;
-  --chart-4: #888888;
-  --chart-5: #999999;
-  --sidebar: #f3f4f6;
-  --sidebar-foreground: #111827;
-  --sidebar-primary: #3a2a70;
+     two pull opposite ways - a value dark enough to edge the control cleanly is
+     too close to its own tinted fill, and a value light enough to separate from
+     the fill stops edging anything. This one and the dark one satisfy every pair
+     at once. Splitting them would also leave the Switch behind, because the
+     Switch's track *is* `bg-input` - so what looks like a conflict between two
+     roles is five surfaces failing in one direction. */
+  --input: #6d7580;
+  --ring: #0a0c0f;
+  /* A neutral ramp, because on this surface hue means instrument state. The
+     previous ramp was a designer's palette and collided badly: #5f8787 sat 2.1
+     CIEDE2000 from dark Idle and #fbcb97 sat 2.5 from dark Ok, on the token the
+     observatory wallboard draws its moon and its daylight band with - a figure
+     a colour-blind operator could not tell from "the instrument is fine".
+     Neutral costs nothing here: what these draw is illumination, and moonlight
+     is colourless. Every step is at least 19.5 dE from Ok, Busy and Alert in the
+     worst of normal, deuteranopic and protanopic vision, and adjacent steps stay
+     9.1 dE apart so several series still separate from each other. Idle is also
+     neutral, so the middle steps sit near it by construction (5.9 at the
+     closest) - acceptable because a chart mark and a status badge are different
+     objects in different places, and never acceptable as a status colour. */
+  --chart-1: #474c52;
+  --chart-2: #687078;
+  --chart-3: #8c939b;
+  --chart-4: #adb2b8;
+  --chart-5: #c8ccd0;
+  --sidebar: #f1f3f5;
+  --sidebar-foreground: #12151a;
+  --sidebar-primary: #12151a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ffffff;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #3a2a70;
+  --sidebar-accent: #e6e9ec;
+  --sidebar-accent-foreground: #12151a;
+  --sidebar-border: #7c8490;
+  --sidebar-ring: #0a0c0f;
 
   --font-sans: Geist Mono, ui-monospace, monospace;
   --font-serif: serif;
@@ -105,115 +166,107 @@
   /*
    * INDI vector states (Idle / Ok / Busy / Alert) - not part of the base theme.
    *
-   * The four fills are tuned for separation under colour-vision deficiency and
-   * are deliberately unchanged: they were white-on-colour and every one failed
-   * AA at the badge's 12px (Idle 2.54, Busy 3.19, Ok 3.30, Alert 3.76). The
-   * fix is the *foreground*, not the fill - darkening the fills far enough for
-   * white text would have squeezed all four into one narrow band of lightness
-   * and collapsed exactly the separation they were chosen for (Busy against
-   * Alert fell from CIEDE2000 7.0 to 3.3 under simulated deuteranopia when
-   * tried). Dark text on the untouched fills leaves every hue distance exactly
-   * where it was and clears AA with headroom: 7.34 / 5.01 / 6.02 / 5.01:1.
-   * Each is that state's own hue taken to near-black, the way the dark palette
-   * below already does it.
+   * Light mode is the absorption spectrum: dark lines on a bright continuum, so
+   * these are dark fills carrying white labels, and not the light fills with
+   * near-black ink that the emission scheme below uses.
+   *
+   * The four were derived by search rather than by eye, against one constraint
+   * the previous set failed: every pair must separate under BOTH deuteranopia
+   * and protanopia, not only the one that was checked. Worst pair here is 14.88
+   * CIEDE2000. Ok is still a true green (hue 118) - the separation was bought
+   * with lightness and by moving Alert to rose, not by surrendering the
+   * convention that Ok is green.
+   * Labels: 4.74 / 8.03 / 4.54 / 9.02:1 white-on-fill, and every fill clears 3:1
+   * against the card as a graphic in its own right.
    */
-  --state-idle: #9ca3af;
-  --state-idle-foreground: #0f1319;
-  --state-ok: #16a34a;
-  --state-ok-foreground: #00250f;
-  --state-busy: #d97706;
-  --state-busy-foreground: #150e00;
-  --state-alert: #ef4444;
-  --state-alert-foreground: #280505;
-  /* Ok *as a bare mark on a surface*, which the fill cannot do. `--state-ok` is
-     the only one of the four that fails SC 1.4.11 when it is drawn as a graphic
-     with no foreground of its own: as the connection dot it measures 2.99:1 on
-     the sidebar and 2.84:1 on `--accent` (3.30 on a white card). Idle, Busy and
-     Alert all clear 3:1 on every light surface, which is why only this one has
-     an ink. Same hue taken down until it clears with margin rather than by
-     hundredths: 4.42 on the card, 4.02 on the sidebar, 3.81 on `--accent`. It is
-     an ink, never a fill - the badge keeps `--state-ok`. */
-  --state-ok-ink: #128a45;
-  /* Alert *as text on a surface*, which the fill cannot do: `--state-alert` is
-     tuned to be read behind `--state-alert-foreground`, and set as 12px type on
-     the sidebar it measures 3.42:1 - below AA. The one place that needs it is the
-     protocol mismatch line in `ConnectionStatus`, which lives on the sidebar.
-     Same hue taken down until it clears AAA everywhere it can land: 8.77 on the
-     card, 7.97 on the sidebar, 7.56 on `--accent`. It is an ink, never a fill -
-     do not use it as a background. */
-  --state-alert-ink: #9b0000;
+  --state-idle: #6b7480;
+  --state-idle-foreground: #ffffff;
+  --state-ok: #215c1f;
+  --state-ok-foreground: #ffffff;
+  --state-busy: #947100;
+  --state-busy-foreground: #ffffff;
+  --state-alert: #8e0b55;
+  --state-alert-foreground: #ffffff;
+  /* Ok *as a bare mark on a surface* - the connection dot, which has no
+     foreground of its own and answers to SC 1.4.11 rather than to a text rule.
+     The light fill is dark enough to serve both roles here, so this equals it:
+     8.03 on the card, 7.22 on the sidebar, 6.59 on `--accent`. Kept as its own
+     token because the dark scheme cannot do that, and because a mark and a badge
+     are different jobs that only happen to agree in this scheme. */
+  --state-ok-ink: #215c1f;
+  /* Alert *as text on a surface*, which a fill cannot be: the one place that
+     needs it is the protocol mismatch line in `ConnectionStatus`, on the
+     sidebar. AAA everywhere it can land: 9.02 on the card, 8.11 on the sidebar,
+     7.40 on `--accent`. It is an ink, never a fill - do not use it as a
+     background. */
+  --state-alert-ink: #8e0b55;
 }
 
 .dark {
-  --background: #121113;
-  --foreground: #c1c1c1;
-  --card: #121212;
-  --card-foreground: #c1c1c1;
-  --popover: #121113;
-  --popover-foreground: #c1c1c1;
-  /* The light-mode violet inverted rather than reused: #3a2a70 on a near-black card would
-     be invisible, and `--primary` is read as text here (the wordmark, the message log's
-     device name, link-variant buttons) as well as filled behind `--primary-foreground`. So
-     it is the same hue lifted to the lightness the docs use for slate links, which also
-     makes the embedded demos match the page around them. 7.56:1 both ways - as text on the
-     background and as the dark foreground on the fill - and 6.30:1 at the /90 hover. */
-  --primary: #a99ae4;
-  --primary-foreground: #121113;
-  /* The action colour, worn by the selected member of a switch vector and by the
-     Set button. It was #5f8787, which is only deltaE 5.7 from `--state-idle` under
-     deuteranomaly - so the one element a client has turned On was near enough
-     indistinguishable from an Idle light for a red-green colour-blind operator, which
-     is the failure the `--state-*` colours were tuned to avoid. This is the same cyan
-     the documentation chrome uses as its slate accent, which puts it deltaE 23.2 from
-     the nearest state in the worst of normal, deuteranomalous and protanomalous
-     vision, and 8.37:1 against the background. */
-  --secondary: #38bcd6;
-  --secondary-foreground: #121113;
-  --muted: #222222;
-  /* Was #888888: 5.28:1 on the card and 4.49:1 on `--muted`, which is AA to the
-     second decimal and nothing more, on the token that labels the connection
-     state, the log timestamps and both footer settings. 8.64 on the card and
-     7.34 on `--muted` now, so secondary text clears AAA in dark mode as it does
-     in light. */
-  --muted-foreground: #b0b0b0;
-  --accent: #333333;
-  --accent-foreground: #c1c1c1;
-  /* Was #5f8787: byte-identical to `--secondary` above, so a destructive button and a
-     secondary one were the same colour in dark mode. Light mode had the red all along;
-     the dark block simply lost it. 5.00:1 on the background, and deltaE 11.3 from
-     `--state-alert` - related, as danger should be, without being the same swatch. */
-  --destructive: #ef4444;
-  --border: #222222;
-  /* Was #222222 - see the light value for why this token is not split. 4.55 on
-     the card, 3.11 against its own `bg-input/30` fill, 3.07 on `--accent`, and
-     as the Switch's unchecked track 3.34 at `/80` against the card and 3.10
-     against the `#c1c1c1` thumb. That last pair is the composited track, not the
-     bare token: bare against the thumb is 2.29:1, but nothing ever draws the
-     bare token as a track, because the primitive's dark rule is
-     `dark:data-[state=unchecked]:bg-input/80`.
-     RE-MEASURE IF `--card`, `--accent` OR `--foreground` MOVES: 3.07 and 3.10
-     both clear 3:1 by under 4%.
-     LARGEST VISUAL CHANGE IN THIS THEME: `dark:bg-input/30` is the fill of the
-     dark Input and the dark outline Button, so it goes #171717 -> #323232, and
-     `dark:hover:bg-input/50` goes #1a1a1a -> #484848. That is a near-invisible
-     lift becoming a field you can see the edges of. Nothing regresses on it:
-     `--foreground` 7.12:1 on the new fill, `--muted-foreground` (placeholder)
-     5.91:1, and `--foreground` 5.08:1 on the hover fill. */
-  --input: #7d7d7d;
-  --ring: #a99ae4;
-  --chart-1: #5f8787;
-  --chart-2: #e78a53;
-  --chart-3: #fbcb97;
-  --chart-4: #888888;
-  --chart-5: #999999;
-  --sidebar: #121212;
-  --sidebar-foreground: #c1c1c1;
-  --sidebar-primary: #a99ae4;
-  --sidebar-primary-foreground: #121113;
-  --sidebar-accent: #333333;
-  --sidebar-accent-foreground: #c1c1c1;
-  --sidebar-border: #222222;
-  --sidebar-ring: #a99ae4;
+  --background: #0a0c0f;
+  --foreground: #dfe4ea;
+  --card: #101216;
+  --card-foreground: #dfe4ea;
+  --popover: #101216;
+  --popover-foreground: #dfe4ea;
+  /* The continuum, not a colour. `--primary` is read as text here (the message
+     log's device name, link-variant buttons) as well as filled behind
+     `--primary-foreground`, and it is neutral in both roles: 15.31:1 as text on
+     the background and as the dark foreground on the fill, 15.00 on the sidebar,
+     10.27 on `--accent`. Nearest state is 25.61 CIEDE2000 away in the worst of
+     normal, deuteranopic and protanopic vision. */
+  --primary: #dfe4ea;
+  --primary-foreground: #0a0c0f;
+  /* Worn by the selected member of a switch vector and by the Set button. It was
+     a cyan, chosen because the #5f8787 before it sat only deltaE 5.7 from
+     `--state-idle` under deuteranomaly - so the one element a client had turned
+     On was near indistinguishable from an Idle light. Both attempts were the
+     same mistake at different distances: an action colour with a hue is a
+     near-miss for a status colour, and the fix is to have no hue. A raised
+     neutral surface now, 10.27:1 under `--secondary-foreground`. */
+  --secondary: #2b3138;
+  --secondary-foreground: #dfe4ea;
+  --muted: #1b1f24;
+  /* AAA on every surface it lands on, which is the rule the light value states:
+     10.39 on the card, 10.63 on the sidebar, 9.18 on `--muted`, 7.28 on
+     `--accent`. This palette's first draft sat at #a3adb8 and cleared AAA on
+     three of those four, failing `--accent` at 5.77 - the same way round as the
+     light one failed, which is why the check now runs over every surface rather
+     than the obvious ones. */
+  --muted-foreground: #b9c2cb;
+  --accent: #2b3138;
+  --accent-foreground: #dfe4ea;
+  /* 6.15:1 under the `text-white` the variant hardcodes, and 15.44 CIEDE2000
+     from `--state-alert` in the worst of normal, deuteranopic and protanopic
+     vision - related, as danger should be, without being confusable with it.
+     3.05:1 against the card is deliberate and sufficient: SC 1.4.11 governs a
+     control identified by its *boundary*, and this one is identified by its
+     label. Chasing a higher fill contrast here costs label contrast, which is
+     the wrong trade on the button that deletes a saved configuration.
+     The variant no longer draws this at `bg-destructive/60`: that composited to
+     #973030 and measured 2.48:1, which is the defect this palette closes. */
+  --destructive: #c01b1b;
+  --border: #737b87;
+  /* See the light value for why this token is not split. 4.87 on the card, 3.41
+     on `--accent`, and 3.25 against its own `bg-input/30` fill. That fill renders
+     #30343a, with `--foreground` at 9.79:1 on it and 6.89:1 on the `/50` hover.
+     RE-MEASURE IF `--card`, `--accent` OR `--foreground` MOVES: the 3.25 against
+     its own fill clears 3:1 by 8%. */
+  --input: #79838f;
+  --ring: #ffffff;
+  --chart-1: #d9dbde;
+  --chart-2: #b3b7bd;
+  --chart-3: #8c939b;
+  --chart-4: #687078;
+  --chart-5: #4c5157;
+  --sidebar: #0d0f13;
+  --sidebar-foreground: #dfe4ea;
+  --sidebar-primary: #dfe4ea;
+  --sidebar-primary-foreground: #0a0c0f;
+  --sidebar-accent: #2b3138;
+  --sidebar-accent-foreground: #dfe4ea;
+  --sidebar-border: #737b87;
+  --sidebar-ring: #ffffff;
 
   --shadow-2xs: 0 1px 3px 0px rgb(0 0 0 / 0.04);
   --shadow-xs: 0 1px 3px 0px rgb(0 0 0 / 0.04);
@@ -224,29 +277,114 @@
   --shadow-xl: 0 1px 3px 0px rgb(0 0 0 / 0.08), 0 8px 10px -1px rgb(0 0 0 / 0.08);
   --shadow-2xl: 0 1px 3px 0px rgb(0 0 0 / 0.20);
 
-  --state-idle: #6b7280;
-  --state-idle-foreground: #ffffff;
-  --state-ok: #22c55e;
-  /* Was #052e16 at 6.54:1. The fill is frozen, so the only way to reach AAA on
-     this badge is to take the ink further down its own hue: 7.57:1. */
+  --state-idle: #78848f;
+  /* 5.50:1 - AA, and the ceiling for this fill; see `--state-alert-foreground`. */
+  --state-idle-foreground: #000000;
+  --state-ok: #88dd88;
+  /* 10.46:1 on the fill above. */
   --state-ok-foreground: #032010;
-  --state-busy: #f59e0b;
+  --state-busy: #ffab1f;
   --state-busy-foreground: #1c1300;
-  --state-alert: #f87171;
-  /* Was #450a0a at 5.84:1; 7.26:1 now, by the same route as `--state-ok-foreground`. */
-  --state-alert-foreground: #150303;
-  /* Deliberately the same value as `--state-ok` above, which the light mode's
-     ink is not. Ok as a bare mark fails 3:1 only against light surfaces; against
-     every dark one the fill already clears it (8.22 on the card and the sidebar,
-     6.98 on `--muted`, 5.54 on `--accent`), so lifting it here would darken
-     nothing and would put a second green in the palette for no measurement. The
-     token exists in both schemes because the utility that reads it does. */
-  --state-ok-ink: #22c55e;
+  --state-alert: #fa385f;
+  /* 5.80:1 - AA, and the most this badge can reach. AAA IS NOT AVAILABLE HERE
+     AND THAT IS RECORDED RATHER THAN HIDDEN: pure black on this fill measures
+     5.80:1, so no ink reaches 7:1, and the only way to get there is to darken
+     `--state-alert` itself. That is exactly the move this palette exists to
+     refuse - the four fills were derived together so every pair separates by at
+     least 11.94 CIEDE2000 under both dichromacies, and compressing Alert down
+     the lightness axis is what collapsed the old set to 2.3. Idle has the same
+     ceiling (5.50:1) for the same reason. Two badge labels at AA is the price of
+     four states a colour-blind operator can tell apart, and the badge never
+     carries meaning by colour alone in any case. PRODUCT.md records it. */
+  --state-alert-foreground: #000000;
+  /* Deliberately the same value as `--state-ok` above. Ok as a bare mark fails
+     3:1 only against light surfaces; against every dark one the fill already
+     clears it (11.38 on the card, 11.64 on the sidebar, 10.05 on `--muted`,
+     7.97 on `--accent`), so lifting it here would darken nothing and would put a
+     second green in the palette for no measurement. The token exists in both
+     schemes because the utility that reads it does. */
+  --state-ok-ink: #88dd88;
   /* Alert as text on a surface rather than as a fill - see the light value. The
      dark fill reads 6.77:1 as type on the sidebar, which is AA but not the AAA
      PRODUCT.md asks for where it is reachable. 7.59 on `--muted`, 8.93 on the
      card. */
-  --state-alert-ink: #fc9797;
+  --state-alert-ink: #fba7bc;
+}
+
+/*
+ * `.night` - the emission spectrum under a luminance ceiling.
+ *
+ * APPLIED ALONGSIDE `.dark`, never instead of it (`<html class="dark night">`),
+ * so every `dark:` utility the primitives carry still resolves and this block
+ * only moves token values. It must therefore stay AFTER `.dark`: same
+ * specificity, so source order is what decides.
+ *
+ * WHAT THE CEILING IS, AND WHY IT IS NOT MET BY DIM COLOURS. MIL-STD-1472F
+ * 5.2.1.5.6.3 caps luminance at 10 cd/m2 where colour coding is used. On a
+ * 400-nit panel that is a relative luminance of 0.025, and WCAG contrast is
+ * (L1+0.05)/(L2+0.05) - so even pure black against that ceiling yields 1.5:1.
+ * A scheme that chases the cap with dim greys loses all its contrast AND still
+ * misses the cap by more than ten times. Real instrument panels dim the
+ * *display*; contrast ratios are relative and survive dimming untouched.
+ *
+ * So this scheme's job is to keep AAA while emitting as little light as it can:
+ * a pure-black ground, so the overwhelming majority of pixels emit nothing at
+ * all, and the operator's own brightness control does the rest. The brightest
+ * token here lands on 10 cd/m2 at a display peak of about 12 cd/m2, roughly 3%
+ * of a 400-nit panel - which is the setting this scheme is built to stay legible
+ * at, not a number the CSS can enforce.
+ *
+ * PRODUCT.md records the research this follows, including why it is a luminance
+ * scheme and not a red one: above 650 nm is hostile to protanopes, and a
+ * monochrome red interface spends the whole colour channel that the four states
+ * need. The states keep their hues here, unchanged from `.dark`.
+ */
+.night {
+  --background: #000000;
+  --foreground: #a8b0b8;
+  --card: #050607;
+  --card-foreground: #a8b0b8;
+  --popover: #050607;
+  --popover-foreground: #a8b0b8;
+  --primary: #aeb6bf;
+  --primary-foreground: #000000;
+  --secondary: #1b1e22;
+  --secondary-foreground: #a8b0b8;
+  --muted: #121417;
+  --muted-foreground: #a1a9b2;
+  --accent: #1b1e22;
+  --accent-foreground: #a8b0b8;
+  --destructive: #c72623;
+  --border: #636a74;
+  --input: #6f7780;
+  --ring: #e8ecf0;
+  --chart-1: #6f7780;
+  --chart-2: #9aa2ab;
+  --chart-3: #c3cad2;
+  --chart-4: #545b63;
+  --chart-5: #3d444b;
+  --sidebar: #020303;
+  --sidebar-foreground: #a8b0b8;
+  --sidebar-primary: #aeb6bf;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #1b1e22;
+  --sidebar-accent-foreground: #a8b0b8;
+  --sidebar-border: #636a74;
+  --sidebar-ring: #e8ecf0;
+
+  /* Unchanged from `.dark`: the states are the reason the ceiling is a
+     luminance rule and not a hue rule, so dimming may not touch them. */
+  --state-idle: #78848f;
+  /* 5.50:1 - AA, and the ceiling for this fill; see `--state-alert-foreground`. */
+  --state-idle-foreground: #000000;
+  --state-ok: #88dd88;
+  --state-ok-foreground: #032010;
+  --state-busy: #ffab1f;
+  --state-busy-foreground: #1c1300;
+  --state-alert: #fa385f;
+  --state-alert-foreground: #000000;
+  --state-ok-ink: #88dd88;
+  --state-alert-ink: #fba7bc;
 }
 
 @theme inline {
@@ -432,19 +570,17 @@
    2.85:1 on a white card and 2.75:1 on a dark one; its destructive ring is `/20`
    in light (1.37:1 on white) and `/40` in dark (1.72:1 on a card) - every one of
    them below SC 1.4.11's 3:1, on the indicator that says where the keyboard is.
-   75% clears 3:1 on every surface either ring lands on, in both schemes: violet
-   5.68 (white) / 5.37 (sidebar) / 4.71 (dark card) / 3.55 (dark accent);
-   destructive 3.49 (white) / 3.25 (dark card). 66% was measured and rejected -
-   destructive lands at 3.01 light and 2.76 dark, which is not a margin.
+   75% clears 3:1 on every surface the ring lands on, in all three schemes:
+   9.04 (white) / 8.93 (light background) / 8.51 (light sidebar) / 8.14 (light
+   accent); 10.73 (dark card) / 11.00 (dark background) / 8.15 (dark accent);
+   9.60 (night card) / 9.75 (night background) / 8.47 (night accent).
 
-   RE-MEASURE THE DESTRUCTIVE RING IF `--destructive` OR THE SURFACE THE
-   CONFIRMATION MODAL DRAWS ON MOVES. It is the closest ring to its floor in both
-   schemes - 3.49 against white in light and 3.27 against the card in dark, which
-   is 16% and 9% of headroom over SC 1.4.11's 3:1, where the violet ring carries
-   between 18% (dark accent) and 89% (white). Both figures are a tint of
-   `--destructive` measured against that surface, so either token moving takes
-   them with it, and the room to absorb it is not there: 66% of the same token
-   was already tried and landed at 3.01 / 2.76.
+   Those margins are large because the ring is neutral in every variant now,
+   including destructive - see the rule below for why that stopped being a
+   colour choice and became a measurement. A tinted ring is what used to sit
+   close to the floor: the palette before this one carried between 18% and 89%
+   of headroom over 3:1 depending on surface, and its destructive ring failed
+   outright under this palette's darker red.
    These set only a custom property, so they cannot disturb the border shift
    `focus-visible:border-ring` supplies alongside them; focus is still two signals
    and never the ring alone. The `/20` hook also covers dark, where the registry
@@ -452,21 +588,21 @@
 
    THE RING IS ALSO OFFSET, and that is the other half of the fix. Those ratios
    are the ring against the surface *around* the control. On a FILLED control the
-   ring's other neighbour is the control's own fill, and it is a tinted version
-   of the same token, so the two sit on top of each other: destructive 1.38:1
-   light and 1.32:1 dark, checked Switch 2.05 light and 1.60 dark, primary button
-   2.11 light. SC 2.4.13 asks 3:1 of an indicator against the colours it touches,
-   and a ring flush against its own fill has to be hunted for - measured beside an
-   outline Cancel button, whose violet ring on white is unmistakable.
+   ring's other neighbour is the control's own fill, and with a neutral ring on a
+   neutral primary the two are nearly the same value: 1.06:1 light and 1.20:1
+   dark on the primary button, 1.00:1 on destructive in both schemes. SC 2.4.13
+   asks 3:1 of an indicator against the colours it touches, and a ring flush
+   against its own fill has to be hunted for. Removing the brand's hue made this
+   worse, not better, which is exactly why the offset is not optional here.
    `--tw-ring-offset-width` and `--tw-ring-offset-color` are custom properties, so
    the offset costs nothing under THE RULE; `--tw-ring-offset-shadow` has to be
    restated because only the `ring-offset-*` utility sets it, and the compiled
    `box-shadow` list paints it over the ring's inner 2px. Tailwind already grows
    `--tw-ring-shadow` by the offset width, so the ring stays 3px and gains a 2px
-   gap. With that gap the ring's neighbours are the surface on both sides:
-   violet 5.69 (white) / 5.40 (sidebar) / 4.73 (dark background) / 3.55 (dark
-   accent), and the fill is now separated from the gap by the control's own edge
-   contrast - 12.03 primary light, 8.37 secondary dark, 4.83 destructive light.
+   gap. With that gap the ring's neighbours are the surface on both sides, at the
+   ratios listed above, and the fill is separated from the gap by the control's
+   own edge contrast - 18.29 primary light, 15.31 primary dark, 7.92 destructive
+   light, 6.15 destructive dark.
 
    The destructive ring's gap is WHITE rather than the surface, and that is the
    one case the surface could not solve. `dark:bg-destructive/60` composites to
@@ -483,8 +619,23 @@
   --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width)
     var(--tw-ring-offset-color);
 }
+/* THE DESTRUCTIVE RING IS THE ORDINARY RING, and that is a decision rather than
+   an oversight. A focus indicator says where the keyboard is; it is not a state
+   and not a warning, and there is no reason for the answer to that question to
+   change colour with the button under it. Measurement forced the point before
+   taste got to it: a 75% tint of this palette's `--destructive` is 2.15:1
+   against the dark card and 1.65:1 against `--accent`, both under SC 1.4.11's
+   3:1, because a red dark enough to carry white text is too dark to be its own
+   indicator. Raising the red to fix the ring would cost the label, and tinting
+   it lighter would walk back toward `--state-alert`.
+   The neutral ring has no such conflict: 10.73 against the dark card, 9.04
+   against white, 8.14 at its worst (light `--accent`), in all three schemes.
+   The offset colour stays white rather than `--background`: on a filled
+   destructive control the gap's other neighbour is the red itself, and white
+   makes the indicator two-tone against both. In light mode white *is* the
+   surface, so that declaration is a no-op there and needs no scheme branch. */
 [class~="focus-visible:ring-destructive/20"]:focus-visible {
-  --tw-ring-color: color-mix(in oklab, var(--destructive) 75%, transparent);
+  --tw-ring-color: color-mix(in oklab, var(--ring) 75%, transparent);
   --tw-ring-offset-width: 2px;
   --tw-ring-offset-color: #ffffff;
   --tw-ring-offset-shadow: var(--tw-ring-inset,) 0 0 0 var(--tw-ring-offset-width)

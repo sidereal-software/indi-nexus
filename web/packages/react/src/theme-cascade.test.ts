@@ -400,7 +400,21 @@ describe("the compiled theme", () => {
     // around it, which is why the plain `var(--ring)` line sits above.
     for (const output of [css, minified]) {
       expect(output).toContain("color-mix(in oklab, var(--ring) 75%, transparent)");
-      expect(output).toContain("color-mix(in oklab, var(--destructive) 75%, transparent)");
+    }
+  });
+
+  it("gives the destructive control the ordinary ring, never a tint of itself", () => {
+    // A focus indicator says where the keyboard is; it is not a state and not a
+    // warning. Measurement forced the point before taste reached it: a 75% tint
+    // of `--destructive` measures 2.15:1 against the dark card and 1.65:1
+    // against `--accent`, both under SC 1.4.11, because a red dark enough to
+    // carry white text is too dark to be its own indicator. Raising the red to
+    // fix the ring costs the label; tinting it lighter walks back toward
+    // `--state-alert`. This asserts the whole class stays gone rather than
+    // asserting one hex, so re-tinting it any shade fails here.
+    for (const output of [css, minified]) {
+      expect(output).not.toContain("var(--destructive) 75%");
+      expect(output).not.toContain("var(--destructive)75%");
     }
   });
 });

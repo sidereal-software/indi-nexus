@@ -69,7 +69,13 @@ function ObservatoryDemo() {
         className={`flex items-center justify-end gap-2 bg-background/95 backdrop-blur ${
           view === "custom"
             ? "border-b px-4 py-2 lg:fixed lg:top-3 lg:right-3 lg:z-50 lg:rounded-lg lg:border lg:px-2 lg:py-1.5 lg:shadow-sm"
-            : "fixed top-3 right-3 z-50 rounded-lg border px-2 py-1.5 shadow-sm"
+            : // `top-1.5`, not `top-3`. The pill floats over the panel's own
+              // 56px header on purpose - it is demo chrome and the panel below
+              // is the thing being demonstrated - but at `top-3` it ran from
+              // y=12 to y=57 and crossed the header's bottom rule by 2px, which
+              // reads as a misalignment rather than as an overlay. Centred in
+              // the header band it clears the rule entirely.
+              "fixed top-1.5 right-3 z-50 rounded-lg border px-2 py-1.5 shadow-sm"
         }`}
       >
         {source !== "unknown" && (

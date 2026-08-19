@@ -245,3 +245,10 @@ docs/reference/typescript/
 # theirs, not ours; the README explaining the directory is the only tracked file.
 /drivers/*
 !/drivers/README.md
+
+# Impeccable review evidence: screenshots captured for a finish review, and the
+# decision-round comps. Regenerated per review and superseded by the next one -
+# the durable outputs of a design pass are DESIGN.md and the code, not the
+# screenshots that were argued over on the way there.
+.impeccable/review/
+.impeccable/mocks/

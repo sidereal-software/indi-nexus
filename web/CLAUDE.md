@@ -573,6 +573,7 @@ because a phone is not a wallboard and clipping readings is worse than scrolling
   `openmeteo_device.py` folds into its labels after the first fetch never reaches a browser.
   The `UNITS` table mirrors what `weather-sim.ts` asks the API for; change the request and
   change the table.
-- **Status colour never carries meaning alone** - the theme's Alert and Busy are ΔE 4.4 apart
-  under deuteranopia - so every state is written out as well as coloured, and each of the
-  dome figure's three shutter readings differs in *shape* before it differs in hue.
+- **Status colour never carries meaning alone** - the closest pair is now ΔE 11.9 apart in
+  the worst of normal, deuteranopic and protanopic vision, where the set before it put dark
+  Ok and dark Alert at 2.3 - so every state is written out as well as coloured, and each of
+  the dome figure's three shutter readings differs in *shape* before it differs in hue.

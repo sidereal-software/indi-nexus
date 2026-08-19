@@ -10,8 +10,20 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        // DEVIATION from the shadcn registry: `dark:bg-destructive/60` is dropped, so
+        // the dark fill is the token itself. The registry draws the dark destructive
+        // at 60% over the card, and that composite is the defect CONCERNS.md recorded:
+        // it rendered #973030 at 2.48:1 under the old palette, and would render
+        // #7a1719 at 1.75:1 under this one - the most dangerous button in the product
+        // reading weakest in the scheme an operator uses at night. `--destructive` is
+        // now chosen for that job directly (6.15:1 under this variant's hardcoded
+        // `text-white`, 3.05:1 against the card, and 15.44 CIEDE2000 from
+        // `--state-alert` so danger is never confusable with an instrument in Alert).
+        // Not fixable from `theme.css`: `background-color` is a real property, so an
+        // unlayered rule would also beat `hover:bg-destructive/90`. Keep this on the
+        // next `shadcn add button`.
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
         outline:
           "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
