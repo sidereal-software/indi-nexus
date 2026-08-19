@@ -25,7 +25,7 @@
  *   over a shared `indiserver` stream.
  */
 
-import { CLIENT_PROTOCOL_VERSION, type WebSocketLike } from "@indi-nexus/client";
+import { CLIENT_PROTOCOL_VERSION, type WebSocketLike } from "@indikit/client";
 import { DomeSimSocket } from "./dome-sim";
 import { type Payload, WeatherSimSocket } from "./weather-sim";
 

@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import zlib
 
-from indi_nexus.driver import Device, on_new
-from indi_nexus.protocol import BLOB, IPerm, IPState, Switch, SwitchVector
+from indikit.driver import Device, on_new
+from indikit.protocol import BLOB, IPerm, IPState, Switch, SwitchVector
 
 #: The uncompressed payload: a FITS primary header, padded to whole 2880-byte
 #: blocks the way a real file is, which also makes it compress convincingly.

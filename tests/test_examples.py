@@ -17,12 +17,12 @@ from examples.guided_camera import MAIN_SIZE, CameraLink, GuideChip, MainChip
 from examples.monitor_client import format_event, monitor
 from examples.scripted_session import session, slew, watch_link
 from examples.telescope_device import TelescopeSimulator
-from indi_nexus.client import IndiClient
-from indi_nexus.client.store import PropertyEvent
-from indi_nexus.driver import Device
-from indi_nexus.exceptions import NotConnectedError
-from indi_nexus.hub import InProcessHub
-from indi_nexus.protocol import (
+from indikit.client import IndiClient
+from indikit.client.store import PropertyEvent
+from indikit.driver import Device
+from indikit.exceptions import NotConnectedError
+from indikit.hub import InProcessHub
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     DefVector,
@@ -37,7 +37,7 @@ from indi_nexus.protocol import (
     SwitchVector,
     to_xml,
 )
-from indi_nexus.testing import DeviceHarness
+from indikit.testing import DeviceHarness
 
 
 class _Server:
@@ -1351,7 +1351,7 @@ def test_blob_receiver_saves_the_image_a_real_camera_sends(tmp_path):
     """blob_receiver drives the CCD example end to end and writes its FITS out.
 
     **This test cannot prove its own headline lesson.** ``InProcessHub`` has no
-    ``enableBLOB`` gate at all (see :mod:`indi_nexus.hub`), so every driver frame
+    ``enableBLOB`` gate at all (see :mod:`indikit.hub`), so every driver frame
     reaches the client whether or not it asked for BLOBs. What passing proves is
     that the payload survives the round trip; what it does *not* prove is that
     the ``enable_blob`` call in ``receive`` is load-bearing - against a real

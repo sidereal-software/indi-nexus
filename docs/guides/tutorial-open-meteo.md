@@ -265,7 +265,7 @@ the explicit `await self.load_config()`, because reading a file is the blocking
 work step 3 told you to be deliberate about.
 
 Having nothing saved is the ordinary first run rather than a failure, so it
-arrives as `ConfigError` (an `OSError`, imported from `indi_nexus`) and gets
+arrives as `ConfigError` (an `OSError`, imported from `indikit`) and gets
 caught. Without the `except`, a first start would look like a broken driver.
 
 Restoring a value is not the same as acting on it. `load_config()` puts the saved
@@ -288,13 +288,13 @@ a file does exactly what one typed into the panel does, and there is one place t
 fix when that changes.
 
 [Saving configuration](writing-drivers.md#saving-configuration) covers the rest,
-including `NEXUS_CONFIG_PERSISTED`: the property this driver publishes to tell a
+including `INDIKIT_CONFIG_PERSISTED`: the property this driver publishes to tell a
 panel which settings Save writes.
 
 ## 9. Run it
 
 ```bash
-indi-nexus serve --device examples.openmeteo_device:OpenMeteo
+indikit serve --device examples.openmeteo_device:OpenMeteo
 ```
 
 Open <http://localhost:8000/> and press Connect. The readings are live weather.
@@ -318,7 +318,7 @@ The custom UI here is a wallboard: the display an observer glances at from
 across the room to answer one question. The code is
 `web/apps/panel/demo/observatory-board.tsx` for the layout and
 `board-visuals.tsx` for the drawn figures, built entirely from
-`@indi-nexus/react`.
+`@indikit/react`.
 
 It reads two devices, not one. This driver supplies the weather half and a
 simulated dome supplies the other, both arriving through a single client. That
@@ -466,11 +466,11 @@ context reading getting no status light, rain overriding the numbers, the site
 surviving a restart, and a dead API parking the readings and saying so once.
 
 A screen built on these hooks is tested the same way, against the frames a
-driver really sends. `@indi-nexus/react/testing` is what makes that cheap:
+driver really sends. `@indikit/react/testing` is what makes that cheap:
 `renderConnected(ui)` mounts your component under a provider wired to a fake
 socket that has already sent its `hello`, and `receive(socket, frame)` feeds it
 what the driver would have said. The
-[React package README](https://github.com/sidereal-software/indi-nexus/blob/main/web/packages/react/README.md#testing-your-own-components)
+[React package README](https://github.com/sidereal-software/indikit/blob/main/web/packages/react/README.md#testing-your-own-components)
 has the details.
 
 ## Where to take it

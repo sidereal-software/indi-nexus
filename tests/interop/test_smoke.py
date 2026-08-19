@@ -7,7 +7,7 @@ client cannot reach the hub at all.
 
 from __future__ import annotations
 
-from indi_nexus.client import IndiClient
+from indikit.client import IndiClient
 
 
 async def test_client_connects_to_a_real_indiserver(indi_server):

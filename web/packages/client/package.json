@@ -1,16 +1,16 @@
 {
-  "name": "@indi-nexus/client",
+  "name": "@indikit/client",
   "version": "0.2.0",
-  "description": "Framework-agnostic TypeScript client and typed property store for the INDINexus web bridge.",
+  "description": "Framework-agnostic TypeScript client and typed property store for the INDIkit web bridge.",
   "license": "MIT",
   "author": "Sidereal Software",
-  "homepage": "https://indi-nexus.sidereal.software/",
+  "homepage": "https://indikit.sidereal.software/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sidereal-software/indi-nexus.git",
+    "url": "git+https://github.com/sidereal-software/indikit.git",
     "directory": "web/packages/client"
   },
-  "bugs": "https://github.com/sidereal-software/indi-nexus/issues",
+  "bugs": "https://github.com/sidereal-software/indikit/issues",
   "keywords": [
     "indi",
     "astronomy",

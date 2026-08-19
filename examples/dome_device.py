@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A dome-control driver: libindi's classic Dome Simulator, rebuilt on INDINexus.
+"""A dome-control driver: libindi's classic Dome Simulator, rebuilt on INDIkit.
 
 This is a port of ``dome_simulator.cpp`` (Jasem Mutlaq's C++ Dome Simulator) to
-the INDINexus driver SDK. It keeps the standard INDI property names - the
+the INDIkit driver SDK. It keeps the standard INDI property names - the
 device-level ``CONNECTION`` switch (one ``define_connection()`` call here),
 ``ABS_DOME_POSITION``, ``REL_DOME_POSITION``, ``DOME_SHUTTER``, ``DOME_PARK``,
 ``DOME_ABORT_MOTION`` - so any INDI client recognises it, and the same motion
@@ -19,13 +19,13 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    indi-nexus serve --device examples.dome_device:DomeSimulator
+    indikit serve --device examples.dome_device:DomeSimulator
 """
 
 from __future__ import annotations
 
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     IPState,
     ISRule,
     ISState,

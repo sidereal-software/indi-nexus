@@ -1,6 +1,6 @@
 /** Tests for the streaming message log. */
 
-import { IndiClient } from "@indi-nexus/client";
+import { IndiClient } from "@indikit/client";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { IndiProvider } from "../context";

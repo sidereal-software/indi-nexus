@@ -1,6 +1,6 @@
 /** Tests for the store-backed hooks: each re-renders on the events it watches. */
 
-import type { NumberVector } from "@indi-nexus/client";
+import type { NumberVector } from "@indikit/client";
 import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {

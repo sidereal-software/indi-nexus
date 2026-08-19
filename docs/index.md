@@ -1,6 +1,6 @@
-# INDINexus
+# INDIkit
 
-INDINexus is a Python toolkit for writing INDI instrument drivers. The plumbing is already
+INDIkit is a Python toolkit for writing INDI instrument drivers. The plumbing is already
 done. A driver is one Python class, it runs under the `indiserver` you already have, you
 can test all of it with nothing plugged in, and a browser control panel comes with it.
 
@@ -12,8 +12,8 @@ simulated weather station, in the real panel, with nothing installed.
 Here is a complete driver for a flat-field lamp, a switch and a brightness dial:
 
 ```python title="examples/flat_panel.py, trimmed for this page"
-from indi_nexus.driver import Device, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, on_new
+from indikit.protocol import (
     IPState, ISRule, ISState, Number, NumberVector, Switch, SwitchVector,
 )
 
@@ -92,7 +92,7 @@ if __name__ == "__main__":
 ```
 
 That is
-[`examples/flat_panel.py`](https://github.com/sidereal-software/indi-nexus/blob/main/examples/flat_panel.py),
+[`examples/flat_panel.py`](https://github.com/sidereal-software/indikit/blob/main/examples/flat_panel.py),
 trimmed for this page. The file in the repository carries its module header and fuller
 docstrings, and folds nothing.
 
@@ -101,7 +101,7 @@ property at a time.
 
 ## The plumbing it replaces
 
-INDINexus stands in for the driver you would otherwise hand-roll:
+INDIkit stands in for the driver you would otherwise hand-roll:
 
 - the read loop over stdin;
 - the XML parser that has to survive a start tag split across two reads;
@@ -117,9 +117,9 @@ a slow poll cannot publish pre-write state over a button the operator just press
 ## Install and run
 
 ```bash
-pip install indi-nexus
-indi-nexus new my_driver.py
-indi-nexus serve --device my_driver:MyDriver
+pip install indikit
+indikit new my_driver.py
+indikit serve --device my_driver:MyDriver
 ```
 
 Open <http://localhost:8000/>. The driver `new` just wrote is in the sidebar with a
@@ -154,8 +154,8 @@ A driver is an ordinary Python object, so a test can drive it and read back what
 its clients:
 
 ```python
-from indi_nexus.protocol import ISState
-from indi_nexus.testing import DeviceHarness
+from indikit.protocol import ISState
+from indikit.testing import DeviceHarness
 
 from flat_panel import FlatPanel
 
@@ -195,8 +195,8 @@ Every INDI device says what it has: properties, kinds, ranges, labels. The UI ca
 therefore be generated from the device rather than written per instrument.
 
 ```tsx
-import { IndiProvider, DevicePanel } from "@indi-nexus/react";
-import "@indi-nexus/react/styles.css";
+import { IndiProvider, DevicePanel } from "@indikit/react";
+import "@indikit/react/styles.css";
 
 export function App() {
   return (
@@ -216,13 +216,13 @@ For a purpose-built screen, the same data is on hooks.
 
 ## How the pieces fit
 
-INDINexus plugs into `indiserver`, the hub program observatories already run. It does not
+INDIkit plugs into `indiserver`, the hub program observatories already run. It does not
 replace it. Your driver is an ordinary INDI driver, so existing INDI software (KStars/Ekos,
 PHD2, other drivers) works with it unchanged.
 
 ```mermaid
 flowchart LR
-    subgraph py["Python (indi_nexus)"]
+    subgraph py["Python (indikit)"]
         drv["Driver SDK<br/>driver/"]
         cli["IndiClient<br/>client/"]
         web["FastAPI bridge<br/>web/"]

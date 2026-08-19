@@ -17,23 +17,49 @@ here.
 
 ## Needs a decision or an account you cannot make from a checkout
 
-### The GHCR package is private
+### The 0.2.0 release tags are the last things still called `indi-nexus`
+
+`indi-nexus-v0.2.0` is on origin with a GitHub release attached, and
+`release-please-config.json` now names the component `indikit`, so Release Please will look
+for `indikit-v*`, find nothing, and treat 0.3.0 as the first release of a new package.
+`.release-please-manifest.json` still pins 0.2.0, which is what keeps the version numbering
+continuous; only the tag lineage breaks.
+
+The three `CHANGELOG.md` files say `indi-nexus` throughout for the same reason. They are
+Release Please output and are not hand-edited, and they are an accurate record of a name
+that really was in use for those versions - so they are evidence here, not a task.
+
+**Resolved by:** deciding whether the three 0.2.0 releases get retagged under the new
+component or left as the historical record. Leaving them is defensible; pretending they were
+`indikit-v0.2.0` is not, since the artifacts they point at were built under the old name.
+Decide it before 0.3.0 cuts, because after that the gap stops being a rename and becomes a
+hole in the middle of the tag history.
+
+### The GHCR package is private, and the published one is under the old name
 
 The first publish created `ghcr.io/sidereal-software/indi-nexus` as private, which is
 GitHub's default. `docker pull` therefore asks strangers for credentials, and every
 `docker run` line in `docs/docker.md` fails for anyone who is not you. The workflow
-publishes correctly - `:edge` and `:sha-<commit>` reached the registry - so this is the
-only thing standing between the image and a reader.
+publishes correctly - `:edge` and `:sha-<commit>` reached the registry - so visibility was
+the only thing standing between the image and a reader.
 
-**Resolved by:** Settings -> Packages -> indi-nexus -> Change visibility -> Public. Then
-run one of the quickstarts from `docs/docker.md` on a machine that is not logged in.
+The rename adds a second half. `docker.yml` now pushes to
+`ghcr.io/sidereal-software/indikit`, so the next run creates a *new* package - private by
+default, like the first - and leaves the `indi-nexus` one behind holding the only images
+that exist today. Nothing points at the old name any more, so it is dead weight that still
+answers to a `docker pull`.
+
+**Resolved by:** letting the workflow publish once under the new name, then Settings ->
+Packages -> indikit -> Change visibility -> Public, and deleting the `indi-nexus` package
+in the same visit. Then run one of the quickstarts from `docs/docker.md` on a machine that
+is not logged in.
 
 ### The release pipeline has never run
 
 `.github/workflows/release.yml` cuts tags and changelogs today, and publishes nothing,
 because its one-time setup does not exist yet. Its own header lists it: a PyPI trusted
 publisher (PyPI accepts a pending publisher before the project exists), a manual first
-publish of `@indi-nexus/client` and `@indi-nexus/react` (npm cannot attach a trusted
+publish of `@indikit/client` and `@indikit/react` (npm cannot attach a trusted
 publisher to a package that does not exist), and the `pypi` and `npm` GitHub environments.
 
 Until then, merging the release PR produces a tagged version nobody can install, which is
@@ -44,20 +70,27 @@ exists for the first publish and skips a version already on the registry.
 
 ### The next version is 0.3.0 and the release PR is waiting
 
-Four commits since `indi-nexus-v0.2.0` carry a breaking change: the client refusing a
+Five commits since `indi-nexus-v0.2.0` carry a breaking change: the client refusing a
 send while disconnected, the `/ws` guarding, the removal of `DeviceConfigCard` from
-`@indi-nexus/react`, and the rename of `AlertAnnouncer` to `StatusAnnouncer`.
-`bump-minor-pre-major` is set, so the next release is 0.3.0 rather than 0.2.1. The open
-release PR's checks sit at `action_required` and will not run until approved.
+`@indikit/react`, the rename of `AlertAnnouncer` to `StatusAnnouncer`, and the project
+rename itself, which moves the distribution, the import package, the `INDIKIT_*`
+environment, the npm scope and one wire property at once. `bump-minor-pre-major` is set, so
+the next release is 0.3.0 rather than 0.2.1. The open release PR (#2) has checks sitting at
+`action_required` that will not run until approved.
 
-The rename was taken deliberately at this moment rather than deferred: `AlertAnnouncer`
-had grown to announce three things and only one of them is an alert, and renaming an
-exported symbol is free only until the first publish. Nothing has published yet.
+Both renames were taken deliberately rather than deferred, for the same reason: renaming an
+exported symbol - or a package - is free only until the first publish, and nothing has
+published yet. That window closes at 0.3.0 if the pipeline entry above is resolved first.
 
-**Resolved by:** reading the four `BREAKING CHANGE:` footers, approving the checks, and
-merging - or deciding to hold the release, in which case say so here. Note the two
-entries above: a merged release PR still publishes nothing until the trusted publisher
-and the manual npm first publish exist.
+PR #2 was generated before the project rename, so its branch holds the old package names
+throughout. Release Please rewrites its own branch on each `main` push, so this corrects
+itself rather than needing the PR closed; it is recorded because a glance at the PR between
+the rename landing and that run will show a diff that no longer matches the tree.
+
+**Resolved by:** letting the post-rename Release Please run rewrite PR #2, then reading the
+five `BREAKING CHANGE:` footers, approving the checks, and merging - or deciding to hold the
+release, in which case say so here. Note the two entries above: a merged release PR still
+publishes nothing until the trusted publisher and the manual npm first publish exist.
 
 ### The panel has no favicon
 
@@ -206,7 +239,7 @@ can reach, since `background-color` is a real property. Decide whether that is w
 ### The panel's heading chain skips a level in the empty state
 
 `DESIGN.md`'s Heading Chain Rule promises h1 → h2 → h3 with no step skipped. With no devices
-connected the page emits `h1 "INDINexus"` and then `h3 "Messages"` - the message strip's
+connected the page emits `h1 "INDIkit"` and then `h3 "Messages"` - the message strip's
 accordion trigger, which Radix wraps in an `<h3>` by default. axe reports `heading-order`
 (moderate, best-practice tag; it is not one of the WCAG A/AA rules, and the panel has none of
 those). Populated, the chain is unbroken because the property groups supply the `h2`.
@@ -271,7 +304,7 @@ wire schema together. Then the announcer disarms exactly the write that failed.
 ### `InProcessHub` duplicates the multi-device runtime
 
 `DriverRuntime` now serves several devices on one stream, which is exactly what
-`src/indi_nexus/hub.py` already did for itself. The duplication was left deliberately so
+`src/indikit/hub.py` already did for itself. The duplication was left deliberately so
 the runtime change stayed additive, and it is the copy that will drift.
 
 Collapsing it is not free: `hub.py` runs one reader per driver today, so a shared runtime
@@ -351,11 +384,11 @@ entry exists so the next person to notice does not spend the afternoon on it.
 
 ### "POSIX everywhere" is Linux and macOS, not Windows
 
-`config_dir` uses `click.get_app_dir("indi-nexus", force_posix=True)`, which gives
-`~/.indi-nexus` on Linux and macOS. It does **not** apply on Windows: click's `WIN` branch
-returns `%APPDATA%\indi-nexus` before `force_posix` is consulted. `force_posix=True` also
+`config_dir` uses `click.get_app_dir("indikit", force_posix=True)`, which gives
+`~/.indikit` on Linux and macOS. It does **not** apply on Windows: click's `WIN` branch
+returns `%APPDATA%\indikit` before `force_posix` is consulted. `force_posix=True` also
 means `XDG_CONFIG_HOME` is ignored on Linux, which is the documented cost of one path per
-operator. `INDI_NEXUS_CONFIG_DIR` overrides all of it.
+operator. `INDIKIT_CONFIG_DIR` overrides all of it.
 
 The docs say "Linux and macOS alike" rather than "every platform", so nothing published is
 false. This is recorded because the intent was one path everywhere and the implementation

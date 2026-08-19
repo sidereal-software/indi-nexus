@@ -1,7 +1,7 @@
-# Releasing INDINexus
+# Releasing INDIkit
 
-Three packages ship together and carry the same version number: `indi-nexus` on PyPI,
-and `@indi-nexus/client` and `@indi-nexus/react` on npm. Release Please keeps them in
+Three packages ship together and carry the same version number: `indikit` on PyPI,
+and `@indikit/client` and `@indikit/react` on npm. Release Please keeps them in
 lockstep, so there is never a combination of versions to reason about.
 
 Nothing here belongs on the documentation site. It is for whoever cuts the release.
@@ -26,7 +26,7 @@ changelog rather than the person reviewing the diff.
 Each package keeps its own changelog, because Release Please files a commit by the paths
 it touched: `CHANGELOG.md` for the Python package, and one in each of
 `web/packages/client` and `web/packages/react`. The
-[changelog page](https://indi-nexus.sidereal.software/changelog/) on the documentation
+[changelog page](https://indikit.sidereal.software/changelog/) on the documentation
 site shows all three, and the GitHub release carries them together.
 
 ## What number comes next
@@ -53,9 +53,9 @@ has to *do*, not only what changed - if it does not, this is the moment to fix i
 the `BEGIN_COMMIT_OVERRIDE` block below.
 
 Three landed between `0.2.0` and the next release, which is what that release is mostly
-made of: `@indi-nexus/client` now raises rather than queueing a send while disconnected,
+made of: `@indikit/client` now raises rather than queueing a send while disconnected,
 the bridge guards `/ws`, and `DeviceConfigCard`/`DeviceConfigCardProps` were removed from
-`@indi-nexus/react` in favour of `DeviceConfigDialog`. Every one of them is a caller's
+`@indikit/react` in favour of `DeviceConfigDialog`. Every one of them is a caller's
 code changing.
 
 If a release note reads badly after merging, edit the merged PR body and wrap a
@@ -90,10 +90,10 @@ uvx twine check dist/*
 uvx twine upload dist/*
 
 cd web
-pnpm --filter @indi-nexus/client pack --pack-destination /tmp/tarballs
-pnpm --filter @indi-nexus/react pack --pack-destination /tmp/tarballs
-npm publish /tmp/tarballs/indi-nexus-client-0.1.0.tgz   # client first
-npm publish /tmp/tarballs/indi-nexus-react-0.1.0.tgz    # react depends on it
+pnpm --filter @indikit/client pack --pack-destination /tmp/tarballs
+pnpm --filter @indikit/react pack --pack-destination /tmp/tarballs
+npm publish /tmp/tarballs/indikit-client-0.1.0.tgz   # client first
+npm publish /tmp/tarballs/indikit-react-0.1.0.tgz    # react depends on it
 ```
 
 Publish the client before the react package: the react package declares a dependency on

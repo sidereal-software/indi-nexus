@@ -5,7 +5,7 @@
  * feed it frames with `receive`, and read what the client sent from `sent`.
  */
 
-import type { WebSocketLike } from "@indi-nexus/client";
+import type { WebSocketLike } from "@indikit/client";
 
 /** A fake WebSocket whose lifecycle the test triggers by hand. */
 export class FakeSocket implements WebSocketLike {

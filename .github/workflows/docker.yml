@@ -3,7 +3,7 @@ name: docker
 # Publishes the runtime image to GHCR. Unlike release.yml, this needs no account
 # anywhere: the repository is public, GHCR authenticates with the built-in
 # GITHUB_TOKEN, and the image builds the wheel from this checkout rather than
-# installing indi-nexus from PyPI. So it is not blocked on the PyPI and npm
+# installing indikit from PyPI. So it is not blocked on the PyPI and npm
 # trusted-publisher setup that release.yml still needs.
 #
 # Two cadences, two meanings:
@@ -21,7 +21,7 @@ name: docker
 # Dockerfile cannot rot unnoticed, and workflow_dispatch publishes on demand.
 #
 # ONE-TIME SETUP: the first push creates the package as private. Make it public
-# once at Settings -> Packages -> indi-nexus -> Change visibility, or `docker
+# once at Settings -> Packages -> indikit -> Change visibility, or `docker
 # pull` will ask strangers for credentials.
 
 on:
@@ -67,13 +67,13 @@ env:
 jobs:
   image:
     name: Build${{ github.event_name != 'pull_request' && ' and publish' || '' }}
-    # Release Please cuts three releases from one merge - indi-nexus-v, client-v
+    # Release Please cuts three releases from one merge - indikit-v, client-v
     # and react-v - so a release event fires three times. Only the Python
     # package's release describes what is in this image; without this guard the
     # two npm releases would each republish :latest carrying no version tag.
     if: >-
       github.event_name != 'release'
-      || startsWith(github.event.release.tag_name, 'indi-nexus-v')
+      || startsWith(github.event.release.tag_name, 'indikit-v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -104,7 +104,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Release Please tags the Python package indi-nexus-vX.Y.Z, so the ref is
+      # Release Please tags the Python package indikit-vX.Y.Z, so the ref is
       # not a bare semver and `type=semver` would read the component prefix as
       # part of the version. match/group pulls the version back out.
       - id: meta
@@ -112,15 +112,15 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=match,pattern=indi-nexus-v(\d+\.\d+\.\d+),group=1
-            type=match,pattern=indi-nexus-v(\d+\.\d+)\.\d+,group=1
+            type=match,pattern=indikit-v(\d+\.\d+\.\d+),group=1
+            type=match,pattern=indikit-v(\d+\.\d+)\.\d+,group=1
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
             type=raw,value=edge,enable=${{ github.event_name == 'push' }}
             type=sha,format=short,enable=${{ github.event_name == 'push' }}
             type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
             type=ref,event=pr
           labels: |
-            org.opencontainers.image.title=INDINexus
+            org.opencontainers.image.title=INDIkit
 
       - uses: docker/build-push-action@v7
         with:
@@ -154,8 +154,8 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build --load --file docker/Dockerfile --target runtime \
-            --build-arg VERSION=ci --tag indi-nexus:ci --cache-from type=gha .
-          docker run -d --name smoke -e WEB_TOKEN -p 8000:8000 indi-nexus:ci
+            --build-arg VERSION=ci --tag indikit:ci --cache-from type=gha .
+          docker run -d --name smoke -e WEB_TOKEN -p 8000:8000 indikit:ci
           for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8000/health >/dev/null; then break; fi
             sleep 2
@@ -167,7 +167,7 @@ jobs:
           test "$code" = 403 || { echo "::error::/api/devices answered $code unauthenticated"; exit 1; }
           curl -sf -H "Authorization: Bearer $WEB_TOKEN" http://127.0.0.1:8000/api/devices \
             | tee /dev/stderr | grep -q 'Telescope Simulator'
-          curl -sf http://127.0.0.1:8000/ | grep -q '<title>INDINexus</title>'
+          curl -sf http://127.0.0.1:8000/ | grep -q '<title>INDIkit</title>'
           echo "OK: health, the token guard, a device behind it, and the compiled panel"
       - name: Show the container log if that failed
         if: failure()

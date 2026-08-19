@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A reference INDINexus driver.
+"""A reference INDIkit driver.
 
 It exposes the standard ``CONNECTION`` switch plus a number, a text, a light and a
 switch vector, uses ``@every`` to animate them once a second while connected, and
@@ -14,8 +14,8 @@ or just ``python examples/demo_device.py`` and type ``getProperties`` XML at it.
 
 from __future__ import annotations
 
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     IPerm,
     IPState,
     ISRule,

@@ -1,6 +1,6 @@
 /** A compact indicator of the bridge and upstream connection state. */
 
-import { CLIENT_PROTOCOL_VERSION } from "@indi-nexus/client";
+import { CLIENT_PROTOCOL_VERSION } from "@indikit/client";
 import { cn } from "@/lib/utils";
 import { useConnection } from "../hooks";
 

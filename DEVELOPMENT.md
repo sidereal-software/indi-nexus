@@ -1,7 +1,7 @@
 # Development guide
 
-Everything needed to work on the INDINexus monorepo. For a user-facing tour, start with
-the [README](README.md) and the [documentation site](https://indi-nexus.sidereal.software/).
+Everything needed to work on the INDIkit monorepo. For a user-facing tour, start with
+the [README](README.md) and the [documentation site](https://indikit.sidereal.software/).
 
 ## Setup
 
@@ -35,12 +35,12 @@ cd web && pnpm install && cd ..         # install the JS workspace deps
 ## Project layout
 
 ```
-indi-nexus/
+indikit/
 ├── pyproject.toml           # packaging, dependencies, tool config (ruff/mypy/pytest)
-├── src/indi_nexus/
+├── src/indikit/
 │   ├── exceptions.py        # the error hierarchy: IndiError + a builtin base per type
-│   ├── settings.py          # the INDI_NEXUS_* environment, read once at an entrypoint
-│   ├── logging_config.py    # configure_logging + the shared indi_nexus.wire logger
+│   ├── settings.py          # the INDIKIT_* environment, read once at an entrypoint
+│   ├── logging_config.py    # configure_logging + the shared indikit.wire logger
 │   ├── protocol/            # the INDI protocol core
 │   │   ├── enums.py         #   IPState / IPerm / ISRule / ISState / BLOBPolicy + coerce_switch
 │   │   ├── models.py        #   typed Pydantic vectors, elements, def/set/new + enableBLOB
@@ -61,8 +61,8 @@ indi-nexus/
 ├── docs/ + mkdocs.yml       # the documentation site
 ├── docker/ + compose.yaml   # indiserver + the bridge in one image; also runs tests/interop
 └── web/                     # pnpm workspace (TypeScript frontend)
-    ├── packages/client/     #   @indi-nexus/client - framework-agnostic transport + store
-    ├── packages/react/      #   @indi-nexus/react  - hooks + shadcn/ui components + theme
+    ├── packages/client/     #   @indikit/client - framework-agnostic transport + store
+    ├── packages/react/      #   @indikit/react  - hooks + shadcn/ui components + theme
     └── apps/panel/          #   the reference panel (built into web/static/panel)
 ```
 
@@ -79,7 +79,7 @@ uv run mypy src                   # type-check (strict)
 
 # Regenerate the browser wire schema after an intentional model change, and
 # update web/packages/client/src/types.ts in the same commit.
-INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
+INDIKIT_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
 ```
 
 `tests/data/wire_schema.json` is a committed snapshot of the JSON schema a browser is
@@ -98,56 +98,56 @@ pnpm -r test                          # run all package tests (Vitest)
 pnpm -r typecheck                     # type-check every package
 pnpm lint                             # lint + format check (Biome)
 pnpm run lint:diagrams                # parse every Mermaid diagram in the repository
-pnpm --filter @indi-nexus/panel dev   # panel dev server with hot reload (proxies to :8000)
+pnpm --filter @indikit/panel dev   # panel dev server with hot reload (proxies to :8000)
 ```
 
 `lint:diagrams` renders every diagram in the repository with Mermaid's own CLI, so a parse
 error fails here instead of shipping an empty box. It needs a browser to render in; if it
 cannot find one, point it at yours with `PUPPETEER_EXECUTABLE_PATH`, which is what CI does.
 
-For panel development with hot reload, run a bridge (`indi-nexus serve --device examples.demo_device:Demo`, or
-`indi-nexus serve` against a real `indiserver`) and the Vite dev server, which proxies
+For panel development with hot reload, run a bridge (`indikit serve --device examples.demo_device:Demo`, or
+`indikit serve` against a real `indiserver`) and the Vite dev server, which proxies
 `/ws` and `/api` to it.
 
 ## Running things
 
 ```bash
-indi-nexus serve --device examples.demo_device:Demo   # panel + a driver in one process, for development
-indi-nexus new my_driver.py                 # scaffold a runnable driver file to start from
-indi-nexus serve                            # web panel against a real indiserver (open :8000)
-indi-nexus run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
-indi-nexus run mod:A mod:B                  # several devices from one driver process
-indi-nexus monitor                          # print live INDI updates from indiserver
-indi-nexus --help                           # all CLI commands and options
+indikit serve --device examples.demo_device:Demo   # panel + a driver in one process, for development
+indikit new my_driver.py                 # scaffold a runnable driver file to start from
+indikit serve                            # web panel against a real indiserver (open :8000)
+indikit run examples.demo_device:Demo    # serve a driver over stdio (under indiserver)
+indikit run mod:A mod:B                  # several devices from one driver process
+indikit monitor                          # print live INDI updates from indiserver
+indikit --help                           # all CLI commands and options
 ```
 
 ### Configuration and logging
 
-Every knob lives under one prefix, `INDI_NEXUS_`, everything is optional, and
-`indi_nexus.settings.Settings` reads all of it. There is one reader and one story: a
-variable means what the table says wherever INDINexus runs, and no flag carries its own
+Every knob lives under one prefix, `INDIKIT_`, everything is optional, and
+`indikit.settings.Settings` reads all of it. There is one reader and one story: a
+variable means what the table says wherever INDIkit runs, and no flag carries its own
 environment lookup. No variable outside the prefix is read at all: the last row's default
 is a path, not another variable.
 
 | Variable | Flag | Default | Effect |
 |---|---|---|---|
-| `INDI_NEXUS_LOG_LEVEL` | `--log-level`, `-v` | `INFO` | Level for `indi_nexus.*` **and** uvicorn. One of `CRITICAL`/`ERROR`/`WARNING`/`INFO`/`DEBUG`, case-insensitive; anything else is a usage error rather than a traceback out of `uvicorn.Config`. |
-| `INDI_NEXUS_WIRE_LOG` | `--wire` | off | One line per INDI message per direction, on the `indi_nexus.wire` logger. |
-| `INDI_NEXUS_CONNECT_TIMEOUT` | - | `10.0` | Seconds the client waits per connection attempt. |
-| `INDI_NEXUS_RECONNECT_DELAY` | - | `2.0` | Seconds between a lost connection and the next attempt. |
-| `INDI_NEXUS_MESSAGE_HISTORY` | - | `100` | INDI `message` frames replayed to a newly attached browser. |
-| `INDI_NEXUS_MAX_BACKLOG` | - | `512` | Live frames a browser may fall behind by before it is dropped. |
-| `INDI_NEXUS_TOKEN` | `--token` | unset | See [Access control on `serve`](#access-control-on-serve). |
-| `INDI_NEXUS_ALLOWED_ORIGINS` | `--allow-origin` | unset | Same. **Space separated** in the environment, repeatable as a flag. |
-| `INDI_NEXUS_ALLOW_INSECURE_BIND` | `--allow-insecure-bind` | off | Same. |
-| `INDI_NEXUS_CONFIG_DIR` | - | `~/.indi-nexus` - see below | Where a driver's `CONFIG_PROCESS` saves and loads its properties. |
+| `INDIKIT_LOG_LEVEL` | `--log-level`, `-v` | `INFO` | Level for `indikit.*` **and** uvicorn. One of `CRITICAL`/`ERROR`/`WARNING`/`INFO`/`DEBUG`, case-insensitive; anything else is a usage error rather than a traceback out of `uvicorn.Config`. |
+| `INDIKIT_WIRE_LOG` | `--wire` | off | One line per INDI message per direction, on the `indikit.wire` logger. |
+| `INDIKIT_CONNECT_TIMEOUT` | - | `10.0` | Seconds the client waits per connection attempt. |
+| `INDIKIT_RECONNECT_DELAY` | - | `2.0` | Seconds between a lost connection and the next attempt. |
+| `INDIKIT_MESSAGE_HISTORY` | - | `100` | INDI `message` frames replayed to a newly attached browser. |
+| `INDIKIT_MAX_BACKLOG` | - | `512` | Live frames a browser may fall behind by before it is dropped. |
+| `INDIKIT_TOKEN` | `--token` | unset | See [Access control on `serve`](#access-control-on-serve). |
+| `INDIKIT_ALLOWED_ORIGINS` | `--allow-origin` | unset | Same. **Space separated** in the environment, repeatable as a flag. |
+| `INDIKIT_ALLOW_INSECURE_BIND` | `--allow-insecure-bind` | off | Same. |
+| `INDIKIT_CONFIG_DIR` | - | `~/.indikit` - see below | Where a driver's `CONFIG_PROCESS` saves and loads its properties. |
 
 `CONFIG_DIR` is the one default that is computed rather than written down. It comes from
-`click.get_app_dir("indi-nexus", force_posix=True)`, which is `~/.indi-nexus` on Linux and
+`click.get_app_dir("indikit", force_posix=True)`, which is `~/.indikit` on Linux and
 macOS alike - the same path on every machine an operator administers, and right beside
 libindi's own `~/.indi`, so one observatory's two sets of configuration sit together.
 **`XDG_CONFIG_HOME` is not consulted**, which is what that consistency costs: a Linux user
-who sets it is not obeyed, and `INDI_NEXUS_CONFIG_DIR` is the way to move the directory.
+who sets it is not obeyed, and `INDIKIT_CONFIG_DIR` is the way to move the directory.
 
 With no home to expand, the default is **nothing at all**. `Path.home()` *raises* there -
 which is how a service manager runs a driver - and a temp directory would accept every Save
@@ -164,8 +164,8 @@ ever saw from being frozen into every later invocation. `--token ""` is a value 
 other, so it turns a configured token back off for one run.
 
 `LOG_LEVEL` and `WIRE_LOG` also have to work with **no CLI in the loop**, since a driver
-launched by `indiserver` as `./my_driver.py` reaches `indi_nexus.driver.run` and never
-`indi-nexus`; that entrypoint reads the same two fields.
+launched by `indiserver` as `./my_driver.py` reaches `indikit.driver.run` and never
+`indikit`; that entrypoint reads the same two fields.
 
 In the Docker image `TOKEN`, `ALLOWED_ORIGINS` and `ALLOW_INSECURE_BIND` are also spelled
 `WEB_TOKEN`, `WEB_ALLOWED_ORIGINS` and
@@ -190,8 +190,8 @@ and writer and the driver runtime's reader and writer - which is why they do not
 their own module loggers:
 
 ```
-DEBUG    indi_nexus.wire: <- set CCD.CCD_TEMPERATURE
-DEBUG    indi_nexus.wire: -> new CCD.CONNECTION (142 bytes)
+DEBUG    indikit.wire: <- set CCD.CCD_TEMPERATURE
+DEBUG    indikit.wire: -> new CCD.CONNECTION (142 bytes)
 ```
 
 A BLOB's payload is never printed; the line reports its size (`[1048576 byte payload]`),
@@ -211,9 +211,9 @@ options on `serve` (they apply to `--device` too):
 
 | Option | Env var | Effect |
 |---|---|---|
-| `--token TEXT` | `INDI_NEXUS_TOKEN` | Shared secret required on `/ws` and `/api`. Unset leaves both open, which is what a loopback development server wants. |
-| `--allow-origin TEXT` | `INDI_NEXUS_ALLOWED_ORIGINS` | A browser origin to accept on `/ws` besides the server's own, e.g. `http://localhost:5173` for the Vite dev server. Repeatable as a flag, space separated in the variable; `*` accepts any. |
-| `--allow-insecure-bind` | `INDI_NEXUS_ALLOW_INSECURE_BIND` | Permit the non-loopback bind with no token anyway. This exposes the instrument. |
+| `--token TEXT` | `INDIKIT_TOKEN` | Shared secret required on `/ws` and `/api`. Unset leaves both open, which is what a loopback development server wants. |
+| `--allow-origin TEXT` | `INDIKIT_ALLOWED_ORIGINS` | A browser origin to accept on `/ws` besides the server's own, e.g. `http://localhost:5173` for the Vite dev server. Repeatable as a flag, space separated in the variable; `*` accepts any. |
+| `--allow-insecure-bind` | `INDIKIT_ALLOW_INSECURE_BIND` | Permit the non-loopback bind with no token anyway. This exposes the instrument. |
 
 The flag wins over the variable, and the refusal above is checked against whichever of the
 two applies - a token set in the environment authenticates the bind exactly as `--token`
@@ -226,7 +226,7 @@ and CDN access logs and in browser history.
 
 ### The bridge's HTTP surface
 
-Served by `indi-nexus serve`, with or without `--device`:
+Served by `indikit serve`, with or without `--device`:
 
 - `GET /` - the reference panel; `GET /debug` - the raw debug inspector. Open.
 - `GET /health` - open on purpose: the Docker image's `HEALTHCHECK` calls it
@@ -278,7 +278,7 @@ contract *is* the backend model schema. Two things on the wire are not:
 
 - The bridge's own control frames - `{"event": "hello"}`, `{"event": "connection"}` and
   `{"event": "error"}` - which INDI has no message for. They are modelled all the same, in
-  `indi_nexus/web/control_frames.py`, and the `hello` carries `BRIDGE_PROTOCOL_VERSION`:
+  `indikit/web/control_frames.py`, and the `hello` carries `BRIDGE_PROTOCOL_VERSION`:
   the version of the browser contract itself, bumped only on a breaking change.
 - `/api`, which returns **bare vectors**, not tagged messages, so it has no `tag` field and
   is not an `IndiMessage` a client codec can parse. The routes are annotated with
@@ -317,7 +317,7 @@ On a machine that does have libindi, `uv run pytest tests/interop` still works.
 
 ## Documentation
 
-MkDocs Material, published from `main` to <https://indi-nexus.sidereal.software/> by
+MkDocs Material, published from `main` to <https://indikit.sidereal.software/> by
 `.github/workflows/docs.yml`:
 
 ```bash
@@ -338,10 +338,10 @@ cannot rot without a build going red.
   on every page and says what is true of it: `RUNS` (executed, usually through
   `DeviceHarness`, with the page's own claims asserted), `EXCERPT` (a trimmed quotation of
   a real file, matched statement by statement against it), `COMPILES` (a fragment, so it
-  is compiled and its `indi_nexus` imports resolved) or `PROSE` (not our code, or code the
+  is compiled and its `indikit` imports resolved) or `PROSE` (not our code, or code the
   page is warning against, with the reason recorded). **A fence with no claim fails the
   suite**, so a new snippet has to be classified rather than ignored. The same module
-  checks the `indi-nexus` commands and flags the pages tell people to type, the
+  checks the `indikit` commands and flags the pages tell people to type, the
   `module:Class` driver targets they name, the Docker variables they advertise, and the
   tutorial's quoted request and reply against `tests/data/open_meteo_response.json`.
 - **TypeScript** - `web/scripts/extract-doc-snippets.mjs`, run by each package's
@@ -364,7 +364,7 @@ install it, at the cost of not seeing what the previews look like.
 uv build                          # build sdist + wheel
 ```
 
-The panel is bundled into the wheel, so `pip install indi-nexus` ships the UI. `uv build`
+The panel is bundled into the wheel, so `pip install indikit` ships the UI. `uv build`
 runs the frontend build automatically when Node/pnpm are available (via `hatch_build.py`);
 to package offline, run `pnpm -r build` first and the pre-built panel is bundled as-is.
 If neither is possible the wheel is built without the panel and the bridge falls back to
@@ -393,12 +393,12 @@ changed for someone using the thing.
 - **The path decides the changelog, but all three release together.** A commit touching
   `web/packages/react` lands in that package's changelog, not the Python one, so keep
   unrelated changes in separate commits when you want them filed separately. The version
-  itself is shared: `linked-versions` moves `indi-nexus`, `@indi-nexus/client` and
-  `@indi-nexus/react` to one number every time.
+  itself is shared: `linked-versions` moves `indikit`, `@indikit/client` and
+  `@indikit/react` to one number every time.
 
   That does mean a release sometimes bumps a package with nothing in its changelog, which
   is a real cost and was weighed rather than overlooked. `hatch_build.py` compiles the
-  panel into the wheel, so a TypeScript change alters what `pip install indi-nexus` and
+  panel into the wheel, so a TypeScript change alters what `pip install indikit` and
   the Docker image contain, and 28% of the commits in this repository touch only `web/`.
   Versioning the packages independently would ship those to npm while the wheel and the
   image quietly stayed behind, and the only guard against that would be remembering to

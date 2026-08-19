@@ -1,22 +1,22 @@
-# @indi-nexus/react
+# @indikit/react
 
 React hooks and [shadcn/ui](https://ui.shadcn.com/) components for building
-[INDINexus](https://indi-nexus.sidereal.software/) frontends.
+[INDIkit](https://indikit.sidereal.software/) frontends.
 
 Observatory instruments (telescopes, domes, cameras, focusers, weather stations) speak
-[INDI](https://docs.indilib.org/protocol/). The INDINexus bridge puts that traffic behind a
+[INDI](https://docs.indilib.org/protocol/). The INDIkit bridge puts that traffic behind a
 WebSocket as typed JSON.
 
 This package turns that into a UI. Point a provider at a bridge, name a device, and you
 have a working control panel.
 
-It builds on [`@indi-nexus/client`](https://www.npmjs.com/package/@indi-nexus/client) and
+It builds on [`@indikit/client`](https://www.npmjs.com/package/@indikit/client) and
 re-exports all of it, so this is the only package an application needs.
 
 ## Install
 
 ```bash
-npm install @indi-nexus/react
+npm install @indikit/react
 ```
 
 `react` and `react-dom` (18.3+ or 19) are peer dependencies.
@@ -24,8 +24,8 @@ npm install @indi-nexus/react
 ## Usage
 
 ```tsx
-import { StatusAnnouncer, IndiProvider, DevicePanel } from "@indi-nexus/react";
-import "@indi-nexus/react/styles.css";
+import { StatusAnnouncer, IndiProvider, DevicePanel } from "@indikit/react";
+import "@indikit/react/styles.css";
 
 export const App = () => (
   <IndiProvider url="ws://localhost:8000/ws">
@@ -36,7 +36,7 @@ export const App = () => (
 ```
 
 `DevicePanel` builds itself from whatever the device reports it has, so it works for
-instruments INDINexus has never seen.
+instruments INDIkit has never seen.
 
 `StatusAnnouncer` is in that first example on purpose. Render it once, anywhere under the
 provider. It watches every device, including the ones your layout is not currently
@@ -69,7 +69,7 @@ driver are identical whether this browser asked for the change or another client
 For your own layout, the same live state is available through hooks:
 
 ```tsx
-import { useNumber, useSwitch, useConnection } from "@indi-nexus/react";
+import { useNumber, useSwitch, useConnection } from "@indikit/react";
 
 export const Readout = () => {
   const { transport } = useConnection(); // also `upstream` and `protocol`
@@ -134,7 +134,7 @@ instead of the sidebar entry.
 
 ## Testing your own components
 
-`@indi-nexus/react/testing` is a second entry point holding the harness this package's own
+`@indikit/react/testing` is a second entry point holding the harness this package's own
 tests use, so a component you build on these hooks can be tested without a bridge:
 
 - `renderConnected(ui)` renders `ui` under a provider wired to a fake socket that has
@@ -150,21 +150,21 @@ entry point pulls it in.
 
 ## Styling
 
-Import `@indi-nexus/react/styles.css` once for the full stylesheet. If you already run
-Tailwind and only want the INDINexus theme variables, import
-`@indi-nexus/react/theme.css` instead.
+Import `@indikit/react/styles.css` once for the full stylesheet. If you already run
+Tailwind and only want the INDIkit theme variables, import
+`@indikit/react/theme.css` instead.
 
 ## Documentation
 
 Full guides, a live in-browser demo, and the API reference:
-<https://indi-nexus.sidereal.software/>. Start with the
-[frontend guide](https://indi-nexus.sidereal.software/guides/frontend/).
+<https://indikit.sidereal.software/>. Start with the
+[frontend guide](https://indikit.sidereal.software/guides/frontend/).
 
 ## Changelog
 
 [CHANGELOG.md](CHANGELOG.md) in this directory records what changed in each
-release of this package. All three INDINexus packages ship at the same version,
-and the [releases page](https://github.com/sidereal-software/indi-nexus/releases)
+release of this package. All three INDIkit packages ship at the same version,
+and the [releases page](https://github.com/sidereal-software/indikit/releases)
 carries the notes for every one of them together.
 
 ## License

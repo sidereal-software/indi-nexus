@@ -2,7 +2,7 @@
   "files": ["web/apps/panel/index.html", "web/apps/panel/demo/**/*.html"],
   "exclude": [
     "docs/demo-app/**",
-    "src/indi_nexus/web/static/**"
+    "src/indikit/web/static/**"
   ],
   "insertBefore": "</body>",
   "commentSyntax": "html",

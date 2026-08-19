@@ -16,7 +16,7 @@ import {
   ISState,
   type Message,
   type Vector,
-} from "@indi-nexus/client";
+} from "@indikit/client";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useIndiClient } from "./context";
 

@@ -3,22 +3,22 @@
 All three packages ship at the same version, so a version number means the same release
 everywhere. Each package's own notes are below.
 
-The [releases page](https://github.com/sidereal-software/indi-nexus/releases) carries the
+The [releases page](https://github.com/sidereal-software/indikit/releases) carries the
 same notes with links to the commits.
 
 ## Python package
 
-`indi-nexus` on PyPI: the driver SDK, the async client and the web bridge.
+`indikit` on PyPI: the driver SDK, the async client and the web bridge.
 
 --8<-- "CHANGELOG.md:releases"
 
-## @indi-nexus/client
+## @indikit/client
 
 The framework-agnostic TypeScript client and property store.
 
 --8<-- "web/packages/client/CHANGELOG.md:releases"
 
-## @indi-nexus/react
+## @indikit/react
 
 The React hooks and shadcn/ui components.
 

@@ -7,7 +7,7 @@
  * `receive` and read what it sent from `socket.sent`.
  */
 
-import { CLIENT_PROTOCOL_VERSION, IndiClient } from "@indi-nexus/client";
+import { CLIENT_PROTOCOL_VERSION, IndiClient } from "@indikit/client";
 import { act, type RenderResult, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { IndiProvider } from "../context";

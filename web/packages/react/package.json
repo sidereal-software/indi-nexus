@@ -1,16 +1,16 @@
 {
-  "name": "@indi-nexus/react",
+  "name": "@indikit/react",
   "version": "0.2.0",
-  "description": "React hooks and shadcn/ui-based components for building INDINexus frontends.",
+  "description": "React hooks and shadcn/ui-based components for building INDIkit frontends.",
   "license": "MIT",
   "author": "Sidereal Software",
-  "homepage": "https://indi-nexus.sidereal.software/",
+  "homepage": "https://indikit.sidereal.software/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sidereal-software/indi-nexus.git",
+    "url": "git+https://github.com/sidereal-software/indikit.git",
     "directory": "web/packages/react"
   },
-  "bugs": "https://github.com/sidereal-software/indi-nexus/issues",
+  "bugs": "https://github.com/sidereal-software/indikit/issues",
   "keywords": [
     "indi",
     "astronomy",
@@ -58,7 +58,7 @@
     "@testing-library/react": "^16.0.0"
   },
   "dependencies": {
-    "@indi-nexus/client": "workspace:*",
+    "@indikit/client": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",

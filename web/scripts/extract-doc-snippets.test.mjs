@@ -17,7 +17,7 @@ const MARKDOWN = [
   "```",
   "",
   "```bash",
-  "npm install @indi-nexus/react",
+  "npm install @indikit/react",
   "```",
   "",
   "```ts",
@@ -30,7 +30,7 @@ describe("parseFences", () => {
   it("returns every fence with its language and opening line", () => {
     expect(parseFences(MARKDOWN)).toEqual([
       { lang: "tsx", line: 3, body: "export const First = () => <p>one</p>;" },
-      { lang: "bash", line: 7, body: "npm install @indi-nexus/react" },
+      { lang: "bash", line: 7, body: "npm install @indikit/react" },
       { lang: "ts", line: 11, body: "const second = 2;" },
     ]);
   });
@@ -96,7 +96,7 @@ describe("renderSnippet", () => {
   const fence = {
     lang: "tsx",
     line: 3,
-    body: 'import { X } from "@indi-nexus/react";\nconst a = 1;',
+    body: 'import { X } from "@indikit/react";\nconst a = 1;',
   };
 
   it("names the source file and line, and points the import inside the package", () => {
@@ -111,7 +111,7 @@ describe("renderSnippet", () => {
   });
 
   it("drops the stylesheet import, which nothing declares a type for", () => {
-    const withCss = { ...fence, body: 'import "@indi-nexus/react/styles.css";\nconst a = 1;' };
+    const withCss = { ...fence, body: 'import "@indikit/react/styles.css";\nconst a = 1;' };
     expect(renderSnippet("docs/page.md", { name: "s", match: "a" }, withCss)).not.toContain(
       "styles.css",
     );

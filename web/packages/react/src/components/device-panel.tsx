@@ -1,6 +1,6 @@
 /** All of one device's properties, grouped by INDI group, as a grid of cards. */
 
-import type { Vector } from "@indi-nexus/client";
+import type { Vector } from "@indikit/client";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/ui/accordion";
@@ -12,13 +12,13 @@ import { PropertyVectorCard } from "./property-vector-card";
 /**
  * The properties {@link DeviceConfigDialog} owns, kept out of the groups.
  *
- * `NEXUS_CONFIG_PERSISTED` is there for the dialog to read, not for an operator:
+ * `INDIKIT_CONFIG_PERSISTED` is there for the dialog to read, not for an operator:
  * drawn as a card it is a read-only text field holding a list of property names,
  * which says nothing the dialog does not say in words.
  */
 const CONFIG_PROPERTIES: ReadonlySet<string> = new Set([
   "CONFIG_PROCESS",
-  "NEXUS_CONFIG_PERSISTED",
+  "INDIKIT_CONFIG_PERSISTED",
 ]);
 
 /** Where a group sorts: Main Control leads, everything else is alphabetical. */
@@ -59,7 +59,7 @@ export interface DevicePanelProps {
  * properties are not here at all: `CONFIG_PROCESS` is a per-device action
  * surface rather than a property group, so {@link DeviceConfigDialog} offers it
  * from the sidebar and the panel excludes it so it is not also drawn as four
- * anonymous buttons, and `NEXUS_CONFIG_PERSISTED` is the answer that dialog
+ * anonymous buttons, and `INDIKIT_CONFIG_PERSISTED` is the answer that dialog
  * renders in words rather than as a text field full of property names. `Main
  * Control` leads, because it is where a driver puts the controls an operator
  * actually came for. The rest of {@link DRIVER_MACHINERY} - the driver's debug

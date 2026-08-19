@@ -51,7 +51,7 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       # Build first (topological: client -> react -> panel): the react package's
-      # typecheck and tests both consume @indi-nexus/client's built types/dist.
+      # typecheck and tests both consume @indikit/client's built types/dist.
       - name: Build
         run: pnpm -r build
       - name: Lint + format
@@ -119,9 +119,9 @@ jobs:
         run: uv build --wheel
       - name: Verify the panel is bundled
         run: |
-          unzip -l dist/*.whl | grep -q 'indi_nexus/web/static/panel/index.html' || {
+          unzip -l dist/*.whl | grep -q 'indikit/web/static/panel/index.html' || {
             echo "::error::the reference panel is missing from the wheel"; exit 1; }
-          unzip -l dist/*.whl | grep -q 'indi_nexus/web/static/panel/assets/' || {
+          unzip -l dist/*.whl | grep -q 'indikit/web/static/panel/assets/' || {
             echo "::error::the panel assets are missing from the wheel"; exit 1; }
           echo "OK: the wheel bundles the reference panel"
       - uses: actions/upload-artifact@v7

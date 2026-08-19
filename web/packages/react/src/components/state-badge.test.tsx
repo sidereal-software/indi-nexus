@@ -1,6 +1,6 @@
 /** Tests for the state indicators: which state they declare, and which ones pulse. */
 
-import { IPState } from "@indi-nexus/client";
+import { IPState } from "@indikit/client";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { StateBadge } from "./state-badge";

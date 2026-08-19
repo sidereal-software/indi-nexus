@@ -23,10 +23,10 @@ importers:
 
   apps/panel:
     dependencies:
-      '@indi-nexus/client':
+      '@indikit/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@indi-nexus/react':
+      '@indikit/react':
         specifier: workspace:*
         version: link:../../packages/react
       lucide-react:
@@ -90,7 +90,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@indi-nexus/client':
+      '@indikit/client':
         specifier: workspace:*
         version: link:../client
       class-variance-authority:
@@ -141,7 +141,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: ^6.0.4
-        version: 6.0.4(vite@8.1.5(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
+        version: 6.0.4(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.0))
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
@@ -4572,10 +4572,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.1.5(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0)
+      vite: 8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.0)
 
   '@vitest/expect@3.2.7':
     dependencies:
@@ -5501,7 +5501,7 @@ snapshots:
       lightningcss: 1.33.0
       yaml: 2.9.0
 
-  vite@8.1.5(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0):
+  vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
@@ -5510,7 +5510,7 @@ snapshots:
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 22.20.1
-      esbuild: 0.27.7
+      esbuild: 0.28.1
       fsevents: 2.3.3
       jiti: 2.7.0
       yaml: 2.9.0

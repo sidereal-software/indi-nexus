@@ -1,11 +1,11 @@
 /**
- * `@indi-nexus/client` - a framework-agnostic TypeScript client and typed property
- * store for the INDINexus web bridge.
+ * `@indikit/client` - a framework-agnostic TypeScript client and typed property
+ * store for the INDIkit web bridge.
  *
  * This is the transport + cache layer shared by any frontend: it speaks the JSON
  * wire contract, mirrors bridge state into a {@link PropertyStore}, and exposes a
  * small watch/send API ({@link IndiClient}). It has no framework or UI dependency;
- * `@indi-nexus/react` builds hooks and components on top of it.
+ * `@indikit/react` builds hooks and components on top of it.
  */
 
 export type {

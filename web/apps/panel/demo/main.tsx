@@ -2,14 +2,14 @@
  * Entry for the documentation site's live demo.
  *
  * Two views of one observatory, sharing a single client: the stock panel that
- * INDINexus ships, and the custom {@link ObservatoryBoard} from the tutorial.
+ * INDIkit ships, and the custom {@link ObservatoryBoard} from the tutorial.
  * Behind both is {@link ObservatorySimSocket} - a simulated dome and the
  * Open-Meteo driver, multiplexed onto one fake bridge - so the whole page works
  * with no server.
  */
 
-import { IndiClient } from "@indi-nexus/client";
-import { IndiProvider, ToggleGroup, ToggleGroupItem } from "@indi-nexus/react";
+import { IndiClient } from "@indikit/client";
+import { IndiProvider, ToggleGroup, ToggleGroupItem } from "@indikit/react";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "../src/App";

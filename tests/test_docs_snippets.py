@@ -15,7 +15,7 @@ unexamined.
 
 ``RUNS``
     Complete enough to execute. It is executed, usually through
-    :class:`~indi_nexus.testing.DeviceHarness`, and the page's claims about what
+    :class:`~indikit.testing.DeviceHarness`, and the page's claims about what
     it does are asserted.
 ``EXCERPT``
     A trimmed quotation of a real file. Every statement it shows, with every
@@ -23,9 +23,9 @@ unexamined.
     :func:`~tests.docs_fences.contains_snippet`.
 ``COMPILES``
     A fragment with no runnable form: it is compiled, and every name it imports
-    from ``indi_nexus`` is resolved, so a renamed export fails here.
+    from ``indikit`` is resolved, so a renamed export fails here.
 ``PROSE``
-    Not INDINexus code at all, or deliberately wrong code the page is warning
+    Not INDIkit code at all, or deliberately wrong code the page is warning
     against. Exempt, with the reason recorded next to it.
 
 Every fence is compiled and has its imports resolved regardless of its claim,
@@ -51,12 +51,12 @@ import pytest
 import typer.main
 from typer.testing import CliRunner
 
-from indi_nexus.cli import app, load_device
-from indi_nexus.driver import Device
-from indi_nexus.exceptions import ProtocolError
-from indi_nexus.protocol import BLOB, IPerm, IPState, ISState, SetVector, parse_indi, to_xml
-from indi_nexus.settings import Settings
-from indi_nexus.testing import DeviceHarness
+from indikit.cli import app, load_device
+from indikit.driver import Device
+from indikit.exceptions import ProtocolError
+from indikit.protocol import BLOB, IPerm, IPState, ISState, SetVector, parse_indi, to_xml
+from indikit.settings import Settings
+from indikit.testing import DeviceHarness
 from tests.docs_fences import REPO_ROOT, Fence, contains_snippet, fences, python_fences
 
 #: Click needs a context to resolve a subcommand; nothing here uses its state.
@@ -258,13 +258,13 @@ CLAIMS = [
         "docs/guides/porting-from-pyindi.md",
         "def ISGetProperties",
         PROSE,
-        "libindi's C-shaped pyINDI API, shown for contrast; it is not INDINexus code",
+        "libindi's C-shaped pyINDI API, shown for contrast; it is not INDIkit code",
     ),
     Claim(
         "docs/guides/porting-from-pyindi.md",
         '@on_new("commands")',
         RUNS,
-        "test_porting_guide_indinexus_side_runs",
+        "test_porting_guide_indikit_side_runs",
     ),
     # -- docs/guides/protocol.md -------------------------------------------- #
     Claim("docs/guides/protocol.md", "vector.selected()", RUNS, "test_protocol_guide_reads_run"),
@@ -352,7 +352,7 @@ def test_python_fence_compiles(fence: Fence) -> None:
 
 @pytest.mark.parametrize("fence", _all_python_fences(), ids=lambda f: f.where)
 def test_python_fence_imports_resolve(fence: Fence) -> None:
-    """Import every name a fence takes from ``indi_nexus``.
+    """Import every name a fence takes from ``indikit``.
 
     A renamed or removed export fails here even in a snippet too partial to run.
 
@@ -362,7 +362,7 @@ def test_python_fence_imports_resolve(fence: Fence) -> None:
         The block under test.
     """
     for node in ast.walk(ast.parse(fence.code)):
-        if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("indi_nexus"):
+        if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("indikit"):
             continue
         module = importlib.import_module(node.module or "")
         for alias in node.names:
@@ -527,11 +527,11 @@ def _driver_names() -> dict[str, Any]:
     Returns
     -------
     names : dict
-        Everything ``indi_nexus.driver`` and ``indi_nexus.protocol`` export,
+        Everything ``indikit.driver`` and ``indikit.protocol`` export,
         plus ``math``, which the guide tells the reader to import.
     """
-    driver = importlib.import_module("indi_nexus.driver")
-    protocol = importlib.import_module("indi_nexus.protocol")
+    driver = importlib.import_module("indikit.driver")
+    protocol = importlib.import_module("indikit.protocol")
     names = {n: getattr(m, n) for m in (protocol, driver) for n in m.__all__}
     return {**names, "math": math}
 
@@ -577,9 +577,9 @@ async def test_readme_mount_driver_runs() -> None:
 
 
 async def test_readme_harness_snippet_runs(tmp_path: Any) -> None:
-    """Run the README's harness snippet against a driver ``indi-nexus new`` wrote.
+    """Run the README's harness snippet against a driver ``indikit new`` wrote.
 
-    The snippet's comment says ``my_driver`` is "the file ``indi-nexus new``
+    The snippet's comment says ``my_driver`` is "the file ``indikit new``
     wrote", and it then asserts a ``TELEMETRY`` property and a ``poll`` job. So
     the scaffold really has to have both, which is what this checks.
 
@@ -848,8 +848,8 @@ async def test_driver_guide_lights_shortcut_runs() -> None:
     assert latest.state is IPState.BUSY
 
 
-async def test_porting_guide_indinexus_side_runs() -> None:
-    """Run the porting guide's INDINexus column, hardware failure included.
+async def test_porting_guide_indikit_side_runs() -> None:
+    """Run the porting guide's INDIkit column, hardware failure included.
 
     The fence is the answer to the pyINDI fragment above it, so the behaviour it
     claims - an ``AT_MOST_ONE`` switch, a failed command reported and rolled
@@ -944,7 +944,7 @@ def _shell_commands(path: str) -> list[str]:
 
 @pytest.mark.parametrize("path", [*DOCUMENTED, "DEVELOPMENT.md"])
 def test_documented_cli_commands_exist(path: str) -> None:
-    """Check every ``indi-nexus`` command and flag a page shows against the CLI.
+    """Check every ``indikit`` command and flag a page shows against the CLI.
 
     A page telling someone to pass a flag the CLI does not have is exactly the
     kind of drift a rename leaves behind, and nothing else in the suite reads
@@ -959,7 +959,7 @@ def test_documented_cli_commands_exist(path: str) -> None:
     checked = 0
     for command in _shell_commands(path):
         words = command.split()
-        if words[0] != "indi-nexus":
+        if words[0] != "indikit":
             continue
         checked += 1
         rest = [w for w in words[1:] if not w.startswith("-")]
@@ -967,14 +967,14 @@ def test_documented_cli_commands_exist(path: str) -> None:
         parameters = list(group.params)
         if rest:
             subcommand = group.get_command(_CONTEXT, rest[0])
-            assert subcommand is not None, f"{path}: `indi-nexus {rest[0]}` is not a command"
+            assert subcommand is not None, f"{path}: `indikit {rest[0]}` is not a command"
             parameters += list(subcommand.params)
         # `--help` is click's, on every command, and appears in no parameter list.
         known = {"--help", *(option for parameter in parameters for option in parameter.opts)}
         for flag in flags:
             assert flag in known, f"{path}: `{command}` uses {flag}, which the CLI has not got"
     if path in {"docs/index.md", "docs/getting-started.md", "README.md", "DEVELOPMENT.md"}:
-        assert checked, f"{path} stopped showing any indi-nexus command"
+        assert checked, f"{path} stopped showing any indikit command"
 
 
 @pytest.mark.parametrize("path", [*DOCUMENTED, "DEVELOPMENT.md"])
@@ -995,7 +995,7 @@ def test_docker_page_environment_variables_exist() -> None:
     """Check the variables ``docs/docker.md`` shows are read by something.
 
     Each is either resolved by ``docker/entrypoint.sh`` or a field of
-    :class:`~indi_nexus.settings.Settings`. A page advertising a variable
+    :class:`~indikit.settings.Settings`. A page advertising a variable
     nothing reads is a silently ignored instruction, which is worse than none.
     """
     entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text()
@@ -1006,7 +1006,7 @@ def test_docker_page_environment_variables_exist() -> None:
             shown.update(re.findall(r"-e (\w+)=", fence.code))
     assert shown, "docs/docker.md stopped showing any -e VARIABLE"
     for variable in sorted(shown):
-        field = variable.removeprefix("INDI_NEXUS_").lower()
+        field = variable.removeprefix("INDIKIT_").lower()
         assert variable in entrypoint or field in known, (
             f"docs/docker.md advertises {variable}, which nothing reads"
         )

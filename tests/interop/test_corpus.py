@@ -17,8 +17,8 @@ import asyncio
 import pytest
 from conftest import wait_until
 
-from indi_nexus.client import IndiClient
-from indi_nexus.protocol import BLOBVector, LightVector, NumberVector, SwitchVector, TextVector
+from indikit.client import IndiClient
+from indikit.protocol import BLOBVector, LightVector, NumberVector, SwitchVector, TextVector
 
 # Everything indi-bin ships as a simulator, so the corpus grows when libindi's does.
 SIMULATORS = [

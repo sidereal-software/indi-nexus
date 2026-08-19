@@ -14,10 +14,10 @@ import json
 
 from examples.demo_device import Demo
 from examples.guided_camera import CameraLink, GuideChip, MainChip
-from indi_nexus.client import IndiClient
-from indi_nexus.driver import DriverRuntime
-from indi_nexus.protocol import IPState, ISState
-from indi_nexus.web import Bridge
+from indikit.client import IndiClient
+from indikit.driver import DriverRuntime
+from indikit.protocol import IPState, ISState
+from indikit.web import Bridge
 
 
 class _Pipe:

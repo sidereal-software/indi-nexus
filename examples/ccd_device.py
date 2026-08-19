@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A camera driver: libindi's CCD Simulator, rebuilt on INDINexus.
+"""A camera driver: libindi's CCD Simulator, rebuilt on INDIkit.
 
 This is a behavioral port of ``ccd_simulator.cpp`` (Jasem Mutlaq / Gerry
-Rozema's C++ CCD Simulator) to the INDINexus driver SDK. It keeps the standard
+Rozema's C++ CCD Simulator) to the INDIkit driver SDK. It keeps the standard
 INDI CCD property names - ``CCD_EXPOSURE``, ``CCD_ABORT_EXPOSURE``,
 ``CCD_FRAME_TYPE``, ``CCD_BINNING``, ``CCD_TEMPERATURE``, ``CCD_COOLER``,
 ``CCD_GAIN``, ``CCD_OFFSET``, ``CCD_INFO``, and the ``CCD1`` image BLOB - so
@@ -28,7 +28,7 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    indi-nexus serve --device examples.ccd_device:CCDSimulator
+    indikit serve --device examples.ccd_device:CCDSimulator
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ import random
 import struct
 from array import array
 
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     BLOB,
     IPerm,
     IPState,

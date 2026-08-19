@@ -7,7 +7,7 @@ search:
 
 [pyINDI](https://github.com/so-mops/pyINDI) mirrors the libindi C API in Python:
 `ISGetProperties`, the four `ISNew*` methods, `IUFind`, `IDSet`,
-`@device.repeat`. INDINexus keeps the same INDI semantics and replaces that
+`@device.repeat`. INDIkit keeps the same INDI semantics and replaces that
 vocabulary with plain Python. A port is mostly mechanical, and this page is the
 mapping.
 
@@ -16,7 +16,7 @@ are, so an existing client or panel sees the same device before and after.
 
 ## The mapping
 
-| pyINDI | INDINexus |
+| pyINDI | INDIkit |
 |---|---|
 | `class Device(device)` | `class MyDriver(Device)` |
 | `ISGetProperties(self, device)` | `async def setup(self)` |
@@ -55,7 +55,7 @@ silently does nothing.
 
 Importing a driver module runs nothing. A pyINDI driver file ends by
 constructing and starting a device at module scope, which is why a test cannot
-import it. An INDINexus driver is a class, and `run()` happens under
+import it. An INDIkit driver is a class, and `run()` happens under
 `if __name__ == "__main__"`.
 
 Blocking hardware calls need `off_thread`. pyINDI's callbacks are synchronous,
@@ -73,7 +73,7 @@ publish the `CONFIG_PROCESS` switch. libindi instead picks the subset inside
 invisible on the wire.
 
 Declaring it is what lets the SDK publish the answer as
-`NEXUS_CONFIG_PERSISTED`, which a panel reads to name what Save writes.
+`INDIKIT_CONFIG_PERSISTED`, which a panel reads to name what Save writes.
 Restoring stays yours: `await self.load_config()` where you want the I/O to
 happen, and `on_config_loaded(names)` to act on the values it applied. See
 [Saving configuration](writing-drivers.md#saving-configuration).
@@ -109,7 +109,7 @@ def update(self):
     ...
 ```
 
-INDINexus:
+INDIkit:
 
 ```python
 async def setup(self) -> None:

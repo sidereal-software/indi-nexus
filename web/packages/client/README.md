@@ -1,29 +1,29 @@
-# @indi-nexus/client
+# @indikit/client
 
 Framework-agnostic TypeScript client and typed property store for the
-[INDINexus](https://indi-nexus.sidereal.software/) web bridge.
+[INDIkit](https://indikit.sidereal.software/) web bridge.
 
 Observatory instruments (telescopes, domes, cameras, focusers, weather stations) speak
-[INDI](https://docs.indilib.org/protocol/). The INDINexus bridge puts that traffic behind a
+[INDI](https://docs.indilib.org/protocol/). The INDIkit bridge puts that traffic behind a
 WebSocket as typed JSON.
 
 This package is the browser side of it. It handles the socket, reconnects on its own, and
 mirrors everything the bridge reports into a property cache you can read and subscribe to.
 
 No framework or UI dependency. If you are building with React, use
-[`@indi-nexus/react`](https://www.npmjs.com/package/@indi-nexus/react), which wraps this in
+[`@indikit/react`](https://www.npmjs.com/package/@indikit/react), which wraps this in
 hooks and components and re-exports the whole surface.
 
 ## Install
 
 ```bash
-npm install @indi-nexus/client
+npm install @indikit/client
 ```
 
 ## Usage
 
 ```ts
-import { IndiClient, IPState } from "@indi-nexus/client";
+import { IndiClient, IPState } from "@indikit/client";
 
 const client = new IndiClient({ url: "ws://localhost:8000/ws" });
 client.connect();
@@ -84,15 +84,15 @@ type is exported as `WriteCallback`.
 
 ## Documentation
 
-Full guides and API reference: <https://indi-nexus.sidereal.software/>. The
-[frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) covers this package
+Full guides and API reference: <https://indikit.sidereal.software/>. The
+[frontend guide](https://indikit.sidereal.software/guides/frontend/) covers this package
 and the React one together.
 
 ## Changelog
 
 [CHANGELOG.md](CHANGELOG.md) in this directory records what changed in each
-release of this package. All three INDINexus packages ship at the same version,
-and the [releases page](https://github.com/sidereal-software/indi-nexus/releases)
+release of this package. All three INDIkit packages ship at the same version,
+and the [releases page](https://github.com/sidereal-software/indikit/releases)
 carries the notes for every one of them together.
 
 ## License

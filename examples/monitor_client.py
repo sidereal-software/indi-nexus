@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A reference INDINexus client - watch an ``indiserver`` and print every update.
+"""A reference INDIkit client - watch an ``indiserver`` and print every update.
 
 Connects to ``indiserver``, subscribes to all property events, and prints a
 compact line as each one arrives. Run it against a live server::
@@ -16,7 +16,7 @@ import argparse
 import asyncio
 from collections.abc import Callable
 
-from indi_nexus.client import IndiClient, PropertyEvent
+from indikit.client import IndiClient, PropertyEvent
 
 
 def format_event(event: PropertyEvent) -> str:

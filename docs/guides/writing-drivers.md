@@ -12,7 +12,7 @@ answers two questions:
   exposure time. A weather station has a wind speed.
 - What happens when someone reads or changes one of those?
 
-In INDINexus a driver is a single Python class that answers both.
+In INDIkit a driver is a single Python class that answers both.
 
 ## The vocabulary
 
@@ -46,8 +46,8 @@ Here is a working driver for a flat-field lamp: a light panel with a brightness 
 Every line is explained underneath.
 
 ```python
-from indi_nexus.driver import Device, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, on_new
+from indikit.protocol import (
     IPState, ISRule, ISState, Number, NumberVector, Switch, SwitchVector,
 )
 
@@ -131,12 +131,12 @@ if __name__ == "__main__":
 16. `run()` serves the driver over standard input/output, which is how `indiserver`
     launches it.
 
-That driver is [`examples/flat_panel.py`](https://github.com/sidereal-software/indi-nexus/blob/main/examples/flat_panel.py)
+That driver is [`examples/flat_panel.py`](https://github.com/sidereal-software/indikit/blob/main/examples/flat_panel.py)
 in the repository, and the test suite covers it, so it cannot quietly stop working. Run it
 in the reference panel:
 
 ```bash
-indi-nexus serve --device examples.flat_panel:FlatPanel
+indikit serve --device examples.flat_panel:FlatPanel
 ```
 
 ## Connecting and disconnecting
@@ -296,7 +296,7 @@ camera.
 `len(data)` is right only for a payload that is not compressed.
 
 To deflate a frame for the wire, write the three fields yourself and then emit a `set`
-that names no element. INDINexus will not deflate for you, and `set()` cannot supply a
+that names no element. INDIkit will not deflate for you, and `set()` cannot supply a
 `size` it would have to inflate the bytes to learn. The convention is the `.z` suffix the
 [protocol guide](protocol.md#compressed-payloads) describes.
 
@@ -355,7 +355,7 @@ because a temperature reading is not a setting.
 kind of blocking work the rest of this page tells you to be deliberate about.
 
 Catch `ConfigError` around that call. Having nothing saved is the ordinary first run, and
-it arrives as that exception (an `OSError`, from `indi_nexus`). Without the `except`, a
+it arrives as that exception (an `OSError`, from `indikit`). Without the `except`, a
 first start looks like a broken driver.
 
 Where you put the call is not a correctness question. A load applies to every persisted
@@ -379,8 +379,8 @@ What is written is values, keyed by property, and nothing else:
 Definitions stay in the code: labels, permissions, limits. The code is the only thing that
 knows what this version of the driver publishes.
 
-The file lives in `~/.indi-nexus`, the same path on every platform, next to libindi's own
-`~/.indi`. `INDI_NEXUS_CONFIG_DIR` moves it, and nothing else does. `XDG_CONFIG_HOME` is
+The file lives in `~/.indikit`, the same path on every platform, next to libindi's own
+`~/.indi`. `INDIKIT_CONFIG_DIR` moves it, and nothing else does. `XDG_CONFIG_HOME` is
 not consulted.
 
 ### The driver says what Save writes
@@ -392,7 +392,7 @@ the answer can go on the wire.
 A libindi driver chooses its subset in `saveConfigItems`, a C++ virtual nothing on the
 wire exposes. A panel facing one can only warn that Save may not cover what is on screen.
 
-`define_config()` publishes the answer for you, as a read-only `NEXUS_CONFIG_PERSISTED`
+`define_config()` publishes the answer for you, as a read-only `INDIKIT_CONFIG_PERSISTED`
 text property whose `PROPERTIES` element holds the persisted property names separated by
 spaces. You write nothing extra.
 
@@ -480,7 +480,7 @@ A driver that both polls hardware and accepts commands has a subtle problem: a p
 started before the operator pressed a button can finish afterwards and publish what it
 read *before* the press, undoing it. The button springs back out, seemingly at random.
 
-INDINexus prevents that. `@every` ticks and `@on_new` handlers never run at the same time
+INDIkit prevents that. `@every` ticks and `@on_new` handlers never run at the same time
 on one device, so each sees a settled device and hardware access is serialised, which a
 single serial port wants anyway. The trade is that a click waits for a poll already in
 flight.
@@ -494,7 +494,7 @@ a rotator on one hub, three channels of a power box. One driver process announce
 Hand `run` a list instead of calling `Device.run()`:
 
 ```python
-from indi_nexus.driver import run
+from indikit.driver import run
 
 if __name__ == "__main__":
     run([Camera(), GuideChip(), FilterWheel()])
@@ -502,7 +502,7 @@ if __name__ == "__main__":
 
 Nothing else changes. `indiserver ./my_driver.py` launches it as before, and the three
 devices appear as three devices on the first `getProperties`. From the command line,
-`indi-nexus run my_driver:Camera my_driver:GuideChip` does the same with no `__main__`
+`indikit run my_driver:Camera my_driver:GuideChip` does the same with no `__main__`
 block.
 
 Each device keeps its own name, properties, handlers and `@every` jobs. They are ordinary
@@ -537,7 +537,7 @@ Run them as two drivers if two devices must never delay each other's commands.
 A driver is an ordinary object, so a test can drive it and check what it told its clients:
 
 ```python
-from indi_nexus.testing import DeviceHarness
+from indikit.testing import DeviceHarness
 
 async def test_lamp_turns_on():
     harness = DeviceHarness(FlatPanel())

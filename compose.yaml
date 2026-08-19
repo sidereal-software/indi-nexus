@@ -1,4 +1,4 @@
-# INDINexus in one container: the reference panel on :8000 and indiserver on :7624.
+# INDIkit in one container: the reference panel on :8000 and indiserver on :7624.
 #
 #   docker compose up --build
 #
@@ -12,13 +12,13 @@
 # See docs/docker.md for the rest.
 
 services:
-  indi-nexus:
+  indikit:
     build:
       context: .
       dockerfile: docker/Dockerfile
       target: runtime
-    # Named, so `docker run ... indi-nexus` works against what compose just built.
-    image: indi-nexus
+    # Named, so `docker run ... indikit` works against what compose just built.
+    image: indikit
     ports:
       - "8000:8000" # the panel, the REST snapshot and the WebSocket bridge
       - "7624:7624" # indiserver, for every other INDI client
@@ -29,27 +29,27 @@ services:
     environment:
       # libindi's telescope simulator, so there is something to look at with nothing
       # mounted. A name on PATH, a path to an executable and a path to a .py file
-      # written against the INDINexus SDK are all valid entries, space separated.
+      # written against the INDIkit SDK are all valid entries, space separated.
       INDI_DRIVERS: indi_simulator_telescope
       # The published port is a control surface for the instrument, so the bridge
       # always runs with a token. Left unset, one is generated and printed on
       # startup with the panel's URL; set it to keep that URL stable across a
       # restart. WEB_ALLOW_ANONYMOUS=1 turns it off, deliberately and knowingly.
-      # (INDI_NEXUS_TOKEN and INDI_NEXUS_ALLOW_INSECURE_BIND are the same two
+      # (INDIKIT_TOKEN and INDIKIT_ALLOW_INSECURE_BIND are the same two
       # settings under their package names; the entrypoint reads either. Set one
       # name per setting, not both.)
       # WEB_TOKEN: change-me
       # A front end served from somewhere else needs its origin named here,
       # space separated; the bridge's own origin is always accepted.
-      # (Package name: INDI_NEXUS_ALLOWED_ORIGINS, same format.)
+      # (Package name: INDIKIT_ALLOWED_ORIGINS, same format.)
       # WEB_ALLOWED_ORIGINS: http://localhost:5173
-      # Every other INDINexus setting is read by indi-nexus itself wherever it
+      # Every other INDIkit setting is read by indikit itself wherever it
       # runs, so it is passed straight through rather than translated by the
       # entrypoint. These two are what to reach for when a driver is not
       # appearing: WIRE_LOG puts one line per INDI message in each direction into
       # the log (BLOB payloads by size, never printed). docs/docker.md has the rest.
-      # INDI_NEXUS_LOG_LEVEL: DEBUG
-      # INDI_NEXUS_WIRE_LOG: 1
+      # INDIKIT_LOG_LEVEL: DEBUG
+      # INDIKIT_WIRE_LOG: 1
     restart: unless-stopped
 
   # Not started by `docker compose up`: the interop suite is a developer tool, and it

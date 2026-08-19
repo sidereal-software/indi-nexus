@@ -1,6 +1,6 @@
 /** The two ways an INDI state is shown: a labelled badge, and a bare status dot. */
 
-import type { IPState } from "@indi-nexus/client";
+import type { IPState } from "@indikit/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/ui/badge";
 

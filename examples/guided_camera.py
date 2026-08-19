@@ -4,8 +4,8 @@ r"""One driver process, two devices: a camera and the guide chip beside it.
 Some instruments are two INDI devices behind one piece of hardware. A camera
 with an integrated guide chip is the classic case: one USB link, one vendor
 handle, two sets of properties that clients drive independently. INDI has always
-modelled that as one driver announcing several devices, and INDINexus does it by
-handing a list to :func:`~indi_nexus.driver.run`::
+modelled that as one driver announcing several devices, and INDIkit does it by
+handing a list to :func:`~indikit.driver.run`::
 
     run([MainChip(), GuideChip()])
 
@@ -23,11 +23,11 @@ Run it under ``indiserver``::
 
 or over stdio directly, naming both devices::
 
-    indi-nexus run examples.guided_camera:MainChip examples.guided_camera:GuideChip
+    indikit run examples.guided_camera:MainChip examples.guided_camera:GuideChip
 
 or in the web panel without ``indiserver``, with one ``--device`` per chip::
 
-    indi-nexus serve \
+    indikit serve \
         --device examples.guided_camera:MainChip \
         --device examples.guided_camera:GuideChip
 """
@@ -38,8 +38,8 @@ import math
 import random
 import time
 
-from indi_nexus.driver import Device, every, on_new, run
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new, run
+from indikit.protocol import (
     BLOB,
     IPerm,
     IPState,
@@ -58,7 +58,7 @@ class CameraLink:
     """The one USB link both chips talk over, standing in for a vendor SDK.
 
     Deliberately **blocking**, like every real instrument library: the drivers
-    reach it through :meth:`~indi_nexus.driver.device.Device.off_thread`. It is
+    reach it through :meth:`~indikit.driver.device.Device.off_thread`. It is
     also the reason the two devices live in one process - there is one handle,
     and a second process could not open it.
     """
@@ -136,7 +136,7 @@ class CameraLink:
 
 
 #: The link the two chips share when neither is handed one explicitly, so every
-#: launch route - ``__main__``, ``indi-nexus run``, ``serve --device`` - gets the
+#: launch route - ``__main__``, ``indikit run``, ``serve --device`` - gets the
 #: single handle the hardware actually has.
 LINK = CameraLink()
 

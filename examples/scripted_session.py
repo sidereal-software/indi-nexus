@@ -4,12 +4,12 @@
 ``examples/monitor_client.py`` watches; this one *drives*, which is the shape an
 observing script or an automated sequence has:
 
-* :meth:`~indi_nexus.client.IndiClient.wait_for` turns "the driver got there"
+* :meth:`~indikit.client.IndiClient.wait_for` turns "the driver got there"
   into an awaitable, with a timeout, instead of a poll loop. What it hands back
   is a **snapshot** taken at the instant the predicate held - the cached vector
   keeps mutating, so a script that must reason about a value reads the one it
   was given, not the one in the cache a moment later;
-* :meth:`~indi_nexus.client.IndiClient.on_connection` reports the link coming
+* :meth:`~indikit.client.IndiClient.on_connection` reports the link coming
   and going, which is the only warning a long script gets;
 * **a send with no connection raises immediately and is never queued.** That is
   deliberate: a slew held while ``indiserver`` was down would arrive minutes
@@ -35,9 +35,9 @@ import argparse
 import asyncio
 from collections.abc import Callable
 
-from indi_nexus.client import IndiClient
-from indi_nexus.exceptions import IndiError, NotConnectedError
-from indi_nexus.protocol import IPState, ISState, NumberVector, Vector
+from indikit.client import IndiClient
+from indikit.exceptions import IndiError, NotConnectedError
+from indikit.protocol import IPState, ISState, NumberVector, Vector
 
 #: The mount this script drives by default.
 DEFAULT_DEVICE = "Telescope Simulator"
@@ -124,7 +124,7 @@ def _arrived_at(ra: float, dec: float, tolerance: float = 1e-3) -> Callable[[Vec
 
     Waiting for "no longer Busy" alone is a race, and a quiet one: the write is
     still in the outbox when
-    :meth:`~indi_nexus.client.IndiClient.wait_for` checks the cache, so the
+    :meth:`~indikit.client.IndiClient.wait_for` checks the cache, so the
     pre-write vector - ``Ok`` or ``Idle`` from the last operation - satisfies it
     at once and the script sails past a slew that has not started. Naming the
     destination as well as the state makes the wait describe an outcome instead
@@ -163,7 +163,7 @@ def _connected(vector: Vector) -> bool:
     Parameters
     ----------
     vector : Vector
-        The cached vector offered by :meth:`~indi_nexus.client.IndiClient.wait_for`.
+        The cached vector offered by :meth:`~indikit.client.IndiClient.wait_for`.
 
     Returns
     -------

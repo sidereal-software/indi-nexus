@@ -1,5 +1,5 @@
 ---
-name: INDINexus
+name: INDIkit
 description: An instrument-grade control surface for astronomical hardware, built to be read correctly at 3am.
 colors:
   # Light mode is the base. Dark-mode overrides carry a `-dark` suffix.
@@ -180,7 +180,7 @@ components:
     height: "32px"
 ---
 
-# Design System: INDINexus
+# Design System: INDIkit
 
 ## Overview
 

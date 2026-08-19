@@ -3,7 +3,7 @@
  *
  * Every expectation here is what Python prints for the same value and format:
  * the sexagesimal cases mirror `tests/test_protocol.py::test_format_number`, and
- * the printf cases were taken from `indi_nexus.protocol.xml.format_number` itself
+ * the printf cases were taken from `indikit.protocol.xml.format_number` itself
  * (which strips its result, so a space-padded width never survives). The two
  * implementations must produce identical output.
  */

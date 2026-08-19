@@ -15,7 +15,7 @@ than not having it.
 
 Regenerate after an intentional model change with::
 
-    INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
+    INDIKIT_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
-from indi_nexus.protocol import IndiMessage, Vector
-from indi_nexus.web import BRIDGE_PROTOCOL_VERSION, BridgeFrame
+from indikit.protocol import IndiMessage, Vector
+from indikit.web import BRIDGE_PROTOCOL_VERSION, BridgeFrame
 
 _GOLDEN = Path(__file__).parent / "data" / "wire_schema.json"
 
@@ -54,13 +54,13 @@ def _schema() -> dict[str, object]:
 def test_the_browser_wire_schema_has_not_drifted():
     """The committed schema still describes the models a browser is sent."""
     current = _schema()
-    if os.environ.get("INDI_NEXUS_UPDATE_GOLDEN"):
+    if os.environ.get("INDIKIT_UPDATE_GOLDEN"):
         _GOLDEN.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
 
     committed = json.loads(_GOLDEN.read_text())
     assert current == committed, (
         f"the browser JSON contract changed. If that was intended, update {_MIRROR} to match "
-        f"and regenerate this file with INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest {__file__}"
+        f"and regenerate this file with INDIKIT_UPDATE_GOLDEN=1 uv run pytest {__file__}"
     )
 
 
@@ -68,7 +68,7 @@ def test_the_hello_frame_carries_no_server_default():
     """``HelloFrame.server`` must stay defaultless, or this check rots.
 
     A model default lands in ``model_json_schema()``. Pinning
-    ``indi_nexus.__version__`` on the model would therefore make the golden file
+    ``indikit.__version__`` on the model would therefore make the golden file
     fail on every release, and the fix a releaser reaches for is to regenerate
     it without reading it - which is exactly the reflex this test exists to
     prevent. The bridge supplies the version at construction instead.

@@ -1,4 +1,4 @@
-"""Shared pytest configuration for the INDINexus test suite."""
+"""Shared pytest configuration for the INDIkit test suite."""
 
 from __future__ import annotations
 

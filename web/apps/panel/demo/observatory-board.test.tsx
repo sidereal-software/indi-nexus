@@ -16,8 +16,8 @@
  *   either of the two it is not.
  */
 
-import type { IPState } from "@indi-nexus/react";
-import { cleanup, receive, renderConnected, screen, within } from "@indi-nexus/react/testing";
+import type { IPState } from "@indikit/react";
+import { cleanup, receive, renderConnected, screen, within } from "@indikit/react/testing";
 import { type ReactElement, StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ObservatoryBoard } from "./observatory-board";

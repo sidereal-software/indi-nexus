@@ -6,7 +6,7 @@
  * simulator that leaves one of them Ok keeps showing a reading it no longer has.
  */
 
-import type { Vector } from "@indi-nexus/client";
+import type { Vector } from "@indikit/client";
 import { describe, expect, it } from "vitest";
 import { WeatherSimSocket } from "./weather-sim";
 

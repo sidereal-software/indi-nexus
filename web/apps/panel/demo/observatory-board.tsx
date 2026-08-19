@@ -43,7 +43,7 @@
  * text on the screen. The readings that argue for or against it come second, and
  * the almanac last.
  *
- * Built from `@indi-nexus/react`: hooks for the data, the shadcn primitives it
+ * Built from `@indikit/react`: hooks for the data, the shadcn primitives it
  * re-exports for the chrome, and the drawn figures in `board-visuals.tsx`.
  */
 
@@ -58,7 +58,7 @@ import {
   useSwitch,
   useText,
   type Vector,
-} from "@indi-nexus/react";
+} from "@indikit/react";
 import { Moon, Sun } from "lucide-react";
 import { useRef } from "react";
 import { useTheme } from "../src/use-theme";

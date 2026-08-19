@@ -12,7 +12,7 @@
  *
  * So this one runs the workspace's own Tailwind over `styles.css` and reads the
  * output. It compiles **twice**, because the two outputs are different code
- * paths and only one of them ships: `@indi-nexus/react/styles.css` is built by
+ * paths and only one of them ships: `@indikit/react/styles.css` is built by
  * `build:css` with `--minify`, which is Lightning CSS's minifier, while a
  * consumer importing `theme.css` into their own Tailwind gets the plain one.
  * The differences are not cosmetic - the minifier drops quotes from simple
@@ -156,7 +156,7 @@ function compile(minify: boolean): string {
 }
 
 beforeAll(() => {
-  outDir = mkdtempSync(join(tmpdir(), "indi-nexus-theme-"));
+  outDir = mkdtempSync(join(tmpdir(), "indikit-theme-"));
   css = compile(false);
   minified = compile(true);
 }, 60_000);

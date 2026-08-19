@@ -12,11 +12,11 @@ import asyncio
 import datetime as dt
 import logging
 
-import indi_nexus.client.client as client_module
-from indi_nexus.client import IndiClient
-from indi_nexus.exceptions import NotConnectedError, SendQueueFull
-from indi_nexus.logging_config import WIRE_LOGGER
-from indi_nexus.protocol import (
+import indikit.client.client as client_module
+from indikit.client import IndiClient
+from indikit.exceptions import NotConnectedError, SendQueueFull
+from indikit.logging_config import WIRE_LOGGER
+from indikit.protocol import (
     BLOBPolicy,
     BLOBVector,
     DefVector,
@@ -35,7 +35,7 @@ from indi_nexus.protocol import (
     parse_indi,
     to_xml,
 )
-from indi_nexus.protocol import xml as xml_module
+from indikit.protocol import xml as xml_module
 
 
 class _Server:
@@ -595,7 +595,7 @@ def test_a_muted_parser_is_treated_as_a_lost_connection(monkeypatch):
         async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
             await _settle()
             server.feed(b"<setNumberVector device='CCD' name='EXPOSURE'")
-            server.feed(b"</indinexus>")
+            server.feed(b"</indikit>")
             for _ in range(4):
                 server.feed(Message(device="CCD", message="lost"))
             await _settle()
@@ -629,18 +629,18 @@ def test_the_stall_warning_carries_what_this_connection_saw(monkeypatch, caplog)
                 b"<oneNumber name='secs'>not-a-number</oneNumber></setNumberVector>"
             )
             server.feed(b"<setNumberVector device='CCD' name='EXPOSURE'")
-            server.feed(b"</indinexus>")
+            server.feed(b"</indikit>")
             for _ in range(4):
                 server.feed(Message(device="CCD", message="lost"))
             await _settle()
 
             assert client.connected
 
-    with caplog.at_level(logging.WARNING, logger="indi_nexus.client.client"):
+    with caplog.at_level(logging.WARNING, logger="indikit.client.client"):
         asyncio.run(scenario())
 
     # Only this logger's own records: the codec logs each drop as it happens too.
-    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.client.client"]
+    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indikit.client.client"]
     assert "reconnecting to resync" in warning
     assert "1 dropped" in warning
 
@@ -1570,7 +1570,7 @@ def test_resets_are_per_connection_and_the_total_is_history():
         server = _Server()
         async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
             await _settle()
-            server.feed(b"</indinexus>")  # an unmatched close reopens the document
+            server.feed(b"</indikit>")  # an unmatched close reopens the document
             await _until(lambda: client.stats.resets == 1)
             assert client.stats.resets_total == 1
 
@@ -1733,12 +1733,12 @@ def test_a_transport_failing_unexpectedly_stops_the_loop_loudly(caplog):
         await client.aclose()
         return loop_task
 
-    with caplog.at_level(logging.ERROR, logger="indi_nexus.client.client"):
+    with caplog.at_level(logging.ERROR, logger="indikit.client.client"):
         loop_task = asyncio.run(scenario())
 
     # Re-raised, not swallowed: whoever holds the task can see what killed it.
     assert isinstance(loop_task.exception(), RuntimeError)
-    records = [r for r in caplog.records if r.name == "indi_nexus.client.client"]
+    records = [r for r in caplog.records if r.name == "indikit.client.client"]
     assert [r.getMessage() for r in records] == ["indi client connection loop stopped"]
     assert records[0].exc_info is not None  # logged with the traceback, not just a line
 
@@ -1760,7 +1760,7 @@ def test_aclose_ends_the_loop_without_reporting_a_failure(caplog):
         await client.aclose()
         assert not client.connected
 
-    with caplog.at_level(logging.ERROR, logger="indi_nexus.client.client"):
+    with caplog.at_level(logging.ERROR, logger="indikit.client.client"):
         asyncio.run(scenario())
 
-    assert [r for r in caplog.records if r.name == "indi_nexus.client.client"] == []
+    assert [r for r in caplog.records if r.name == "indikit.client.client"] == []

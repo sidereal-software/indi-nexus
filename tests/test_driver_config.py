@@ -6,7 +6,7 @@ loses work: a property restored depending on whether it was defined before or
 after the load, a redefine-after-delete reverting to what is on disk, a Save
 taken while a connect-time property is withdrawn erasing it, and a restore that
 announces a default before correcting itself. They are written against
-:class:`~indi_nexus.testing.DeviceHarness` because all four are observable in
+:class:`~indikit.testing.DeviceHarness` because all four are observable in
 exactly what the device emits.
 """
 
@@ -19,11 +19,11 @@ import stat
 
 import pytest
 
-from indi_nexus import ConfigError
-from indi_nexus.driver import Device, on_new
-from indi_nexus.driver.config import MAX_CONFIG_BYTES, config_path
-from indi_nexus.driver.device import CONFIG_PERSISTED, CONFIG_PERSISTED_NAMES
-from indi_nexus.protocol import (
+from indikit import ConfigError
+from indikit.driver import Device, on_new
+from indikit.driver.config import MAX_CONFIG_BYTES, config_path
+from indikit.driver.device import CONFIG_PERSISTED, CONFIG_PERSISTED_NAMES
+from indikit.protocol import (
     BLOB,
     IPerm,
     IPState,
@@ -34,7 +34,7 @@ from indi_nexus.protocol import (
     Switch,
     Text,
 )
-from indi_nexus.testing import DeviceHarness
+from indikit.testing import DeviceHarness
 
 
 class _Site(Device):
@@ -509,7 +509,7 @@ async def test_purge_removes_the_file_and_repeats_cleanly(tmp_path):
 # Telling a client what Save writes                                            #
 # --------------------------------------------------------------------------- #
 async def test_the_device_publishes_what_save_writes(tmp_path):
-    """``NEXUS_CONFIG_PERSISTED`` names the persisted properties, read-only.
+    """``INDIKIT_CONFIG_PERSISTED`` names the persisted properties, read-only.
 
     This is what ``persist=True`` being declarative buys: libindi picks the
     subset in ``saveConfigItems``, which no client can read, so a panel can only
@@ -763,7 +763,7 @@ async def test_a_device_with_nowhere_to_save_says_so(tmp_path):
     await harness.write("CONFIG_PROCESS", CONFIG_SAVE=True)
 
     assert harness.latest("CONFIG_PROCESS").state is IPState.ALERT
-    assert "INDI_NEXUS_CONFIG_DIR" in harness.messages[-1]
+    assert "INDIKIT_CONFIG_DIR" in harness.messages[-1]
 
 
 # --------------------------------------------------------------------------- #

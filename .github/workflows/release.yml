@@ -9,7 +9,7 @@ name: release
 # One-time setup before releases flow on their own:
 #   - PyPI: add a "pending" trusted publisher for this repo, workflow release.yml,
 #     environment `pypi`. PyPI accepts this before the project exists.
-#   - npm: publish @indi-nexus/client and @indi-nexus/react by hand once (npm cannot
+#   - npm: publish @indikit/client and @indikit/react by hand once (npm cannot
 #     configure a trusted publisher for a package that does not exist yet), then add a
 #     GitHub Actions trusted publisher to each package (environment `npm`).
 #   - GitHub: create the `pypi` and `npm` environments, and enable
@@ -113,14 +113,14 @@ jobs:
         run: |
           cd web
           mkdir -p "$RUNNER_TEMP/tarballs"
-          pnpm --filter @indi-nexus/client pack --pack-destination "$RUNNER_TEMP/tarballs"
-          pnpm --filter @indi-nexus/react pack --pack-destination "$RUNNER_TEMP/tarballs"
+          pnpm --filter @indikit/client pack --pack-destination "$RUNNER_TEMP/tarballs"
+          pnpm --filter @indikit/react pack --pack-destination "$RUNNER_TEMP/tarballs"
       - name: Publish client, then react
         run: |
           set -euo pipefail
           for pkg in client react; do
-            tgz="$(ls "$RUNNER_TEMP"/tarballs/indi-nexus-"$pkg"-*.tgz)"
-            name="@indi-nexus/$pkg"
+            tgz="$(ls "$RUNNER_TEMP"/tarballs/indikit-"$pkg"-*.tgz)"
+            name="@indikit/$pkg"
             ver="$(node -p "require('./web/packages/$pkg/package.json').version")"
             if npm view "$name@$ver" version >/dev/null 2>&1; then
               echo "$name@$ver is already published, skipping"

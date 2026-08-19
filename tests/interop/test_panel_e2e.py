@@ -52,7 +52,7 @@ def panel(indi_server):
         [
             sys.executable,
             "-m",
-            "indi_nexus.cli",
+            "indikit.cli",
             "serve",
             "--port",
             str(port),
@@ -70,11 +70,11 @@ def panel(indi_server):
                 break
         except OSError:
             if process.poll() is not None:
-                pytest.fail("indi-nexus serve exited during startup")
+                pytest.fail("indikit serve exited during startup")
             time.sleep(0.2)
     else:  # pragma: no cover - only when the bridge never binds
         process.terminate()
-        pytest.fail("indi-nexus serve never listened")
+        pytest.fail("indikit serve never listened")
 
     yield Panel(url=f"http://127.0.0.1:{port}", hub=hub)
 

@@ -6,7 +6,7 @@
  * with no rotation left to do, and what a disconnect leaves behind.
  */
 
-import type { SwitchVector, Vector } from "@indi-nexus/client";
+import type { SwitchVector, Vector } from "@indikit/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DomeSimSocket } from "./dome-sim";
 

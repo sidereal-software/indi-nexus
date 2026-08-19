@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "indi-nexus"
+name = "indikit"
 version = "0.2.0"
 description = "A modern, typed Python framework for INDI instrument control: driver SDK, async client, and FastAPI web bridge."
 readme = "README.md"
@@ -29,7 +29,7 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.6",
-    # 2.7 is the floor for NoDecode, which INDI_NEXUS_ALLOWED_ORIGINS needs to be
+    # 2.7 is the floor for NoDecode, which INDIKIT_ALLOWED_ORIGINS needs to be
     # read as a space-separated list rather than as JSON.
     "pydantic-settings>=2.7",
     "lxml>=5.0",
@@ -67,18 +67,18 @@ interop = [
 ]
 
 [project.scripts]
-indi-nexus = "indi_nexus.cli:app"
+indikit = "indikit.cli:app"
 
 [project.urls]
-Homepage = "https://indi-nexus.sidereal.software/"
-Documentation = "https://indi-nexus.sidereal.software/"
-Repository = "https://github.com/sidereal-software/indi-nexus"
-Issues = "https://github.com/sidereal-software/indi-nexus/issues"
+Homepage = "https://indikit.sidereal.software/"
+Documentation = "https://indikit.sidereal.software/"
+Repository = "https://github.com/sidereal-software/indikit"
+Issues = "https://github.com/sidereal-software/indikit/issues"
 
 # A trailing-slash ignore rule (`node_modules/`) matches files *under* the directory
 # but not the directory path itself, so hatchling walks into node_modules anyway. Its
 # walk follows symlinks and skips inodes it has already seen, and pnpm links
-# web/apps/panel/node_modules/@indi-nexus/* at the real web/packages/* - so the walk
+# web/apps/panel/node_modules/@indikit/* at the real web/packages/* - so the walk
 # consumed those inodes through the link and then dropped the real package sources
 # from the sdist. Excluding the directory itself keeps the walk out of it entirely.
 [tool.hatch.build]
@@ -88,7 +88,7 @@ exclude = [
     # `skip-excluded-dirs` prunes on exclusion alone, and unlike `include_path` it does
     # not consult `artifacts` - so without this the gitignored panel build output would
     # be pruned before the force-include below could bring it back.
-    "!src/indi_nexus/web/static/panel",
+    "!src/indikit/web/static/panel",
 ]
 
 # Build (and bundle) the TypeScript reference panel into the distribution so a
@@ -96,12 +96,12 @@ exclude = [
 [tool.hatch.build.hooks.custom]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/indi_nexus"]
+packages = ["src/indikit"]
 # The built panel lives under the (gitignored) static dir; force-include it.
-artifacts = ["src/indi_nexus/web/static/panel/**/*"]
+artifacts = ["src/indikit/web/static/panel/**/*"]
 
 [tool.hatch.build.targets.sdist]
-artifacts = ["src/indi_nexus/web/static/panel/**/*"]
+artifacts = ["src/indikit/web/static/panel/**/*"]
 
 [tool.ruff]
 line-length = 100

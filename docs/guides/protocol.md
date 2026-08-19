@@ -10,7 +10,7 @@ it: the [driver guide](writing-drivers.md) covers the vocabulary you use.
 
 ## XML to indiserver, JSON to browsers
 
-INDINexus speaks canonical INDI 1.7 XML to `indiserver`, and JSON to browsers. Every other
+INDIkit speaks canonical INDI 1.7 XML to `indiserver`, and JSON to browsers. Every other
 INDI program expects that XML.
 
 Both encodings come from one Python model, so they cannot drift apart. A frontend receives
@@ -18,12 +18,12 @@ the protocol itself, not a summary of it.
 
 Three frames on that WebSocket are **not** INDI. Each carries an `event` key instead of a
 `tag`, and all three are modelled in
-[`indi_nexus.web.control_frames`](../reference/python/web.md#control-frames). INDI has no
+[`indikit.web.control_frames`](../reference/python/web.md#control-frames). INDI has no
 message for any of them, and a UI needs all three.
 
 | Frame | Means |
 |---|---|
-| `{"event": "hello", "protocol": 1, "server": "0.2.0"}` | the first frame on every socket: which version of *this* contract the bridge speaks, and which INDINexus release is serving it. |
+| `{"event": "hello", "protocol": 1, "server": "0.2.0"}` | the first frame on every socket: which version of *this* contract the bridge speaks, and which INDIkit release is serving it. |
 | `{"event": "connection", "connected": false}` | whether the *bridge* is connected to `indiserver`. Distinct from whether your browser is connected to the bridge. |
 | `{"event": "error", "code": ..., "message": ..., "tag": ...}` | a frame this browser sent did not go upstream: malformed, not something a client may send, or refused because the upstream was down or busy. Sent only to the browser that sent the frame. |
 
@@ -31,7 +31,7 @@ Write a frame reader that **skips an `event` it does not recognise**. Any future
 frame arrives that way, so a reader that treats an unknown one as a protocol violation
 breaks on the next release.
 
-`@indi-nexus/client` already does this. It surfaces the connection state and the protocol
+`@indikit/client` already does this. It surfaces the connection state and the protocol
 version, routes the error into the message log, and drops anything else.
 
 ### Versioning the browser contract
@@ -43,13 +43,13 @@ The number increases only for a breaking change: a field removed, renamed, or gi
 meaning. Adding an optional field does not increase it, because clients ignore keys they do
 not recognise.
 
-A mismatch is never fatal. `@indi-nexus/client` compares the number against its own
+A mismatch is never fatal. `@indikit/client` compares the number against its own
 `CLIENT_PROTOCOL_VERSION`, logs one line when they differ, and carries on. Nothing here
 refuses a socket over a version skew: a panel going dark mid-session helps nobody at a
 telescope.
 
 A bridge older than the `hello` frame never sends one. Treat **the first frame that is not
-a `hello`** as the answer; `@indi-nexus/client` records `protocol: 0` at that point.
+a `hello`** as the answer; `@indikit/client` records `protocol: 0` at that point.
 
 Do not wait for a `def` instead. With the upstream down and the cache empty, the first
 frame is the connection frame, and no `def` ever arrives.
@@ -65,7 +65,7 @@ Three things can be said about a property. All three share one shape:
 | **new** | client → driver | "please change it": also just names and values |
 
 A client keeps the `def` and merges later `set` messages onto it, because `set` and `new`
-carry no metadata. INDINexus does that for you on both sides.
+carry no metadata. INDIkit does that for you on both sides.
 
 A `new` therefore usually names only the elements the client changed. Clicking one radio
 button sends only that button. So read what arrived, rather than indexing into elements
@@ -88,9 +88,9 @@ to existing INDI software unchanged.
 
 Reading is deliberately more permissive. libindi accepts sexagesimal on a `def` but reads a
 `set` with `std::stod`, so `10:30:00` in a `setNumberVector` arrives there as `10.0`.
-INDINexus parses sexagesimal on both.
+INDIkit parses sexagesimal on both.
 
-Parsing both is a strict superset: anything libindi reads correctly, INDINexus reads the
+Parsing both is a strict superset: anything libindi reads correctly, INDIkit reads the
 same way. Do not "fix" it to match. Matching would turn a coordinate into a silently wrong
 number.
 
@@ -111,7 +111,7 @@ In JSON the payload is a base64 string in the **standard** alphabet (`+` and `/`
 A BLOB's `format` is a chain of file-name suffixes saying what the bytes are. A trailing
 `.z` is not part of that: it says the payload was deflated (zlib, RFC 1950) for the wire.
 
-**INDINexus inflates those on receipt**, in both codecs. A payload that reaches a Python
+**INDIkit inflates those on receipt**, in both codecs. A payload that reaches a Python
 `IndiClient` subscriber, a driver's `@on_new`, or a browser over the WebSocket is the file
 itself: the `.z` is gone from `format`, and `size` is the inflated length. A consumer sees
 `.fits`, never `.fits.z`.

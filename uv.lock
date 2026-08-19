@@ -513,7 +513,7 @@ wheels = [
 ]
 
 [[package]]
-name = "indi-nexus"
+name = "indikit"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

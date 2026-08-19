@@ -16,7 +16,7 @@ import socket
 
 from conftest import free_port, wait_until
 
-from indi_nexus.client import IndiClient
+from indikit.client import IndiClient
 
 
 async def test_client_reconnects_after_the_hub_restarts(indi_server):
@@ -106,7 +106,7 @@ def _restart_on(port: int):
 async def test_client_waits_for_a_hub_that_is_not_there_yet():
     """Starting against a dead port keeps retrying instead of failing.
 
-    This is what lets `indi-nexus serve` come up before `indiserver` does, which is
+    This is what lets `indikit serve` come up before `indiserver` does, which is
     the ordinary case when both are started by the same service manager.
     """
     port = free_port()

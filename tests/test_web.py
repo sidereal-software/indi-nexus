@@ -20,11 +20,11 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-import indi_nexus
-import indi_nexus.web.app as app_module
-from indi_nexus.client import IndiClient
-from indi_nexus.exceptions import SendQueueFull
-from indi_nexus.protocol import (
+import indikit
+import indikit.web.app as app_module
+from indikit.client import IndiClient
+from indikit.exceptions import SendQueueFull
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     DefVector,
@@ -37,9 +37,9 @@ from indi_nexus.protocol import (
     to_json,
     to_xml,
 )
-from indi_nexus.web import create_app
-from indi_nexus.web.bridge import _MAX_BACKLOG, Bridge
-from indi_nexus.web.control_frames import BRIDGE_PROTOCOL_VERSION
+from indikit.web import create_app
+from indikit.web.bridge import _MAX_BACKLOG, Bridge
+from indikit.web.control_frames import BRIDGE_PROTOCOL_VERSION
 
 
 class _Server:
@@ -93,7 +93,7 @@ def _decode_wire_base64(text: str) -> bytes:
     """Decode a base64 payload from a browser frame, strictly.
 
     This used to accept the URL-safe alphabet too, because which one the codec
-    emitted was nobody's decision. It is now :class:`~indi_nexus.protocol.BLOB`'s
+    emitted was nobody's decision. It is now :class:`~indikit.protocol.BLOB`'s
     (standard, so ``atob`` and a ``data:`` URL work), pinned by
     ``tests/test_json.py``, and a permissive decoder here would hide a
     regression rather than duplicate a check: these two call sites are the
@@ -177,7 +177,7 @@ async def test_bridge_start_does_not_wait_for_upstream():
     bridge = Bridge(client)
     try:
         # Without this the whole web app hangs in startup whenever indiserver is
-        # down, which is the state a first-time `indi-nexus serve` starts in.
+        # down, which is the state a first-time `indikit serve` starts in.
         async with asyncio.timeout(2):
             await bridge.start()
         assert client.connected is False
@@ -268,7 +268,7 @@ def test_debug_page_served():
     with TestClient(app) as tc:
         resp = tc.get("/debug")
         assert resp.status_code == 200
-        assert "INDINexus" in resp.text
+        assert "INDIkit" in resp.text
         assert "websocket" in resp.text.lower()
 
 
@@ -319,7 +319,7 @@ def test_the_first_frame_a_client_reads_is_the_hello():
             hello = json.loads(ws.receive_text())
             assert hello["event"] == "hello"
             assert hello["protocol"] == BRIDGE_PROTOCOL_VERSION
-            assert hello["server"] == indi_nexus.__version__
+            assert hello["server"] == indikit.__version__
             # The cache is non-empty, so a def is waiting behind it.
             assert json.loads(ws.receive_text())["tag"] == "def"
 
@@ -491,7 +491,7 @@ def test_index_falls_back_to_debug_page_without_panel(monkeypatch):
     with TestClient(app) as tc:
         resp = tc.get("/")
         assert resp.status_code == 200
-        assert "INDINexus" in resp.text
+        assert "INDIkit" in resp.text
 
 
 def test_bridge_exposes_its_client():
@@ -958,7 +958,7 @@ async def test_a_browser_that_falls_far_behind_is_dropped(caplog):
     sub = bridge.attach(wedged)
     other = bridge.attach(healthy_sink)
     try:
-        with caplog.at_level(logging.WARNING, logger="indi_nexus.web.bridge"):
+        with caplog.at_level(logging.WARNING, logger="indikit.web.bridge"):
             for index in range(_MAX_BACKLOG + 1):
                 bridge._broadcast(f"f{index}", coalesce=("CCD", f"P{index}"))
                 # Give the pumps a turn, so the browser keeping up is measured
@@ -1220,7 +1220,7 @@ def test_ws_accepts_the_same_origin():
 def test_ws_accepts_a_missing_origin():
     """A peer that is not a browser sends no Origin, and is not a browser threat.
 
-    Node consumers of ``@indi-nexus/client``, curl, the interop suite and
+    Node consumers of ``@indikit/client``, curl, the interop suite and
     Starlette's own TestClient all send none; a browser always sends one and an
     attacker outside a browser forges whatever it likes.
     """
@@ -1328,7 +1328,7 @@ def test_health_carries_no_release_version_and_no_addresses():
         raw = tc.get("/health").text
         body = tc.get("/health").json()
     assert "version" not in body
-    assert indi_nexus.__version__ not in raw
+    assert indikit.__version__ not in raw
     assert "localhost" not in raw and "7624" not in raw
 
 
@@ -1402,9 +1402,9 @@ def test_health_answers_before_the_first_connection():
 
 
 def test_the_bridge_backlog_and_history_are_configurable():
-    """``INDI_NEXUS_MAX_BACKLOG`` and friends reach the bridge as arguments.
+    """``INDIKIT_MAX_BACKLOG`` and friends reach the bridge as arguments.
 
-    Nothing here reads the environment; ``indi-nexus serve`` passes the values
+    Nothing here reads the environment; ``indikit serve`` passes the values
     down, which is what keeps ``create_app(client=...)`` injectable.
     """
     bridge = Bridge(IndiClient(connect=_Server().connect()), message_history=2, max_backlog=3)

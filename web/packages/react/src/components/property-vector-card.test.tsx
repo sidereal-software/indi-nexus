@@ -1,6 +1,6 @@
 /** Component tests: rendering vectors and sending writes through a fake client. */
 
-import type { NumberVector, SwitchVector } from "@indi-nexus/client";
+import type { NumberVector, SwitchVector } from "@indikit/client";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DisplaySettingsProvider } from "../display-settings";

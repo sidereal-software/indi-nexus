@@ -1,1 +1,1 @@
-"""Test suite for indi-nexus."""
+"""Test suite for indikit."""

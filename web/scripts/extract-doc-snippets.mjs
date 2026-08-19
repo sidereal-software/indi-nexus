@@ -73,7 +73,7 @@ export const MANIFEST = [
       {
         name: "client-readme-cache",
         match: "client.devices(); // known device names",
-        imports: ['import type { IndiClient } from "@indi-nexus/client";'],
+        imports: ['import type { IndiClient } from "@indikit/client";'],
         wrap: {
           before: ["export function readCache(client: IndiClient) {"],
           after: ["}"],
@@ -82,7 +82,7 @@ export const MANIFEST = [
       {
         name: "client-readme-on-write",
         match: "const stop = client.onWrite(",
-        imports: ['import type { IndiClient } from "@indi-nexus/client";'],
+        imports: ['import type { IndiClient } from "@indikit/client";'],
         wrap: {
           before: ["export function traceWrites(client: IndiClient) {"],
           after: ["}"],
@@ -106,25 +106,25 @@ export const MANIFEST = [
       {
         name: "frontend-observatory",
         match: "function Observatory() {",
-        imports: ['import { DevicePanel, useDevices } from "@indi-nexus/react";'],
+        imports: ['import { DevicePanel, useDevices } from "@indikit/react";'],
       },
       { name: "frontend-dome-azimuth", match: "function DomeAzimuth() {" },
       {
         name: "frontend-shutter-buttons",
         match: "function ShutterButtons() {",
-        imports: ['import { useIndiClient } from "@indi-nexus/react";'],
+        imports: ['import { useIndiClient } from "@indikit/react";'],
       },
       { name: "frontend-last-command", match: "function LastCommand() {" },
       {
         name: "frontend-wait-for",
         match: "await client.waitFor(",
-        imports: ['import type { IndiClient } from "@indi-nexus/react";'],
+        imports: ['import type { IndiClient } from "@indikit/react";'],
         wrap: {
           before: ["export async function sequence(client: IndiClient) {"],
           after: ["}"],
         },
       },
-      { name: "frontend-plain-client", match: 'from "@indi-nexus/client"', pkg: "client" },
+      { name: "frontend-plain-client", match: 'from "@indikit/client"', pkg: "client" },
     ],
   },
   {
@@ -144,17 +144,17 @@ export const MANIFEST = [
       {
         name: "tutorial-use-reading",
         match: "function useReading(element: string) {",
-        imports: ['import { useLight, useNumber } from "@indi-nexus/react";'],
+        imports: ['import { useLight, useNumber } from "@indikit/react";'],
       },
       {
         name: "tutorial-use-alerting",
         match: "function useAlerting(): string[] {",
-        imports: ['import { displayLabel, useProperty } from "@indi-nexus/react";'],
+        imports: ['import { displayLabel, useProperty } from "@indikit/react";'],
       },
       {
         name: "tutorial-live",
         match: "const live =",
-        imports: ['import type { Vector } from "@indi-nexus/react";'],
+        imports: ['import type { Vector } from "@indikit/react";'],
         wrap: {
           before: ["export function isLive(parameters: Vector | undefined) {"],
           after: ["  return live;", "}"],
@@ -299,9 +299,9 @@ export function renderSnippet(file, snippet, fence) {
 
   return source
     .split("\n")
-    .filter((line) => !/^import ["']@indi-nexus\/react\/styles\.css["'];?$/.test(line))
+    .filter((line) => !/^import ["']@indikit\/react\/styles\.css["'];?$/.test(line))
     .join("\n")
-    .replaceAll(/from "@indi-nexus\/(react|client)"/g, `from "${SELF_IMPORT}"`);
+    .replaceAll(/from "@indikit\/(react|client)"/g, `from "${SELF_IMPORT}"`);
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
- * `@indi-nexus/react/testing` - render INDI-aware components without a server.
+ * `@indikit/react/testing` - render INDI-aware components without a server.
  *
- * The frontend counterpart to Python's `indi_nexus.testing`: render your
+ * The frontend counterpart to Python's `indikit.testing`: render your
  * component against a client wired to a fake socket, feed it the frames a
  * driver would send, and assert on what appears.
  *

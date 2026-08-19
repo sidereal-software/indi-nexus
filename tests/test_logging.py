@@ -1,4 +1,4 @@
-"""Tests for :mod:`indi_nexus.logging_config`.
+"""Tests for :mod:`indikit.logging_config`.
 
 The one that matters most is the stdout check: a driver's stdout *is* the INDI
 wire, so a log line written there corrupts the stream ``indiserver`` parses, and
@@ -11,9 +11,9 @@ import logging
 
 import pytest
 
-import indi_nexus.logging_config as logging_config
-from indi_nexus.logging_config import WIRE_LOGGER, configure_logging, log_wire
-from indi_nexus.protocol import (
+import indikit.logging_config as logging_config
+from indikit.logging_config import WIRE_LOGGER, configure_logging, log_wire
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     GetProperties,
@@ -58,7 +58,7 @@ def _blobvec() -> BLOBVector:
 def test_logging_goes_to_stderr_and_never_to_stdout(capsys):
     """Anything on stdout would be read by indiserver as INDI XML."""
     configure_logging("INFO")
-    logging.getLogger("indi_nexus.test").warning("hello")
+    logging.getLogger("indikit.test").warning("hello")
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "hello" in captured.err
@@ -75,7 +75,7 @@ def test_calling_it_twice_does_not_stack_handlers():
 
 
 def test_a_lowercase_level_is_accepted():
-    """``--log-level debug`` and ``INDI_NEXUS_LOG_LEVEL=debug`` both arrive here."""
+    """``--log-level debug`` and ``INDIKIT_LOG_LEVEL=debug`` both arrive here."""
     configure_logging("debug")
     assert logging.getLogger().level == logging.DEBUG
 
@@ -91,7 +91,7 @@ def test_wire_turns_up_only_the_wire_logger():
     configure_logging("INFO", wire=True)
     assert logging.getLogger(WIRE_LOGGER).isEnabledFor(logging.DEBUG)
     assert logging.getLogger().level == logging.INFO
-    assert not logging.getLogger("indi_nexus.client.client").isEnabledFor(logging.DEBUG)
+    assert not logging.getLogger("indikit.client.client").isEnabledFor(logging.DEBUG)
 
 
 def test_without_wire_the_logger_inherits_the_root_level():

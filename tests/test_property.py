@@ -12,9 +12,9 @@ import zlib
 
 import pytest
 
-from indi_nexus.driver.property import BoundProperty
-from indi_nexus.exceptions import ProtocolError
-from indi_nexus.protocol import (
+from indikit.driver.property import BoundProperty
+from indikit.exceptions import ProtocolError
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     DelProperty,

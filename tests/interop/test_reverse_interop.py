@@ -5,7 +5,7 @@ with our own parser, so a deviation from the spec stays invisible. Here a real
 ``indiserver`` launches one of our Python drivers as a child process and libindi's
 own tools read and write it, which is exactly what KStars or PHD2 would do.
 
-If this passes, "existing INDI software works with an INDINexus driver unchanged"
+If this passes, "existing INDI software works with an INDIkit driver unchanged"
 is a tested claim rather than an intention.
 """
 
@@ -15,7 +15,7 @@ import time
 
 from conftest import getprop, setprop
 
-from indi_nexus.protocol.numbers import parse_number
+from indikit.protocol.numbers import parse_number
 
 
 def _await_value(port: int, spec: str, expected: str, timeout: float = 20.0) -> str:

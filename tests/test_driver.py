@@ -19,10 +19,10 @@ from typing import Any
 
 import pytest
 
-from indi_nexus.driver import BoundProperty, Device, DriverRuntime, every, on_new
-from indi_nexus.driver.scheduling import iter_periodic
-from indi_nexus.logging_config import WIRE_LOGGER
-from indi_nexus.protocol import (
+from indikit.driver import BoundProperty, Device, DriverRuntime, every, on_new
+from indikit.driver.scheduling import iter_periodic
+from indikit.logging_config import WIRE_LOGGER
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     DefVector,
@@ -40,7 +40,7 @@ from indi_nexus.protocol import (
     parse_indi,
     to_xml,
 )
-from indi_nexus.protocol import xml as xml_module
+from indikit.protocol import xml as xml_module
 
 
 class _Harness:
@@ -413,7 +413,7 @@ def test_writes_addressed_to_other_devices_are_ignored() -> None:
     """A ``new`` naming a different device never reaches the handlers.
 
     Matches libindi's ``strcmp(dev, getDeviceName())`` guard; a broadcast hub
-    (several drivers on one stream, as in ``indi-nexus serve --device``) relies
+    (several drivers on one stream, as in ``indikit serve --device``) relies
     on this so only the addressed device reacts to a write.
     """
 
@@ -735,7 +735,7 @@ def test_a_muted_parser_is_resynced_in_place_and_keeps_its_counters(monkeypatch,
         )
         # A root close landing mid-start-tag: lxml emits nothing from here on.
         harness.feed("<newSwitchVector device='Handler' name='power'")
-        harness.feed("</indinexus>")
+        harness.feed("</indikit>")
         for _ in range(4):
             harness.feed("<message message='swallowed'/>")
         harness.feed(
@@ -750,11 +750,11 @@ def test_a_muted_parser_is_resynced_in_place_and_keeps_its_counters(monkeypatch,
         assert dev.handled is not None
         assert dev.handled["on"].value == ISState.ON
 
-    with caplog.at_level(logging.WARNING, logger="indi_nexus.driver.runtime"):
+    with caplog.at_level(logging.WARNING, logger="indikit.driver.runtime"):
         asyncio.run(scenario())
 
     # Only this logger's own records: the codec logs each drop as it happens too.
-    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.driver.runtime"]
+    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indikit.driver.runtime"]
     assert "resyncing the parser" in warning
     assert "1 dropped" in warning  # the malformed element, remembered across the rebuild
 
@@ -2101,7 +2101,7 @@ def test_the_stall_warning_names_every_device_on_the_stream(monkeypatch, caplog)
         """Mute the parser with a root close landing mid-start-tag."""
         harness = _Harness()
         harness.feed("<newSwitchVector device='Main' name='count'")
-        harness.feed("</indinexus>")
+        harness.feed("</indikit>")
         for _ in range(4):
             harness.feed("<message message='swallowed'/>")
         harness.eof()
@@ -2110,10 +2110,10 @@ def test_the_stall_warning_names_every_device_on_the_stream(monkeypatch, caplog)
                 [_Head("Main"), _Head("Guide")], harness.read, harness.write
             ).serve()
 
-    with caplog.at_level(logging.WARNING, logger="indi_nexus.driver.runtime"):
+    with caplog.at_level(logging.WARNING, logger="indikit.driver.runtime"):
         asyncio.run(scenario())
 
-    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indi_nexus.driver.runtime"]
+    (warning,) = [r.getMessage() for r in caplog.records if r.name == "indikit.driver.runtime"]
     assert warning.startswith("Main, Guide: ")
 
 
@@ -2137,7 +2137,7 @@ def test_wire_logging_reports_both_directions(caplog):
 
     An operator wants a single switch for "show me the wire", not to learn that
     the reader and the writer are different modules - which is why this is not on
-    ``indi_nexus.driver.runtime``'s own logger.
+    ``indikit.driver.runtime``'s own logger.
     """
 
     async def scenario() -> None:

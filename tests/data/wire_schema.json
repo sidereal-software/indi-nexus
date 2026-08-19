@@ -59,7 +59,7 @@
         "type": "object"
       },
       "HelloFrame": {
-        "description": "The first frame on every ``/ws`` socket: what the browser is talking to.\n\nAttributes\n----------\nevent : str\n    Always ``\"hello\"``.\nprotocol : int\n    The browser contract's version; see :data:`BRIDGE_PROTOCOL_VERSION`.\nserver : str\n    The INDINexus version serving this socket, for a UI to display and for a\n    bug report to quote. It has **no model default on purpose**: a default\n    lands in ``model_json_schema()``, so pinning ``indi_nexus.__version__``\n    here would break the golden wire schema on every release. The bridge\n    supplies it at construction instead.",
+        "description": "The first frame on every ``/ws`` socket: what the browser is talking to.\n\nAttributes\n----------\nevent : str\n    Always ``\"hello\"``.\nprotocol : int\n    The browser contract's version; see :data:`BRIDGE_PROTOCOL_VERSION`.\nserver : str\n    The INDIkit version serving this socket, for a UI to display and for a\n    bug report to quote. It has **no model default on purpose**: a default\n    lands in ``model_json_schema()``, so pinning ``indikit.__version__``\n    here would break the golden wire schema on every release. The bridge\n    supplies it at construction instead.",
         "properties": {
           "event": {
             "const": "hello",
@@ -730,7 +730,7 @@
         "type": "object"
       },
       "Number": {
-        "description": "A single numeric element (``defNumber`` / ``oneNumber``).\n\n``value`` refuses NaN and the infinities. It is the one non-nullable float\non the wire, and JSON has no way to write a non-finite number: the codec\nwould emit ``null`` for it and :func:`~indi_nexus.protocol.json.from_json`\nwould then reject its own output, because ``value`` is required. Refusing it\nhere is what keeps the two codecs symmetric - the XML parser drops the\nelement instead (a value it cannot represent, exactly like a junk one) and a\ndriver publishing one fails at the call site. The optional metadata\n(``min``/``max``/``step``) needs no such rule: it can say \"absent\", and the\nXML parser degrades a non-finite one to `None`.",
+        "description": "A single numeric element (``defNumber`` / ``oneNumber``).\n\n``value`` refuses NaN and the infinities. It is the one non-nullable float\non the wire, and JSON has no way to write a non-finite number: the codec\nwould emit ``null`` for it and :func:`~indikit.protocol.json.from_json`\nwould then reject its own output, because ``value`` is required. Refusing it\nhere is what keeps the two codecs symmetric - the XML parser drops the\nelement instead (a value it cannot represent, exactly like a junk one) and a\ndriver publishing one fails at the call site. The optional metadata\n(``min``/``max``/``step``) needs no such rule: it can say \"absent\", and the\nXML parser degrades a non-finite one to `None`.",
         "properties": {
           "format": {
             "default": "%g",
@@ -1621,7 +1621,7 @@
         "type": "object"
       },
       "Number": {
-        "description": "A single numeric element (``defNumber`` / ``oneNumber``).\n\n``value`` refuses NaN and the infinities. It is the one non-nullable float\non the wire, and JSON has no way to write a non-finite number: the codec\nwould emit ``null`` for it and :func:`~indi_nexus.protocol.json.from_json`\nwould then reject its own output, because ``value`` is required. Refusing it\nhere is what keeps the two codecs symmetric - the XML parser drops the\nelement instead (a value it cannot represent, exactly like a junk one) and a\ndriver publishing one fails at the call site. The optional metadata\n(``min``/``max``/``step``) needs no such rule: it can say \"absent\", and the\nXML parser degrades a non-finite one to `None`.",
+        "description": "A single numeric element (``defNumber`` / ``oneNumber``).\n\n``value`` refuses NaN and the infinities. It is the one non-nullable float\non the wire, and JSON has no way to write a non-finite number: the codec\nwould emit ``null`` for it and :func:`~indikit.protocol.json.from_json`\nwould then reject its own output, because ``value`` is required. Refusing it\nhere is what keeps the two codecs symmetric - the XML parser drops the\nelement instead (a value it cannot represent, exactly like a junk one) and a\ndriver publishing one fails at the call site. The optional metadata\n(``min``/``max``/``step``) needs no such rule: it can say \"absent\", and the\nXML parser degrades a non-finite one to `None`.",
         "properties": {
           "format": {
             "default": "%g",

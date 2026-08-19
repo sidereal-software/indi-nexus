@@ -24,15 +24,15 @@
  * - `CONFIG_SAVE` writes a subset of the device's properties. A libindi driver
  *   picks it in `saveConfigItems`, a C++ virtual no client can read, so for one
  *   of those the dialog says outright that it cannot tell you - silence would
- *   read as "everything you see". An INDINexus driver declares persistence at
- *   define time and publishes the answer as `NEXUS_CONFIG_PERSISTED`, and then
+ *   read as "everything you see". An INDIkit driver declares persistence at
+ *   define time and publishes the answer as `INDIKIT_CONFIG_PERSISTED`, and then
  *   the dialog names the properties instead of apologising.
  *
  * Feedback is the vector's own Idle/Ok/Busy/Alert state, as everywhere else in
  * this package: the driver answering is what says the action happened.
  */
 
-import { displayLabel, type Vector } from "@indi-nexus/client";
+import { displayLabel, type Vector } from "@indikit/client";
 import { Settings2 } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import {
@@ -64,14 +64,14 @@ import { StateBadge } from "./state-badge";
 const CONFIG_PROCESS = "CONFIG_PROCESS";
 
 /**
- * The property an INDINexus driver publishes to say what Save writes, and the
+ * The property an INDIkit driver publishes to say what Save writes, and the
  * element holding the persisted property names separated by spaces.
  *
  * No libindi driver has it, which is the point: its absence is what the fallback
  * copy below is for, and an empty value is a different answer again - a driver
  * saying that Save writes nothing.
  */
-const CONFIG_PERSISTED = "NEXUS_CONFIG_PERSISTED";
+const CONFIG_PERSISTED = "INDIKIT_CONFIG_PERSISTED";
 const CONFIG_PERSISTED_NAMES = "PROPERTIES";
 
 /** What this component knows about one `CONFIG_PROCESS` member. */
@@ -242,7 +242,7 @@ function ActionButton({
 /**
  * The property names a driver says Save writes, or `null` when it does not say.
  *
- * @param vector - The device's `NEXUS_CONFIG_PERSISTED`, if it has one.
+ * @param vector - The device's `INDIKIT_CONFIG_PERSISTED`, if it has one.
  * @returns The names, empty when the driver persists nothing, or null when there
  *   is no answer to be had - which is every libindi driver.
  */

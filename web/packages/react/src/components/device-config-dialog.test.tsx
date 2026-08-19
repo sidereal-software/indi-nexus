@@ -8,7 +8,7 @@
  * modal rather than on the page.
  */
 
-import type { NewVector, NumberVector, SwitchVector, TextVector } from "@indi-nexus/client";
+import type { NewVector, NumberVector, SwitchVector, TextVector } from "@indikit/client";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SidebarProvider } from "@/ui/sidebar";
@@ -55,12 +55,12 @@ function configVec(
   };
 }
 
-/** An INDINexus driver's answer to "what does Save write?". */
+/** An INDIkit driver's answer to "what does Save write?". */
 function persistedVec(names: string): TextVector {
   return {
     kind: "text",
     device: "CCD",
-    name: "NEXUS_CONFIG_PERSISTED",
+    name: "INDIKIT_CONFIG_PERSISTED",
     label: "Saved properties",
     group: "Options",
     state: "Ok",

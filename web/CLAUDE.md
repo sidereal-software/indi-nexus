@@ -2,8 +2,8 @@
 
 Detail for `web/`. The repository-wide rules are in the root `CLAUDE.md`.
 
-A `pnpm` workspace holding the two published libraries (`@indi-nexus/client` and
-`@indi-nexus/react`, each with its own heading below), the reference panel that ships
+A `pnpm` workspace holding the two published libraries (`@indikit/client` and
+`@indikit/react`, each with its own heading below), the reference panel that ships
 inside the wheel, and the `scripts/` package that typechecks the documentation's code
 fences. Tooling: **tsup** builds the libraries (ESM + `.d.ts`), **Vite** builds the apps,
 **Vitest** runs tests, **Biome** lints and formats (`web/biome.json`; the vendored shadcn
@@ -22,7 +22,7 @@ and each package's `typecheck` script runs both. Probe it the way it was found: 
 `export const _probe = process.env.HOME` to a library source file and check that
 `tsc --noEmit` fails.
 
-## `packages/client/` - `@indi-nexus/client`
+## `packages/client/` - `@indikit/client`
 
 A faithful TS port of the Python client, framework-agnostic (it only needs a `WebSocket`).
 
@@ -101,7 +101,7 @@ A faithful TS port of the Python client, framework-agnostic (it only needs a `We
   had rotted before the check existed: it shipped `IPState.OK`, Python's spelling, and a
   `vector.state` that ignored the `null` a `del` carries.
 
-## `packages/react/` - `@indi-nexus/react`
+## `packages/react/` - `@indikit/react`
 
 `IndiProvider` + `useIndiClient`, the hooks (`useConnection`, `useDevices`, `useDevice`,
 `useProperty`, `useElement`, `useMessages`, all via `useSyncExternalStore` over the immutable
@@ -217,8 +217,8 @@ changing it changes what the panel promises:
 - `CONFIG_SAVE` writes a subset, and the dialog always carries a line about it, because
   silence would read as "everything you see". Which line depends on what the driver says.
   A libindi driver picks the subset in `saveConfigItems`, which nothing on the wire
-  exposes, so it gets the fallback apology. An INDINexus driver declares persistence at
-  define time and publishes `NEXUS_CONFIG_PERSISTED` (a read-only text vector, element
+  exposes, so it gets the fallback apology. An INDIkit driver declares persistence at
+  define time and publishes `INDIKIT_CONFIG_PERSISTED` (a read-only text vector, element
   `PROPERTIES`, names separated by spaces), and then `SaveScope` names the properties -
   as their own labels where the device still publishes them, since `GEOGRAPHIC_COORD` is
   the wire's word for what the panel calls "Site". An **empty** list is a third statement,
@@ -226,7 +226,7 @@ changing it changes what the panel promises:
   strings are asserted, and `SaveScope` is a child of `DialogContent` on purpose - Radix
   mounts that only while the dialog is open, so the whole-device subscription it needs for
   those labels is not live behind a closed modal.
-  `DevicePanel` excludes `NEXUS_CONFIG_PERSISTED` alongside `CONFIG_PROCESS` (and it is in
+  `DevicePanel` excludes `INDIKIT_CONFIG_PERSISTED` alongside `CONFIG_PROCESS` (and it is in
   `DRIVER_MACHINERY` for a consumer's own layout): drawn as a card it is a read-only field
   of wire names saying less than the sentence does.
 
@@ -314,8 +314,8 @@ See the next section.
 
 The theme is the shadcn tokens in `src/theme.css` plus `--state-*` for INDI
 Idle/Ok/Busy/Alert. The build emits a prebuilt `dist/styles.css`
-(`@indi-nexus/react/styles.css`, batteries-included) and copies the source `theme.css`
-(`@indi-nexus/react/theme.css`, for consumers running their own Tailwind).
+(`@indikit/react/styles.css`, batteries-included) and copies the source `theme.css`
+(`@indikit/react/theme.css`, for consumers running their own Tailwind).
 
 Five things in that file are load bearing and easy to undo by accident:
 
@@ -380,7 +380,7 @@ rotted before that existed: the guide's examples outran the API (which is how th
 hooks got found), and the README rendered `useConnection()` straight into JSX, when the
 hook returns the `{transport, upstream}` object, so the sample threw on paste.
 
-`@indi-nexus/react/testing` (`src/testing/`) is the counterpart to `indi_nexus.testing`:
+`@indikit/react/testing` (`src/testing/`) is the counterpart to `indikit.testing`:
 `renderConnected(ui)` renders under a provider wired to a `FakeSocket` **that has already
 sent its `hello`**, as the bridge does - a harness that skipped it would put a "no hello
 frame" entry at the head of every message log a consumer asserts on - and
@@ -414,8 +414,8 @@ tied to the markdown by nothing at all.
   markdown file anywhere in the repo that grows a TypeScript fence without joining the
   manifest fails the same way.
 - **The fence body is verbatim.** The only transforms are the ones the compiler forces:
-  `@indi-nexus/react` / `@indi-nexus/client` becomes `../../index` (a package cannot resolve
-  its own published name from inside `src/`), `import "@indi-nexus/react/styles.css"` is
+  `@indikit/react` / `@indikit/client` becomes `../../index` (a package cannot resolve
+  its own published name from inside `src/`), `import "@indikit/react/styles.css"` is
   dropped (nothing declares a type for it), and a top-level declaration the fence never uses
   is exported past `noUnusedLocals`. A fence that is a fragment rather than a module gets
   `imports` and a `wrap` from the manifest, so `await client.waitFor(...)` has a real
@@ -426,9 +426,9 @@ tied to the markdown by nothing at all.
 
 ## `apps/panel/` - the reference panel
 
-Vite + `@tailwindcss/vite`, composed entirely from `@indi-nexus/react`: a device sidebar with
+Vite + `@tailwindcss/vite`, composed entirely from `@indikit/react`: a device sidebar with
 connection status, a `DeviceConfigDialog` entry for the selected device and a light/dark
-toggle, a `DevicePanel` per device, and a docked message strip. `vite build` emits into `src/indi_nexus/web/static/panel/`, where `web/app.py` serves
+toggle, a `DevicePanel` per device, and a docked message strip. `vite build` emits into `src/indikit/web/static/panel/`, where `web/app.py` serves
 it at `/`. The wheel bundles that built panel (`hatch_build.py` build hook plus `artifacts`
 in `pyproject.toml`, which rebuilds it with pnpm when missing), so `pip install` ships the UI.
 
@@ -439,7 +439,7 @@ mounted here rather than inside `DevicePanel` so it covers every device and not 
 selected one.
 
 Two smaller things the shell owns for the same reason, both found by an axe sweep of the state
-nothing else reaches - `indi-nexus serve` with no `--device`:
+nothing else reaches - `indikit serve` with no `--device`:
 
 - **The empty state is a sentence, not a list.** "No devices connected." was a `<p>` directly
   inside `SidebarMenu`'s `<ul>`, where the only legal child is an `<li>`. The menu is now
@@ -503,15 +503,15 @@ rendering and is therefore the one thing tested at this level.
     panel meets libindi drivers far more often than ours, so the demo is what proves
     `DeviceConfigDialog` renders a four-member property. Do not "fix" it by dropping the
     member.
-  - For the same reason it publishes **no `NEXUS_CONFIG_PERSISTED`**, even though the
+  - For the same reason it publishes **no `INDIKIT_CONFIG_PERSISTED`**, even though the
     driver it mirrors now does, so the published demo exercises the fallback apology.
     Adding it would make the simulator a device that exists nowhere: libindi's four-member
     `CONFIG_PROCESS` *and* a property no libindi driver has. The demo is already committed
     to the libindi shape, and it is the shape whose copy is easiest to get wrong. The
-    INDINexus side is covered where it is real - `DeviceConfigDialog`'s tests, and
-    `indi-nexus serve --device examples.openmeteo_device:OpenMeteo`.
+    INDIkit side is covered where it is real - `DeviceConfigDialog`'s tests, and
+    `indikit serve --device examples.openmeteo_device:OpenMeteo`.
 - **Every simulator has a `CONNECTION` property**, for the same reason every example driver
-  does (see `src/indi_nexus/CLAUDE.md`): it is the first thing a client looks for, and a demo
+  does (see `src/indikit/CLAUDE.md`): it is the first thing a client looks for, and a demo
   without one shows visitors a device shape that does not exist in the field. It has to
   behave, not just appear. Writes are refused while disconnected, and disconnecting leaves
   the instrument safe and its properties `Idle`. This demo is the first contact most people

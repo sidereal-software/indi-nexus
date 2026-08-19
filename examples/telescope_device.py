@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A telescope-mount driver: libindi's Telescope Simulator, rebuilt on INDINexus.
+"""A telescope-mount driver: libindi's Telescope Simulator, rebuilt on INDIkit.
 
 This ports the operator-facing core of ``telescope_simulator.cpp`` (Jasem
-Mutlaq's C++ ScopeSim) to the INDINexus driver SDK, keeping the standard INDI
+Mutlaq's C++ ScopeSim) to the INDIkit driver SDK, keeping the standard INDI
 telescope property names so any INDI client (KStars, ...) recognises it:
 
 - ``EQUATORIAL_EOD_COORD`` with ``ON_COORD_SET`` (Track/Slew/Sync) - the
@@ -24,13 +24,13 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    indi-nexus serve --device examples.telescope_device:TelescopeSimulator
+    indikit serve --device examples.telescope_device:TelescopeSimulator
 """
 
 from __future__ import annotations
 
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     IPState,
     ISRule,
     ISState,

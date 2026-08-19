@@ -104,7 +104,7 @@ The quickest way to look at one is `--device`, which runs the drivers inside the
 process so there is no `indiserver` to install first. Repeat it for as many as you like:
 
 ```bash
-indi-nexus serve \
+indikit serve \
     --device examples.telescope_device:TelescopeSimulator \
     --device examples.ccd_device:CCDSimulator \
     --device examples.dome_device:DomeSimulator
@@ -118,5 +118,5 @@ drive them at once:
 
 ```bash
 indiserver ./examples/telescope_device.py ./examples/dome_device.py
-indi-nexus serve      # the panel, now talking to indiserver on :7624
+indikit serve      # the panel, now talking to indiserver on :7624
 ```

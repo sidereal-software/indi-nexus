@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from indi_nexus.transport import open_tcp
+from indikit.transport import open_tcp
 
 
 class _EchoServer:

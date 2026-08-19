@@ -13,8 +13,8 @@ import zlib
 import pytest
 from lxml import etree
 
-from indi_nexus.exceptions import ProtocolError
-from indi_nexus.protocol import (
+from indikit.exceptions import ProtocolError
+from indikit.protocol import (
     BLOB,
     BLOBPolicy,
     BLOBVector,
@@ -46,9 +46,9 @@ from indi_nexus.protocol import (
     to_json,
     to_xml,
 )
-from indi_nexus.protocol import xml as xml_module
-from indi_nexus.protocol.numbers import format_number, parse_number
-from indi_nexus.protocol.xml import (
+from indikit.protocol import xml as xml_module
+from indikit.protocol.numbers import format_number, parse_number
+from indikit.protocol.xml import (
     _element_from_xml,
     _element_xml,
     message_from_xml,
@@ -1086,7 +1086,7 @@ def test_a_dropped_element_is_logged_without_its_payload(caplog):
     )
     parser = XMLStreamParser()
 
-    with caplog.at_level(logging.WARNING, logger="indi_nexus.protocol.xml"):
+    with caplog.at_level(logging.WARNING, logger="indikit.protocol.xml"):
         assert list(parser.feed(frame)) == []
 
     assert parser.dropped == 1
@@ -1131,7 +1131,7 @@ def test_an_unparseable_blob_size_costs_only_the_size():
 # --------------------------------------------------------------------------- #
 # Lenient parsing: an unmatched close tag must not mute the stream             #
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("closer", [b"</indinexus>", b"</bogus>"])
+@pytest.mark.parametrize("closer", [b"</indikit>", b"</bogus>"])
 def test_an_unmatched_close_tag_reopens_the_stream(closer):
     """Any close tag at depth 1 ends the lxml document, whatever it is named.
 
@@ -1153,7 +1153,7 @@ def test_a_close_tag_split_across_chunks_is_still_recovered():
     parser = XMLStreamParser()
 
     assert list(parser.feed(b"</indi")) == []
-    assert list(parser.feed(b"nexus>")) == []
+    assert list(parser.feed(b"kit>")) == []
 
     assert [m.message for m in parser.feed(to_xml(Message(message="after")))] == ["after"]
     assert parser.resets == 1
@@ -1168,16 +1168,14 @@ def test_the_rest_of_the_offending_chunk_is_lost():
     """
     parser = XMLStreamParser()
 
-    out = list(parser.feed(to_xml(Message(message="a")) + b"</indinexus>"))
+    out = list(parser.feed(to_xml(Message(message="a")) + b"</indikit>"))
     out += list(parser.feed(to_xml(Message(message="b"))))
 
     assert [m.message for m in out] == ["a", "b"]
 
     parser = XMLStreamParser()
     swallowed = list(
-        parser.feed(
-            to_xml(Message(message="a")) + b"</indinexus>" + to_xml(Message(message="lost"))
-        )
+        parser.feed(to_xml(Message(message="a")) + b"</indikit>" + to_xml(Message(message="lost")))
     )
     swallowed += list(parser.feed(to_xml(Message(message="c"))))
 
@@ -1192,7 +1190,7 @@ def test_a_close_tag_inside_an_open_vector_self_heals():
     out = list(
         parser.feed(
             "<setNumberVector device='CCD' name='EXPOSURE'>"
-            "<oneNumber name='secs'>1</oneNumber></indinexus>"
+            "<oneNumber name='secs'>1</oneNumber></indikit>"
         )
     )
     out += list(parser.feed(to_xml(Message(message="after"))))
@@ -1208,7 +1206,7 @@ def test_resets_counts_framing_violations_not_lost_messages():
     parser = XMLStreamParser()
 
     for _ in range(50):
-        assert list(parser.feed(b"</indinexus>")) == []
+        assert list(parser.feed(b"</indikit>")) == []
 
     assert parser.resets == 50
     assert parser.dropped == 0
@@ -1232,7 +1230,7 @@ def test_a_stream_of_nothing_but_close_tags_still_trips_the_stall(monkeypatch):
     parser = XMLStreamParser()
 
     for _ in range(4):  # 12 bytes each, and not a message between them
-        assert list(parser.feed(b"</indinexus>")) == []
+        assert list(parser.feed(b"</indikit>")) == []
 
     assert parser.resets == 4
     assert parser.stalled
@@ -1262,7 +1260,7 @@ def test_a_parser_muted_mid_start_tag_is_caught_by_the_byte_counter(monkeypatch)
     parser = XMLStreamParser()
 
     list(parser.feed(b"<setNumberVector device='CCD' name='EXPOSURE'"))
-    list(parser.feed(b"</indinexus>"))
+    list(parser.feed(b"</indikit>"))
     assert parser.resets == 0  # invisible to the parser itself
 
     for _ in range(4):
@@ -1281,9 +1279,9 @@ def test_a_resync_rebuilds_the_parser_without_forgetting_the_peer(monkeypatch):
     monkeypatch.setattr(xml_module, "STALL_THRESHOLD_BYTES", 32)
     parser = XMLStreamParser()
     assert list(parser.feed(_BAD_NUMBER)) == []  # dropped: 1
-    assert list(parser.feed(b"</indinexus>")) == []  # reset: 1
+    assert list(parser.feed(b"</indikit>")) == []  # reset: 1
     list(parser.feed(b"<setNumberVector device='CCD' name='EXPOSURE'"))
-    list(parser.feed(b"</indinexus>"))  # closes that element, then lxml goes quiet for good
+    list(parser.feed(b"</indikit>"))  # closes that element, then lxml goes quiet for good
     for _ in range(4):
         assert list(parser.feed(to_xml(Message(message="lost")))) == []
     assert parser.stalled

@@ -1,14 +1,14 @@
-# INDINexus
+# INDIkit
 
 Control astronomical instruments from Python, and put a web UI in front of them.
 
 Telescopes, domes, cameras, focusers and weather stations at an observatory all speak a
 common language called [INDI](https://docs.indilib.org/protocol/). A small program called
-a *driver* sits between each instrument and everything else, translating. INDINexus is a
+a *driver* sits between each instrument and everything else, translating. INDIkit is a
 toolkit for writing those drivers in modern Python, and for building the screens
 operators work from.
 
-INDINexus has three parts:
+INDIkit has three parts:
 
 1. A driver SDK. Describe what your instrument exposes, say how to read it and how to
    command it, and the standard INDI machinery is handled for you.
@@ -17,19 +17,19 @@ INDINexus has three parts:
 
 Everything is fully typed. Drivers can be tested with no hardware attached.
 
-Documentation: <https://indi-nexus.sidereal.software/> has the guides, a live in-browser
+Documentation: <https://indikit.sidereal.software/> has the guides, a live in-browser
 demo, and the full API reference. [DEVELOPMENT.md](DEVELOPMENT.md) covers working on
-INDINexus itself.
+INDIkit itself.
 
 ## How the pieces fit
 
-INDINexus plugs into `indiserver`, the standard hub program observatories already run. It
+INDIkit plugs into `indiserver`, the standard hub program observatories already run. It
 does not replace it. Your driver is a normal INDI driver, so existing INDI software
 (KStars/Ekos, PHD2, other drivers) works with it unchanged.
 
 ```mermaid
 flowchart LR
-    subgraph py["Python (indi_nexus)"]
+    subgraph py["Python (indikit)"]
         drv["Driver SDK<br/>driver/"]
         cli["IndiClient<br/>client/"]
         web["FastAPI bridge<br/>web/"]
@@ -65,10 +65,10 @@ Python 3.12 or newer is the only requirement. The web panel is compiled into the
 so none of this needs a Node toolchain or an `indiserver` install.
 
 ```bash
-pip install indi-nexus
+pip install indikit
 
-indi-nexus new my_driver.py                 # a complete, commented driver
-indi-nexus serve --device my_driver:MyDriver   # run it, with the panel
+indikit new my_driver.py                 # a complete, commented driver
+indikit serve --device my_driver:MyDriver   # run it, with the panel
 ```
 
 Open <http://localhost:8000/> for a working control panel driven by the driver you just
@@ -77,9 +77,9 @@ appears in the message log.
 
 `--device` runs the driver inside the web process, so trying it out needs one install
 instead of two. Run anything real under `indiserver` instead: `indiserver ./my_driver.py`,
-then `indi-nexus serve` with no `--device`. The driver file is the same either way.
+then `indikit serve` with no `--device`. The driver file is the same either way.
 
-To look before installing, the [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
+To look before installing, the [live demo](https://indikit.sidereal.software/demo-app/index.html)
 runs the real panel against a simulated dome and a simulated weather station inside your
 browser, and switches between the stock panel and a hand-built observatory wallboard.
 
@@ -89,8 +89,8 @@ A driver is one Python class. Declare what the instrument exposes in `setup()`, 
 a timer with `@every`, and react to the operator with `@on_new`:
 
 ```python
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import IPState, Number, NumberVector
+from indikit.driver import Device, every, on_new
+from indikit.protocol import IPState, Number, NumberVector
 
 class Mount(Device):
     name = "Mount"
@@ -133,13 +133,13 @@ For a driver that runs as written, see [`examples/flat_panel.py`](examples/flat_
 Or start from a working file and open it in the panel:
 
 ```bash
-indi-nexus new my_driver.py
-indi-nexus serve --device my_driver:MyDriver
+indikit new my_driver.py
+indikit serve --device my_driver:MyDriver
 ```
 
-The [driver guide](https://indi-nexus.sidereal.software/guides/writing-drivers/) walks
+The [driver guide](https://indikit.sidereal.software/guides/writing-drivers/) walks
 through this line by line, and the
-[porting guide](https://indi-nexus.sidereal.software/guides/porting-from-pyindi/) maps the
+[porting guide](https://indikit.sidereal.software/guides/porting-from-pyindi/) maps the
 pyINDI API onto it.
 
 ### Testing without hardware
@@ -148,9 +148,9 @@ Drivers are ordinary Python objects, so a test can drive one directly and check 
 told its clients, without an instrument, an `indiserver` or a socket:
 
 ```python
-from indi_nexus.protocol import IPState
-from indi_nexus.testing import DeviceHarness
-from my_driver import MyDriver                    # the file `indi-nexus new` wrote
+from indikit.protocol import IPState
+from indikit.testing import DeviceHarness
+from my_driver import MyDriver                    # the file `indikit new` wrote
 
 harness = DeviceHarness(MyDriver())
 await harness.setup()                             # what indiserver sends on startup
@@ -162,12 +162,12 @@ assert harness.latest("TELEMETRY").state is IPState.OK
 
 ## Building a frontend
 
-Install `@indi-nexus/react`, point it at a bridge and name a device. That is a working
+Install `@indikit/react`, point it at a bridge and name a device. That is a working
 control panel:
 
 ```tsx
-import { IndiProvider, DevicePanel } from "@indi-nexus/react";
-import "@indi-nexus/react/styles.css";
+import { IndiProvider, DevicePanel } from "@indikit/react";
+import "@indikit/react/styles.css";
 
 export const App = () => (
   <IndiProvider url="ws://localhost:8000/ws">
@@ -179,7 +179,7 @@ export const App = () => (
 Name your app's origin when you start the bridge:
 
 ```bash
-indi-nexus serve --allow-origin http://localhost:5173
+indikit serve --allow-origin http://localhost:5173
 ```
 
 The bridge accepts only its own origin by default, and your app is served from a different
@@ -187,8 +187,8 @@ one. A WebSocket is exempt from the same-origin policy and from CORS, so that ch
 only thing standing between `/ws` and any page an operator happens to visit.
 
 `DevicePanel` builds itself from whatever the device says it has, so it works for a device
-INDINexus has never seen. For your own layout, the same data is available through hooks.
-The [frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) covers both.
+INDIkit has never seen. For your own layout, the same data is available through hooks.
+The [frontend guide](https://indikit.sidereal.software/guides/frontend/) covers both.
 
 ## The examples
 
@@ -198,13 +198,13 @@ the shape of a driver, then `weather_device.py`, the one to copy for real hardwa
 There are also a dome, a telescope, a CCD, a two-device camera, a driver for a live public
 weather API, and three clients: `monitor_client.py` watches, `scripted_session.py` drives,
 `blob_receiver.py` collects images. The
-[examples guide](https://indi-nexus.sidereal.software/guides/examples/) says which to
+[examples guide](https://indikit.sidereal.software/guides/examples/) says which to
 reach for and when.
 
 Run any of them in the panel:
 
 ```bash
-indi-nexus serve \
+indikit serve \
     --device examples.telescope_device:TelescopeSimulator \
     --device examples.dome_device:DomeSimulator
 ```
@@ -215,8 +215,8 @@ indi-nexus serve \
 # Under the standard INDI hub, which is how observatories run drivers:
 indiserver ./my_driver.py
 
-indi-nexus serve      # ...then the web panel at :8000
-indi-nexus monitor    # ...or a live terminal feed
+indikit serve      # ...then the web panel at :8000
+indikit monitor    # ...or a live terminal feed
 ```
 
 ## License

@@ -1,12 +1,12 @@
 # Docker
 
-The image runs `indiserver` and the INDINexus web bridge in one container, so a host
+The image runs `indiserver` and the INDIkit web bridge in one container, so a host
 with Docker installed needs nothing else: no libindi, no Python, no Node.
 
 ```bash
 docker run --rm -p 8000:8000 -p 7624:7624 \
   -e WEB_TOKEN=choose-a-secret \
-  ghcr.io/sidereal-software/indi-nexus
+  ghcr.io/sidereal-software/indikit
 ```
 
 Then open <http://localhost:8000/?token=choose-a-secret>.
@@ -16,8 +16,8 @@ starts with one. Leave `WEB_TOKEN` unset and it generates a random token instead
 prints the only URL that works to the container log:
 
 ```
-indi-nexus: generated a web token. Set WEB_TOKEN to keep it stable across restarts.
-indi-nexus: panel on http://localhost:8000/?token=Xb3...
+indikit: generated a web token. Set WEB_TOKEN to keep it stable across restarts.
+indikit: panel on http://localhost:8000/?token=Xb3...
 ```
 
 Read that URL out of the log, or set `WEB_TOKEN` yourself as above and keep it stable
@@ -29,7 +29,7 @@ WebSocket handshake is refused with close code 1008 and no devices ever appear.
 ## Which tag to pull
 
 Images are published to the GitHub Container Registry under
-`ghcr.io/sidereal-software/indi-nexus`.
+`ghcr.io/sidereal-software/indikit`.
 
 | Tag | Points at | Built for |
 |---|---|---|
@@ -55,8 +55,8 @@ Pi each get a real build.
 To build it yourself instead, from a checkout:
 
 ```bash
-git clone https://github.com/sidereal-software/indi-nexus
-cd indi-nexus
+git clone https://github.com/sidereal-software/indikit
+cd indikit
 docker compose up --build
 ```
 
@@ -64,7 +64,7 @@ docker compose up --build
 prints the URL that carries it:
 
 ```
-indi-nexus: panel on http://localhost:8000/?token=Xb3...
+indikit: panel on http://localhost:8000/?token=Xb3...
 ```
 
 Open that URL. Plain <http://localhost:8000/> loads the panel but never connects. Uncomment
@@ -91,22 +91,22 @@ docker compose up
 
 Two kinds of file are recognised:
 
-- A `.py` driver written against the INDINexus SDK. It does not need to be executable:
+- A `.py` driver written against the INDIkit SDK. It does not need to be executable:
   the container writes a shim that runs it under the interpreter the package is
   installed into, which is both how `indiserver` gets something it can `exec` and how
-  your driver gets `indi_nexus` on its import path.
+  your driver gets `indikit` on its import path.
 - Any other executable program, meaning a compiled driver or a script with a `#!` line.
 
 Anything else is skipped, with a line in the log saying so.
 
 To run a driver already in the image, or one you mounted somewhere else, name it in
-`INDI_DRIVERS`. The example drivers are at `/opt/indi-nexus/examples`, and `indi-nexus`
+`INDI_DRIVERS`. The example drivers are at `/opt/indikit/examples`, and `indikit`
 below is the image tag `docker compose` builds:
 
 ```bash
 docker run --rm -p 8000:8000 -p 7624:7624 \
-  -e INDI_DRIVERS="indi_simulator_ccd /opt/indi-nexus/examples/flat_panel.py" \
-  indi-nexus
+  -e INDI_DRIVERS="indi_simulator_ccd /opt/indikit/examples/flat_panel.py" \
+  indikit
 ```
 
 ## Configuration
@@ -115,8 +115,8 @@ Two sets of variables reach this container, and which one to use follows from wh
 it.
 
 **The container's own**, read by `docker/entrypoint.sh`, which turns them into an
-`indiserver` command line and `indi-nexus serve` flags. They exist because the entrypoint
-composes two processes, and no single `indi-nexus` invocation can be configured to do that:
+`indiserver` command line and `indikit serve` flags. They exist because the entrypoint
+composes two processes, and no single `indikit` invocation can be configured to do that:
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -124,35 +124,35 @@ composes two processes, and no single `indi-nexus` invocation can be configured 
 | `INDI_DRIVER_DIR` | `/drivers` | A directory whose entries are appended to that list. |
 | `INDI_PORT` | `7624` | The port `indiserver` listens on. |
 | `WEB_HOST`, `WEB_PORT` | `0.0.0.0`, `8000` | Where the bridge binds. |
-| `WEB_TOKEN` | generated | The shared token `/ws` and `/api` require. Left unset, one is generated and printed with the panel's URL on startup; set it to keep that URL stable across a restart. `INDI_NEXUS_TOKEN` is accepted as the same setting. |
-| `WEB_ALLOW_ANONYMOUS` | unset | Set to any value to serve with no token: the entrypoint then passes `--allow-insecure-bind` and no `--token` at all. Ignored when a token is set, which wins. Same as `INDI_NEXUS_ALLOW_INSECURE_BIND`. |
-| `WEB_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept in addition to the bridge's own. Same as `INDI_NEXUS_ALLOWED_ORIGINS`, same format. |
+| `WEB_TOKEN` | generated | The shared token `/ws` and `/api` require. Left unset, one is generated and printed with the panel's URL on startup; set it to keep that URL stable across a restart. `INDIKIT_TOKEN` is accepted as the same setting. |
+| `WEB_ALLOW_ANONYMOUS` | unset | Set to any value to serve with no token: the entrypoint then passes `--allow-insecure-bind` and no `--token` at all. Ignored when a token is set, which wins. Same as `INDIKIT_ALLOW_INSECURE_BIND`. |
+| `WEB_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept in addition to the bridge's own. Same as `INDIKIT_ALLOWED_ORIGINS`, same format. |
 
-**INDINexus's own**, read by `indi-nexus` itself wherever it runs: in this container, on a
+**INDIkit's own**, read by `indikit` itself wherever it runs: in this container, on a
 host install, or in a driver process `indiserver` launched. Docker passes them straight
 through, so setting one on the service is all it takes:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `INDI_NEXUS_LOG_LEVEL` | `INFO` | Level for INDINexus and uvicorn: `CRITICAL`, `ERROR`, `WARNING`, `INFO` or `DEBUG`. |
-| `INDI_NEXUS_WIRE_LOG` | unset | Set to `1` for one log line per INDI message in each direction. BLOB payloads are reported by size, never printed. |
-| `INDI_NEXUS_CONNECT_TIMEOUT` | `10.0` | Seconds the bridge waits for each attempt to reach `indiserver`. |
-| `INDI_NEXUS_RECONNECT_DELAY` | `2.0` | Seconds between a lost upstream connection and the next attempt. |
-| `INDI_NEXUS_MESSAGE_HISTORY` | `100` | INDI `message` frames replayed to a browser that has just connected. |
-| `INDI_NEXUS_MAX_BACKLOG` | `512` | Live frames a browser may fall behind by before the bridge drops it and it reconnects. |
-| `INDI_NEXUS_TOKEN` | unset (generated in this image) | The shared token `/ws` and `/api` require. In this image, `WEB_TOKEN`. |
-| `INDI_NEXUS_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept. In this image, `WEB_ALLOWED_ORIGINS`. |
-| `INDI_NEXUS_ALLOW_INSECURE_BIND` | unset | Permit the non-loopback bind with no token anyway. It does **not** turn off a token that is set. In this image, `WEB_ALLOW_ANONYMOUS`, which also drops `--token` - see below. |
-| `INDI_NEXUS_CONFIG_DIR` | `~/.indi-nexus`, else nowhere | Where a driver's `CONFIG_PROCESS` saves and loads its properties. **Set it here** - see below. |
+| `INDIKIT_LOG_LEVEL` | `INFO` | Level for INDIkit and uvicorn: `CRITICAL`, `ERROR`, `WARNING`, `INFO` or `DEBUG`. |
+| `INDIKIT_WIRE_LOG` | unset | Set to `1` for one log line per INDI message in each direction. BLOB payloads are reported by size, never printed. |
+| `INDIKIT_CONNECT_TIMEOUT` | `10.0` | Seconds the bridge waits for each attempt to reach `indiserver`. |
+| `INDIKIT_RECONNECT_DELAY` | `2.0` | Seconds between a lost upstream connection and the next attempt. |
+| `INDIKIT_MESSAGE_HISTORY` | `100` | INDI `message` frames replayed to a browser that has just connected. |
+| `INDIKIT_MAX_BACKLOG` | `512` | Live frames a browser may fall behind by before the bridge drops it and it reconnects. |
+| `INDIKIT_TOKEN` | unset (generated in this image) | The shared token `/ws` and `/api` require. In this image, `WEB_TOKEN`. |
+| `INDIKIT_ALLOWED_ORIGINS` | unset | Space-separated browser origins to accept. In this image, `WEB_ALLOWED_ORIGINS`. |
+| `INDIKIT_ALLOW_INSECURE_BIND` | unset | Permit the non-loopback bind with no token anyway. It does **not** turn off a token that is set. In this image, `WEB_ALLOW_ANONYMOUS`, which also drops `--token` - see below. |
+| `INDIKIT_CONFIG_DIR` | `~/.indikit`, else nowhere | Where a driver's `CONFIG_PROCESS` saves and loads its properties. **Set it here** - see below. |
 
 **The last three have two names here, and they are the same setting.** Set one of each
-pair, not both. Prefer `WEB_*` in this image, and `INDI_NEXUS_*` when you run `indi-nexus`
+pair, not both. Prefer `WEB_*` in this image, and `INDIKIT_*` when you run `indikit`
 yourself.
 
 The entrypoint has to decide something about them before `serve` runs: it generates a
 token when none was given, and prints the panel's URL with it. So it resolves them itself
 and passes them as flags, which beat the environment. It reads `WEB_TOKEN` first and falls
-back to `INDI_NEXUS_TOKEN`, and likewise for the other two, so either spelling works and
+back to `INDIKIT_TOKEN`, and likewise for the other two, so either spelling works and
 the URL printed at startup is the one that opens.
 
 `ALLOW_INSECURE_BIND` is narrower than its container spelling suggests. Being exact about
@@ -167,7 +167,7 @@ What serves the panel anonymously in this image is the entrypoint. When
 as well and the token wins, on a bind that no longer needs the permission.
 
 **A driver's saved configuration lives in the container's filesystem and dies with it.**
-An INDINexus driver that publishes `CONFIG_PROCESS` writes under `INDI_NEXUS_CONFIG_DIR`,
+An INDIkit driver that publishes `CONFIG_PROCESS` writes under `INDIKIT_CONFIG_DIR`,
 and a libindi driver writes under `$HOME/.indi`. Neither survives `docker run --rm` or an
 image upgrade.
 
@@ -175,17 +175,17 @@ Keep both by mounting a volume and pointing the variable into it:
 
 ```bash
 docker run --rm -p 8000:8000 -p 7624:7624 \
-  -v indi-config:/config -e INDI_NEXUS_CONFIG_DIR=/config \
-  ghcr.io/sidereal-software/indi-nexus
+  -v indi-config:/config -e INDIKIT_CONFIG_DIR=/config \
+  ghcr.io/sidereal-software/indikit
 ```
 
 Set it even if you do not care where the file lands. The default is computed rather than
-fixed: `~/.indi-nexus`, else **nothing at all**. A container is exactly where that second
+fixed: `~/.indikit`, else **nothing at all**. A container is exactly where that second
 case turns up, because `HOME` is routinely unset or points somewhere read-only.
 `XDG_CONFIG_HOME` will not move it either; this variable is the only thing that does.
 
 With nowhere to write, every Save, Load and Purge comes back as a `ConfigError` naming
-`INDI_NEXUS_CONFIG_DIR` as the fix, and the panel reports the failure on the property.
+`INDIKIT_CONFIG_DIR` as the fix, and the panel reports the failure on the property.
 That is deliberate. The alternative is a temporary directory that accepts every Save and
 loses the lot on restart.
 
@@ -193,8 +193,8 @@ Turn the log up when a driver is not appearing. That is the usual first move:
 
 ```bash
 docker run --rm -p 8000:8000 -p 7624:7624 \
-  -e INDI_NEXUS_LOG_LEVEL=DEBUG -e INDI_NEXUS_WIRE_LOG=1 \
-  ghcr.io/sidereal-software/indi-nexus
+  -e INDIKIT_LOG_LEVEL=DEBUG -e INDIKIT_WIRE_LOG=1 \
+  ghcr.io/sidereal-software/indikit
 ```
 
 ## The token
@@ -207,7 +207,7 @@ The bridge therefore always starts with a token, and the startup log prints the 
 carries it:
 
 ```
-indi-nexus: panel on http://localhost:8000/?token=Xb3...
+indikit: panel on http://localhost:8000/?token=Xb3...
 ```
 
 Open that URL and the panel connects. It carries the token from its own address to the
@@ -224,7 +224,7 @@ curl -H 'Authorization: Bearer Xb3...' http://localhost:8000/api/devices
 `/health` needs no token, because the image's health check calls it. It reports liveness,
 the upstream link and a few counters, and deliberately carries no release version, no
 addresses and no device names.
-[The bridge's HTTP surface](https://github.com/sidereal-software/indi-nexus/blob/main/DEVELOPMENT.md#the-bridges-http-surface)
+[The bridge's HTTP surface](https://github.com/sidereal-software/indikit/blob/main/DEVELOPMENT.md#the-bridges-http-surface)
 has the body.
 
 Browsers apply neither the same-origin policy nor CORS to WebSockets, so the bridge
@@ -239,7 +239,7 @@ the hub.
 ## Hardware
 
 A container sees no USB device unless it is given one. Pass the port through on the
-`indi-nexus` service in `compose.yaml`:
+`indikit` service in `compose.yaml`:
 
 ```yaml
     devices:
@@ -256,7 +256,7 @@ Neither is on by default, because the first thing most people run here is a simu
 ## Building the image
 
 ```bash
-docker build -f docker/Dockerfile -t indi-nexus .
+docker build -f docker/Dockerfile -t indikit .
 ```
 
 The build compiles the TypeScript panel with pnpm and installs the resulting wheel, so

@@ -1,7 +1,7 @@
 """Tests for the package's import layering.
 
 Two properties that are cheap to keep and expensive to notice the loss of: the
-module import graph has no cycles, and :mod:`indi_nexus.web` - the
+module import graph has no cycles, and :mod:`indikit.web` - the
 browser-facing edge - imports only downwards, towards the client and the
 protocol, never back into the driver SDK.
 
@@ -10,7 +10,7 @@ because an import-time check can only see the modules that happen to have been
 loaded. Two kinds of import are excluded deliberately: one guarded by
 ``TYPE_CHECKING`` is erased before the interpreter ever runs it, and one inside
 a function body runs long after every module is loaded, which is exactly how
-:meth:`indi_nexus.driver.device.Device.run` reaches the runtime without the two
+:meth:`indikit.driver.device.Device.run` reaches the runtime without the two
 modules importing each other.
 """
 
@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-_PACKAGE = Path(__file__).resolve().parent.parent / "src" / "indi_nexus"
+_PACKAGE = Path(__file__).resolve().parent.parent / "src" / "indikit"
 
 
 def _module_name(path: Path) -> str:
@@ -49,7 +49,7 @@ def _import_graph() -> dict[str, set[str]]:
     Returns
     -------
     graph : dict
-        Module name -> the ``indi_nexus`` modules it imports at module level.
+        Module name -> the ``indikit`` modules it imports at module level.
     """
     graph: dict[str, set[str]] = {}
     for path in sorted(_PACKAGE.rglob("*.py")):
@@ -57,10 +57,10 @@ def _import_graph() -> dict[str, set[str]]:
         deps: set[str] = set()
         for node in ast.parse(path.read_text()).body:
             if isinstance(node, ast.ImportFrom) and node.module is not None:
-                if node.module.startswith("indi_nexus"):
+                if node.module.startswith("indikit"):
                     deps.add(node.module)
             elif isinstance(node, ast.Import):
-                deps |= {a.name for a in node.names if a.name.startswith("indi_nexus")}
+                deps |= {a.name for a in node.names if a.name.startswith("indikit")}
         graph[name] = deps - {name}
     return graph
 
@@ -121,16 +121,16 @@ def test_the_import_graph_is_acyclic():
 
 
 def test_the_web_package_does_not_import_the_driver_sdk():
-    """``indi_nexus.web`` is a client of ``indiserver``, not a driver host.
+    """``indikit.web`` is a client of ``indiserver``, not a driver host.
 
     The web layer sits above the client, which sits above the protocol. The one
     thing that used to break that - the in-process hub, now
-    :mod:`indi_nexus.hub` - is a driver harness that never belonged behind the
+    :mod:`indikit.hub` - is a driver harness that never belonged behind the
     browser-facing package. Importing the bridge should not cost the SDK.
     """
     graph = _import_graph()
-    reached = _reachable(graph, "indi_nexus.web")
-    assert not {m for m in reached if m.startswith("indi_nexus.driver") or m == "indi_nexus.hub"}
+    reached = _reachable(graph, "indikit.web")
+    assert not {m for m in reached if m.startswith("indikit.driver") or m == "indikit.hub"}
 
 
 def test_importing_the_web_package_loads_no_driver_module():
@@ -140,8 +140,7 @@ def test_importing_the_web_package_loads_no_driver_module():
     for other tests, so its ``sys.modules`` proves nothing.
     """
     code = (
-        "import sys, indi_nexus.web; "
-        "print([m for m in sys.modules if m.startswith('indi_nexus.driver')])"
+        "import sys, indikit.web; print([m for m in sys.modules if m.startswith('indikit.driver')])"
     )
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, check=True

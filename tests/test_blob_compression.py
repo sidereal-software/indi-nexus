@@ -4,7 +4,7 @@
 where the wire is settled but where every frame costs an exposure. This is the
 same shape in milliseconds and from the other end: a driver that publishes
 ``.fits`` or ``.fits.z`` depending on a switch a client keeps flipping, driven
-through :class:`~indi_nexus.testing.DeviceHarness` so the ``@on_new`` dispatch,
+through :class:`~indikit.testing.DeviceHarness` so the ``@on_new`` dispatch,
 the handle and the codec are all real.
 
 What it is here to catch is the state a one-directional test cannot see. Each of
@@ -21,8 +21,8 @@ import zlib
 
 import pytest
 
-from indi_nexus.driver import Device, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, on_new
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     IPerm,
@@ -36,7 +36,7 @@ from indi_nexus.protocol import (
     SwitchVector,
     to_xml,
 )
-from indi_nexus.testing import DeviceHarness
+from indikit.testing import DeviceHarness
 
 #: The 2880-byte block a FITS file is built out of.
 BLOCK = 2880

@@ -7,7 +7,7 @@ driver actually is, and exists to be copied:
 
 * the instrument is a **synchronous** client (:class:`_WeatherStationClient`
   below stands in for ``pyserial``, a vendor SDK, or a ``requests`` session),
-  reached through :meth:`~indi_nexus.driver.device.Device.off_thread` so a slow
+  reached through :meth:`~indikit.driver.device.Device.off_thread` so a slow
   read never stalls the driver's event loop;
 * ``define_connection()`` gives it the standard INDI connect/disconnect
   lifecycle, and ``@every(..., when_connected=True)`` stops polling the moment
@@ -24,7 +24,7 @@ driver actually is, and exists to be copied:
   wants;
 * and the whole thing is tested without hardware in
   ``tests/test_weather_example.py``, using
-  :class:`~indi_nexus.testing.DeviceHarness`.
+  :class:`~indikit.testing.DeviceHarness`.
 
 Run it under ``indiserver``::
 
@@ -32,7 +32,7 @@ Run it under ``indiserver``::
 
 or in the web panel without ``indiserver``::
 
-    indi-nexus serve --device examples.weather_device:WeatherStation
+    indikit serve --device examples.weather_device:WeatherStation
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ import asyncio
 import math
 import time
 
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     IPerm,
     IPState,
     ISState,
@@ -80,7 +80,7 @@ class _WeatherStationClient:
 
     Every method here blocks the calling thread, exactly as a serial read or an
     HTTP request would. That is the point: it is what
-    :meth:`~indi_nexus.driver.device.Device.off_thread` exists to keep off the
+    :meth:`~indikit.driver.device.Device.off_thread` exists to keep off the
     event loop.
 
     Parameters

@@ -11,7 +11,7 @@ error.** The exposure runs, the driver publishes the image, the hub drops it,
 and the client waits out its timeout on a frame it was never going to be sent.
 That silence is the single most common reason an image "never arrives" in INDI,
 and the policy is per device (optionally per property), sticky, and replayed by
-:class:`~indi_nexus.client.IndiClient` on every reconnect.
+:class:`~indikit.client.IndiClient` on every reconnect.
 
 Run it against a camera. This speaks INDI over TCP, so it wants a real ``indiserver``
 rather than ``serve --device``, which puts its drivers behind the web bridge::
@@ -29,8 +29,8 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from indi_nexus.client import IndiClient
-from indi_nexus.protocol import BLOBVector, ISState, Vector, indi_now
+from indikit.client import IndiClient
+from indikit.protocol import BLOBVector, ISState, Vector, indi_now
 
 #: The camera this script drives by default (libindi's standard CCD name).
 DEFAULT_DEVICE = "CCD Simulator"
@@ -135,7 +135,7 @@ def _connected(vector: Vector) -> bool:
     Parameters
     ----------
     vector : Vector
-        The cached vector offered by :meth:`~indi_nexus.client.IndiClient.wait_for`.
+        The cached vector offered by :meth:`~indikit.client.IndiClient.wait_for`.
 
     Returns
     -------
@@ -151,7 +151,7 @@ def _carries_payload(vector: Vector) -> bool:
     Parameters
     ----------
     vector : Vector
-        The cached vector offered by :meth:`~indi_nexus.client.IndiClient.wait_for`.
+        The cached vector offered by :meth:`~indikit.client.IndiClient.wait_for`.
 
     Returns
     -------

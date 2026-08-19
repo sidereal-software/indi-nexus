@@ -1,10 +1,10 @@
-site_name: INDINexus
+site_name: INDIkit
 site_description: >-
   A modern, typed Python framework for INDI astronomical instrument control -
   Python drivers, an async client, a web bridge, and React components.
-site_url: https://indi-nexus.sidereal.software/
-repo_url: https://github.com/sidereal-software/indi-nexus
-repo_name: indi-nexus
+site_url: https://indikit.sidereal.software/
+repo_url: https://github.com/sidereal-software/indikit
+repo_name: indikit
 
 theme:
   name: material
@@ -120,7 +120,7 @@ nav:
       - Transport: reference/python/transport.md
       - Settings and logging: reference/python/settings.md
   - TypeScript API:
-      - "@indi-nexus/client": reference/typescript/client/index.md
-      - "@indi-nexus/react": reference/typescript/react/index.md
+      - "@indikit/client": reference/typescript/client/index.md
+      - "@indikit/react": reference/typescript/react/index.md
   - Changelog: changelog.md
   - Live demo: demo-app/index.html

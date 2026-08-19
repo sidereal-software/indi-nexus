@@ -14,7 +14,7 @@ import asyncio
 
 import pytest
 
-from indi_nexus import (
+from indikit import (
     ConfigError,
     DeviceNotServing,
     IndiError,
@@ -25,11 +25,11 @@ from indi_nexus import (
     SendQueueFull,
     WrongPropertyKind,
 )
-from indi_nexus.client import IndiClient
-from indi_nexus.driver import Device
-from indi_nexus.protocol import IPState, Number, NumberVector
-from indi_nexus.protocol.numbers import parse_number
-from indi_nexus.testing import DeviceHarness
+from indikit.client import IndiClient
+from indikit.driver import Device
+from indikit.protocol import IPState, Number, NumberVector
+from indikit.protocol.numbers import parse_number
+from indikit.testing import DeviceHarness
 
 _TYPES = [
     (ProtocolError, ValueError),

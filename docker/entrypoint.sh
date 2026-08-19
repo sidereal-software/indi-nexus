@@ -1,11 +1,11 @@
 #!/bin/bash
-# Start indiserver and the INDINexus web bridge, and tie the container's fate to both.
+# Start indiserver and the INDIkit web bridge, and tie the container's fate to both.
 #
 # indiserver launches every driver with exec(), so a driver has to be an executable
-# file. A Python driver written against the INDINexus SDK usually is not: it is a .py
+# file. A Python driver written against the INDIkit SDK usually is not: it is a .py
 # file copied out of examples/ or bind-mounted from a host that did not set the
 # executable bit. So a .py spec is wrapped in a one-line shim that runs it under this
-# image's interpreter, where indi_nexus is importable. The interop suite has the same
+# image's interpreter, where indikit is importable. The interop suite has the same
 # problem and solves it the same way (the python_driver fixture in
 # tests/interop/conftest.py).
 #
@@ -18,26 +18,26 @@
 #   WEB_PORT         the port the bridge listens on (8000).
 #   WEB_TOKEN        the shared token /ws and /api require. Unset, one is generated
 #                    and printed; set it to keep the panel's URL stable across a
-#                    `restart: unless-stopped`. INDI_NEXUS_TOKEN works too.
+#                    `restart: unless-stopped`. INDIKIT_TOKEN works too.
 #   WEB_ALLOW_ANONYMOUS  set to any value to serve with no token at all. The
 #                    published port is then an unauthenticated control surface for
 #                    the instrument, for anything that can reach the host.
-#                    INDI_NEXUS_ALLOW_INSECURE_BIND works too.
+#                    INDIKIT_ALLOW_INSECURE_BIND works too.
 #   WEB_ALLOWED_ORIGINS  space-separated browser origins to accept in addition to
 #                    the bridge's own, for a front end served from elsewhere.
-#                    INDI_NEXUS_ALLOWED_ORIGINS works too, same format.
+#                    INDIKIT_ALLOWED_ORIGINS works too, same format.
 #
 # The variables above are this script's own: it composes two processes, which no single
-# indi-nexus invocation can be configured to do. INDINexus's own INDI_NEXUS_* variables
-# are read by indi-nexus itself and need nothing from here - they are already in the
+# indikit invocation can be configured to do. INDIkit's own INDIKIT_* variables
+# are read by indikit itself and need nothing from here - they are already in the
 # environment this script's children inherit.
 #
 # Three of them are the exception, because this script has to *decide* something about
 # them before `serve` runs: it generates a token when none was given, and prints the
 # panel's URL with it. So it resolves those three itself and passes them as flags, which
-# beat the environment. It falls back to the INDI_NEXUS_ spelling for each, so setting
+# beat the environment. It falls back to the INDIKIT_ spelling for each, so setting
 # either name works and the URL printed below is the one that will actually open - a
-# container configured with INDI_NEXUS_TOKEN alone would otherwise be handed a generated
+# container configured with INDIKIT_TOKEN alone would otherwise be handed a generated
 # token instead. docs/docker.md says the same.
 #
 # To run something else entirely - the panel against a hub in another container, say -
@@ -102,13 +102,13 @@ if [[ -d "$driver_dir" ]]; then
         if [[ "$entry" == *.py ]] || { [[ -x "$entry" ]] && is_program "$entry"; }; then
             specs+=("$entry")
         else
-            echo "indi-nexus: ignoring $entry (not a .py driver, not an executable program)" >&2
+            echo "indikit: ignoring $entry (not a .py driver, not an executable program)" >&2
         fi
     done < <(find "$driver_dir" -mindepth 1 -maxdepth 1 ! -type d -print0 | sort -z)
 fi
 
 if [[ ${#specs[@]} -eq 0 ]]; then
-    echo "indi-nexus: no drivers to run. Set INDI_DRIVERS, or mount some into $driver_dir." >&2
+    echo "indikit: no drivers to run. Set INDI_DRIVERS, or mount some into $driver_dir." >&2
     exit 1
 fi
 
@@ -124,9 +124,9 @@ done
 # anything that can reach the host. So a token is always passed unless the operator
 # has said otherwise, and a generated one is printed rather than being a secret
 # nobody can use.
-WEB_TOKEN="${WEB_TOKEN:-${INDI_NEXUS_TOKEN:-}}"
-web_allow_anonymous="${WEB_ALLOW_ANONYMOUS:-${INDI_NEXUS_ALLOW_INSECURE_BIND:-}}"
-web_allowed_origins="${WEB_ALLOWED_ORIGINS:-${INDI_NEXUS_ALLOWED_ORIGINS:-}}"
+WEB_TOKEN="${WEB_TOKEN:-${INDIKIT_TOKEN:-}}"
+web_allow_anonymous="${WEB_ALLOW_ANONYMOUS:-${INDIKIT_ALLOW_INSECURE_BIND:-}}"
+web_allowed_origins="${WEB_ALLOWED_ORIGINS:-${INDIKIT_ALLOWED_ORIGINS:-}}"
 
 web_args=()
 if [[ -n "$WEB_TOKEN" ]]; then
@@ -136,23 +136,23 @@ elif [[ -n "$web_allow_anonymous" ]]; then
 else
     WEB_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
     web_args+=(--token "$WEB_TOKEN")
-    echo "indi-nexus: generated a web token. Set WEB_TOKEN to keep it stable across restarts."
+    echo "indikit: generated a web token. Set WEB_TOKEN to keep it stable across restarts."
 fi
 
 if [[ -n "$web_allowed_origins" ]]; then
     # Unquoted on purpose: this is a space-separated list, the same format
-    # INDI_NEXUS_ALLOWED_ORIGINS itself takes.
+    # INDIKIT_ALLOWED_ORIGINS itself takes.
     # shellcheck disable=SC2206
     for origin in ${web_allowed_origins}; do
         web_args+=(--allow-origin "$origin")
     done
 fi
 
-echo "indi-nexus: indiserver on :$indi_port with ${specs[*]}"
+echo "indikit: indiserver on :$indi_port with ${specs[*]}"
 if [[ -n "${WEB_TOKEN:-}" ]]; then
-    echo "indi-nexus: panel on http://localhost:$web_port/?token=$WEB_TOKEN"
+    echo "indikit: panel on http://localhost:$web_port/?token=$WEB_TOKEN"
 else
-    echo "indi-nexus: panel on http://localhost:$web_port/ (no token: anyone who can reach this port can drive the instrument)"
+    echo "indikit: panel on http://localhost:$web_port/ (no token: anyone who can reach this port can drive the instrument)"
 fi
 
 # -v gives one line per driver event, which is the only account of why a mounted
@@ -160,7 +160,7 @@ fi
 indiserver -v -p "$indi_port" "${drivers[@]}" &
 hub=$!
 
-indi-nexus serve \
+indikit serve \
     --host "$web_host" --port "$web_port" \
     --indi-host 127.0.0.1 --indi-port "$indi_port" \
     "${web_args[@]}" &

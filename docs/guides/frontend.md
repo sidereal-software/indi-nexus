@@ -10,14 +10,14 @@ labels. A UI can therefore be generated from what the device reports instead of 
 per instrument.
 
 There are two ways to build one, and they mix freely. `DevicePanel` renders a whole
-device, including instruments INDINexus has never seen. The same live data is on hooks,
+device, including instruments INDIkit has never seen. The same live data is on hooks,
 so you can lay out exactly the screen your observatory wants.
 
 ## Rendering a whole device
 
 ```tsx
-import { IndiProvider, DevicePanel } from "@indi-nexus/react";
-import "@indi-nexus/react/styles.css";
+import { IndiProvider, DevicePanel } from "@indikit/react";
+import "@indikit/react/styles.css";
 
 export function App() {
   return (
@@ -52,7 +52,7 @@ readings.
 
 `DeviceConfigDialog` offers it from the sidebar instead, and `DevicePanel` leaves it out
 rather than drawing it as four anonymous buttons. The same goes for
-`NEXUS_CONFIG_PERSISTED`, the list an INDINexus driver publishes of what Save writes: the
+`INDIKIT_CONFIG_PERSISTED`, the list an INDIkit driver publishes of what Save writes: the
 dialog renders it as a sentence, and a read-only card full of wire names says less in more
 space.
 
@@ -80,8 +80,8 @@ moves it in and out on its own.
 ### What `DeviceConfigDialog` does and does not promise
 
 `CONFIG_PROCESS` persists a device's settings on the observatory computer: to
-`$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under `~/.indi-nexus` for
-an INDINexus one.
+`$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under `~/.indikit` for
+an INDIkit one.
 
 `DeviceConfigDialog` is what offers it. Give it the selected device and it renders a
 sidebar item that opens the actions in a modal. It renders nothing at all when no device
@@ -103,9 +103,9 @@ so on screen rather than in a manual nobody has open at 2am:
 - **Save does not necessarily save what you see.** Each driver chooses which properties it
   persists. A libindi driver makes that choice in `saveConfigItems`, which nothing on the
   wire exposes. The dialog therefore says outright that it cannot tell you, rather than
-  letting the screen imply "everything". An INDINexus driver declares persistence at
+  letting the screen imply "everything". An INDIkit driver declares persistence at
   define time
-  and publishes the list as `NEXUS_CONFIG_PERSISTED`. For those the dialog names the
+  and publishes the list as `INDIKIT_CONFIG_PERSISTED`. For those the dialog names the
   properties Save writes, or says plainly that Save writes none of them, which is a
   different statement from not knowing.
 
@@ -122,12 +122,12 @@ answering is what says the action happened.
 Name your app's origin when you start the bridge:
 
 ```bash
-indi-nexus serve --allow-origin http://localhost:5173
+indikit serve --allow-origin http://localhost:5173
 ```
 
 Your app is served from its own origin, `http://localhost:5173` under Vite, and the bridge
 accepts only its own by default. Repeat the flag for more origins, or set
-`INDI_NEXUS_ALLOWED_ORIGINS` to a space-separated list. The flag wins if you do both.
+`INDIKIT_ALLOWED_ORIGINS` to a space-separated list. The flag wins if you do both.
 
 The bridge cannot quietly skip that check for you. `/ws` is its whole write surface, a
 frame sent there becomes an INDI `new*` that moves hardware, and a WebSocket is exempt
@@ -143,7 +143,7 @@ token in a header on a WebSocket handshake, so the query parameter is the only f
 available.
 
 The stylesheet is prebuilt, so you do not need Tailwind. If you *are* running Tailwind,
-import `@indi-nexus/react/theme.css` instead. That is the design tokens alone, and your
+import `@indikit/react/theme.css` instead. That is the design tokens alone, and your
 own build generates the utilities.
 
 ## Showing several devices
@@ -168,7 +168,7 @@ Use the hooks and write your own markup for a purpose-built screen: the few numb
 night operator needs, at a size readable across the room.
 
 ```tsx
-import { useNumber } from "@indi-nexus/react";
+import { useNumber } from "@indikit/react";
 
 function DomeAzimuth() {
   const azimuth = useNumber("Dome Simulator", "ABS_DOME_POSITION", "DOME_ABSOLUTE_POSITION");
@@ -252,7 +252,7 @@ frame you built yourself, and returns an unsubscribe function.
 
 ```tsx
 import { useEffect, useState } from "react";
-import { useIndiClient } from "@indi-nexus/react";
+import { useIndiClient } from "@indikit/react";
 
 function LastCommand() {
   const client = useIndiClient();
@@ -341,18 +341,18 @@ know the kind and want to skip the dispatch.
 
 ## Without React
 
-`@indi-nexus/client` is the layer underneath: a reconnecting WebSocket and a typed
+`@indikit/client` is the layer underneath: a reconnecting WebSocket and a typed
 property store, with no UI dependency. Use it from Svelte, Vue, or plain TypeScript:
 
 ```ts
-import { IndiClient } from "@indi-nexus/client";
+import { IndiClient } from "@indikit/client";
 
 const client = new IndiClient({ url: "ws://localhost:8000/ws" });
 client.subscribe((event) => console.log(event.device, event.name, event.vector?.state));
 client.connect();
 ```
 
-`@indi-nexus/react` re-exports all of it, so a React app needs only the one package.
+`@indikit/react` re-exports all of it, so a React app needs only the one package.
 
 The same origin rule applies. Start the bridge with `--allow-origin` naming wherever this
 code is served from. A peer that is not a browser (Node, a script, a test) sends no
@@ -360,5 +360,5 @@ code is served from. A peer that is not a browser (Node, a script, a test) sends
 
 ## Full API
 
-[`@indi-nexus/client`](../reference/typescript/client/index.md) and
-[`@indi-nexus/react`](../reference/typescript/react/index.md).
+[`@indikit/client`](../reference/typescript/client/index.md) and
+[`@indikit/react`](../reference/typescript/react/index.md).

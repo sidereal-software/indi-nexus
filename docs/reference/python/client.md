@@ -1,12 +1,12 @@
-# `indi_nexus.client`
+# `indikit.client`
 
 A reconnecting `asyncio` TCP client to `indiserver` with a typed property
 cache, subscriptions, and send helpers.
 
 ## IndiClient
 
-::: indi_nexus.client.client
+::: indikit.client.client
 
 ## PropertyStore
 
-::: indi_nexus.client.store
+::: indikit.client.store

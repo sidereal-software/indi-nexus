@@ -12,7 +12,7 @@ Python 3.12 or newer is the only requirement. The panel ships compiled inside th
 so you do not need Node or a JavaScript build.
 
 Steps 2 and 3 use a stand-in for `indiserver` built into the CLI, so this page needs one
-install. INDINexus plugs into the real hub rather than replacing it, and
+install. INDIkit plugs into the real hub rather than replacing it, and
 [step 4](#4-running-under-indiserver) swaps it in without changing your driver.
 
 !!! tip "Trying it without installing"
@@ -23,19 +23,19 @@ install. INDINexus plugs into the real hub rather than replacing it, and
 ## 1. Install
 
 ```bash
-pip install indi-nexus
+pip install indikit
 ```
 
 Or with [uv](https://docs.astral.sh/uv/), which will fetch a suitable Python for you:
 
 ```bash
-uv tool install indi-nexus
+uv tool install indikit
 ```
 
 ## 2. Write a driver
 
 ```bash
-indi-nexus new my_driver.py
+indikit new my_driver.py
 ```
 
 That writes a complete, commented driver: a Connect button, a number polled once a second,
@@ -45,7 +45,7 @@ every part.
 ## 3. Run it
 
 ```bash
-indi-nexus serve --device my_driver:MyDriver
+indikit serve --device my_driver:MyDriver
 ```
 
 Open <http://localhost:8000/>. Your device is in the sidebar. Two things to try:
@@ -97,11 +97,11 @@ The same file that ran under `--device` runs here, unchanged:
 indiserver ./my_driver.py
 
 # then, in another terminal, either:
-indi-nexus serve       # the web panel at :8000, against indiserver
-indi-nexus monitor     # a live feed in the terminal
+indikit serve       # the web panel at :8000, against indiserver
+indikit monitor     # a live feed in the terminal
 ```
 
-`indi-nexus serve` without `--device` connects to `indiserver` instead of running drivers
+`indikit serve` without `--device` connects to `indiserver` instead of running drivers
 itself. That is the only difference between the two setups.
 
 Other INDI software (KStars/Ekos, PHD2, existing C++ drivers) connects to the same

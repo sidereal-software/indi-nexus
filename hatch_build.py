@@ -1,7 +1,7 @@
 """Hatchling build hook that bundles the built reference panel into the artifact.
 
 The TypeScript panel (``web/apps/panel``) compiles into
-``src/indi_nexus/web/static/panel/`` - a gitignored build output that
+``src/indikit/web/static/panel/`` - a gitignored build output that
 ``[tool.hatch.build.targets.*].artifacts`` then force-includes in the sdist and
 wheel. This hook makes a source build self-contained: when that output is missing
 it builds it with pnpm, so ``pip install .`` / ``uv build`` ship the UI without a
@@ -23,7 +23,7 @@ from typing import Any
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 _ROOT = Path(__file__).parent
-_PANEL_INDEX = _ROOT / "src" / "indi_nexus" / "web" / "static" / "panel" / "index.html"
+_PANEL_INDEX = _ROOT / "src" / "indikit" / "web" / "static" / "panel" / "index.html"
 _WEB = _ROOT / "web"
 
 

@@ -1,6 +1,6 @@
 /** Tests for `IndiProvider` / `useIndiClient` lifecycle and wiring. */
 
-import { IndiClient } from "@indi-nexus/client";
+import { IndiClient } from "@indikit/client";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndiProvider, useIndiClient } from "./context";

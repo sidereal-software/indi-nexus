@@ -1,7 +1,7 @@
 /**
  * `PropertyStore`: the client's typed cache of INDI properties.
  *
- * A faithful port of `indi_nexus.client.store.PropertyStore`. It folds inbound
+ * A faithful port of `indikit.client.store.PropertyStore`. It folds inbound
  * messages into a `device -> name -> vector` cache following standard INDI
  * semantics (`def` defines, `set` merges values onto the definition keeping
  * def-only metadata, `del` removes a property or a whole device) and holds the

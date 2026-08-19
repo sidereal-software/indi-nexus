@@ -13,7 +13,7 @@ import {
   type SwitchVector,
   type Vector,
   type WebSocketLike,
-} from "@indi-nexus/client";
+} from "@indikit/client";
 
 const DEVICE = "Dome Simulator";
 const PARK_AZ = 90;

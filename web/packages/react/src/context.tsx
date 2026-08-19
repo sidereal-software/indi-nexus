@@ -7,7 +7,7 @@
  * custom setup) takes precedence over the inline connection `options`.
  */
 
-import { IndiClient, type IndiClientOptions } from "@indi-nexus/client";
+import { IndiClient, type IndiClientOptions } from "@indikit/client";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 const IndiContext = createContext<IndiClient | null>(null);

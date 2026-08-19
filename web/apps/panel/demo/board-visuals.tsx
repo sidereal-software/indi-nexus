@@ -27,7 +27,7 @@
  *   (a gap in the wall, a dashed rim) as well as by hue.
  */
 
-import type { IPState } from "@indi-nexus/react";
+import type { IPState } from "@indikit/react";
 
 /** The eight-point compass name for a bearing in degrees. */
 export function bearingName(degrees: number): string {

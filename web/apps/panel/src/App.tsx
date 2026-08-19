@@ -1,7 +1,7 @@
 /**
- * The reference INDINexus panel.
+ * The reference INDIkit panel.
  *
- * Everything here is composed from `@indi-nexus/react`: the `IndiProvider` (which
+ * Everything here is composed from `@indikit/react`: the `IndiProvider` (which
  * connects to the bridge at `/ws`), the hooks, the INDI-aware components, and the
  * themed shadcn primitives. It doubles as a worked example of "build your own UI
  * on the library".
@@ -45,7 +45,7 @@ import {
   TooltipTrigger,
   useDevices,
   useIndiClient,
-} from "@indi-nexus/react";
+} from "@indikit/react";
 import { MessageSquareText, Moon, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "./use-theme";
@@ -128,7 +128,7 @@ function DeviceSidebar({
         <div className="flex items-center gap-2">
           <Telescope className="size-5 text-primary" />
           <span className="text-sm font-semibold">
-            INDI<span className="text-primary">Nexus</span>
+            INDI<span className="text-primary">kit</span>
           </span>
         </div>
         <ConnectionStatus />
@@ -335,7 +335,7 @@ function AppShell() {
             <TooltipContent>Toggle the device sidebar</TooltipContent>
           </Tooltip>
           <Separator orientation="vertical" className="h-5" />
-          <h1 className="text-sm font-medium">{active ?? "INDINexus"}</h1>
+          <h1 className="text-sm font-medium">{active ?? "INDIkit"}</h1>
         </header>
         <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4">
           {active ? (

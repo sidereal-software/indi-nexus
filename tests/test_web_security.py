@@ -7,7 +7,7 @@ here rather than only through the app.
 
 from __future__ import annotations
 
-from indi_nexus.web.security import WebSecurity, is_loopback
+from indikit.web.security import WebSecurity, is_loopback
 
 
 def test_a_missing_origin_is_allowed():

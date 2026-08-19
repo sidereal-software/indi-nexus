@@ -5,8 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import zlib
 
-from indi_nexus.client.store import PropertyEvent, PropertyStore
-from indi_nexus.protocol import (
+from indikit.client.store import PropertyEvent, PropertyStore
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     DefVector,

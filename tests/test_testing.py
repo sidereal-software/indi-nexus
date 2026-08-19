@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     IPState,
@@ -24,7 +24,7 @@ from indi_nexus.protocol import (
     SwitchVector,
     Text,
 )
-from indi_nexus.testing import DeviceHarness
+from indikit.testing import DeviceHarness
 
 
 class _Sample(Device):

@@ -68,7 +68,7 @@
  * see `CONCERNS.md`, which also says why the `error` control frame cannot fix it.
  */
 
-import { displayLabel, type IPState } from "@indi-nexus/client";
+import { displayLabel, type IPState } from "@indikit/client";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useIndiClient } from "../context";

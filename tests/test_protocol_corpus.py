@@ -33,8 +33,8 @@ from pathlib import Path
 
 import pytest
 
-from indi_nexus.client.store import PropertyStore
-from indi_nexus.protocol import BLOBVector, SetVector, XMLStreamParser
+from indikit.client.store import PropertyStore
+from indikit.protocol import BLOBVector, SetVector, XMLStreamParser
 
 DATA = Path(__file__).parent / "data"
 CORPUS = DATA / "interop_corpus.xml"

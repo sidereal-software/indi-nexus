@@ -8,7 +8,7 @@ of them.
 
 | Changing | Read first |
 |---|---|
-| the Python package: protocol, driver SDK, client, web bridge, CLI | `src/indi_nexus/CLAUDE.md` |
+| the Python package: protocol, driver SDK, client, web bridge, CLI | `src/indikit/CLAUDE.md` |
 | the TypeScript workspace: libraries, panel, doc demos | `web/CLAUDE.md` |
 | commands and workflows | `DEVELOPMENT.md` (keep it in step when either changes) |
 | anything already known to be wrong or deferred | `CONCERNS.md` (read before starting, prune when you fix one) |
@@ -22,12 +22,12 @@ purpose, and say what resolving it would look like.
 
 ## Project overview
 
-INDINexus (`indi-nexus`) is a modern, typed Python framework for the
+INDIkit (`indikit`) is a modern, typed Python framework for the
 [INDI protocol](https://docs.indilib.org/protocol/) (astronomical instrument control): the
 driver SDK, the async client, and the web bridge, on a Pydantic v2 + FastAPI foundation
 with a TypeScript/React frontend. It does **not** reimplement the C `indiserver` binary.
 
-Docs publish to <https://indi-nexus.sidereal.software/> from `main` via
+Docs publish to <https://indikit.sidereal.software/> from `main` via
 `.github/workflows/docs.yml`.
 
 ## Locked architectural decisions
@@ -38,11 +38,11 @@ Decided at project start; do not revisit without explicit direction.
    client of it. We modernize only the Python and frontend layers.
 2. **Dual protocol.** INDI 1.7 **XML** on the `indiserver` wire (ecosystem interop); typed
    **JSON** to browsers.
-3. **Monorepo.** `src/indi_nexus/` plus a `pnpm` workspace under `web/`. INDI 1.7 is frozen,
+3. **Monorepo.** `src/indikit/` plus a `pnpm` workspace under `web/`. INDI 1.7 is frozen,
    so the browser wire types are **hand-authored** TypeScript mirroring the Pydantic models
    (no codegen). Keep them in step when the protocol models change.
 4. **Frontend is TypeScript + React (Vite) over WebSockets, styled with shadcn/ui**, shipped
-   in three layers: `@indi-nexus/client`, `@indi-nexus/react`, and a reference panel app.
+   in three layers: `@indikit/client`, `@indikit/react`, and a reference panel app.
    Both "batteries-included app" and "build your own UI" are first-class.
 
 ## Commands
@@ -60,7 +60,7 @@ uv run mypy src                 # type-check (strict)
 
 # After an intentional protocol-model change: regenerate the golden wire schema,
 # and update web/packages/client/src/types.ts in the same commit.
-INDI_NEXUS_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
+INDIKIT_UPDATE_GOLDEN=1 uv run pytest tests/test_wire_contract.py
 
 # The interop suite: a real indiserver, real libindi C++ drivers and a real browser.
 # `uv run pytest` excludes it and it skips itself when indiserver is not on PATH, so
@@ -127,10 +127,10 @@ been red for two nights before anyone looked.
 ## Architecture
 
 ```
-src/indi_nexus/
+src/indikit/
 ├── exceptions.py       the error hierarchy: IndiError + a builtin base per type
-├── settings.py         the INDI_NEXUS_* environment, read once at an entrypoint
-├── logging_config.py   configure_logging + the shared indi_nexus.wire logger
+├── settings.py         the INDIKIT_* environment, read once at an entrypoint
+├── logging_config.py   configure_logging + the shared indikit.wire logger
 ├── protocol/           the INDI 1.7 wire format: models, enums, XML + JSON codecs
 ├── driver/             driver SDK: subclass a base device; stdio XML under indiserver
 ├── testing.py          DeviceHarness: drive a Device in a test, no indiserver
@@ -142,16 +142,16 @@ src/indi_nexus/
 └── cli.py              Typer CLI (new / serve / run / monitor)
 
 web/              pnpm workspace: the TypeScript frontend
-├── packages/client/     @indi-nexus/client - framework-agnostic transport + property store
-├── packages/react/      @indi-nexus/react  - hooks + shadcn/ui components + shared theme
-└── apps/panel/          the reference panel, built into src/indi_nexus/web/static/panel/
+├── packages/client/     @indikit/client - framework-agnostic transport + property store
+├── packages/react/      @indikit/react  - hooks + shadcn/ui components + shared theme
+└── apps/panel/          the reference panel, built into src/indikit/web/static/panel/
 ```
 
 Data flow (unchanged from the INDI model):
 
 ```mermaid
 flowchart LR
-    subgraph py["Python (indi_nexus)"]
+    subgraph py["Python (indikit)"]
         drv["Driver SDK<br/>driver/"]
         cli["IndiClient<br/>client/"]
         web["FastAPI bridge<br/>web/"]
@@ -178,17 +178,17 @@ flowchart LR
 
 A diagram that has drifted from the code is worse than none, because it is believed.
 **A change that alters architecture lands with the diagram updates in the same commit.**
-That means any change to the components under `src/indi_nexus/` or `web/`, to what flows
+That means any change to the components under `src/indikit/` or `web/`, to what flows
 between them or on what transport, to the inside of the driver runtime, or to an external
 boundary (`indiserver`, the browser, the instrument).
 
 | File | Diagram |
 |---|---|
 | `CLAUDE.md`, `README.md`, `docs/index.md` | the stack (three byte-identical copies; edit one, copy it to the other two, and diff to confirm) |
-| `src/indi_nexus/CLAUDE.md` | the driver runtime internals |
+| `src/indikit/CLAUDE.md` | the driver runtime internals |
 
 Rendering is wired up already (`pymdownx.superfences` for MkDocs, native on GitHub). Keep
-diagrams legible as plain source, and mark anything INDINexus does not own with the shared
+diagrams legible as plain source, and mark anything INDIkit does not own with the shared
 `classDef ext`.
 
 Two rules keep them readable everywhere they render:

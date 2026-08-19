@@ -29,7 +29,7 @@ import pytest
 from conftest import REPO_ROOT
 from test_corpus import SIMULATORS
 
-from indi_nexus.protocol import XMLStreamParser
+from indikit.protocol import XMLStreamParser
 
 CORPUS = REPO_ROOT / "tests" / "data" / "interop_corpus.xml"
 BLOB_CORPUS = REPO_ROOT / "tests" / "data" / "interop_blob_corpus.xml"

@@ -1,6 +1,6 @@
 /** Tests for the grouped per-device property panel. */
 
-import type { NumberVector, SwitchVector, TextVector } from "@indi-nexus/client";
+import type { NumberVector, SwitchVector, TextVector } from "@indikit/client";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { receive, renderConnected } from "../testing/render";
@@ -48,12 +48,12 @@ function configVec(): SwitchVector {
   };
 }
 
-/** An INDINexus driver's list of what Save writes, which the dialog renders. */
+/** An INDIkit driver's list of what Save writes, which the dialog renders. */
 function persistedVec(): TextVector {
   return {
     kind: "text",
     device: "CCD",
-    name: "NEXUS_CONFIG_PERSISTED",
+    name: "INDIKIT_CONFIG_PERSISTED",
     label: "Saved properties",
     group: "Options",
     state: "Ok",
@@ -129,7 +129,7 @@ describe("DevicePanel", () => {
     expect(openFold()).toEqual([]);
   });
 
-  it("leaves NEXUS_CONFIG_PERSISTED out of the panel entirely", () => {
+  it("leaves INDIKIT_CONFIG_PERSISTED out of the panel entirely", () => {
     const { socket } = renderConnected(<DevicePanel device="CCD" />);
     receive(socket, { tag: "def", vector: numVec("EXPOSURE", "Main Control") });
     receive(socket, { tag: "def", vector: persistedVec() });

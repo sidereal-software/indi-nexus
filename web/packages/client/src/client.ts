@@ -1,7 +1,7 @@
 /**
- * `IndiClient`: a reconnecting browser client for the INDINexus web bridge.
+ * `IndiClient`: a reconnecting browser client for the INDIkit web bridge.
  *
- * This mirrors the public surface of `indi_nexus.client.client.IndiClient`, but its
+ * This mirrors the public surface of `indikit.client.client.IndiClient`, but its
  * peer is the FastAPI bridge's `WS /ws` (which relays a shared upstream
  * `indiserver` connection), and it speaks the JSON contract rather than XML. It
  * keeps a typed {@link PropertyStore} up to date from inbound frames, lets code

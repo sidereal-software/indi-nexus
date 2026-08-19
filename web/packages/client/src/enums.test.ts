@@ -1,7 +1,7 @@
 /**
  * Tests for the hand-authored enum tokens and the `isWritable` helper.
  *
- * The enums are a hand-maintained mirror of `indi_nexus.protocol.enums`; these
+ * The enums are a hand-maintained mirror of `indikit.protocol.enums`; these
  * assertions pin each member to its exact INDI wire token so a drift from the
  * Python side fails loudly.
  */

@@ -5,7 +5,7 @@ import {
   IndiClient,
   type IPState,
   type NumberVector,
-} from "@indi-nexus/client";
+} from "@indikit/client";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndiProvider } from "../context";

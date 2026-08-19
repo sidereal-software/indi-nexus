@@ -9,8 +9,8 @@ import zlib
 import pytest
 from pydantic import ValidationError
 
-from indi_nexus.exceptions import ProtocolError
-from indi_nexus.protocol import (
+from indikit.exceptions import ProtocolError
+from indikit.protocol import (
     BLOB,
     BLOBVector,
     DefVector,

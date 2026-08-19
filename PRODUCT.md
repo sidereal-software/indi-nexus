@@ -16,9 +16,9 @@ and a developer's needs conflict, the operator wins.
 Two secondary audiences are real and served, but they yield:
 
 - **Driver authors** - Python developers wiring an instrument into INDI. They live in the
-  docs site, the README, `indi-nexus new`, and the generated starter file, and they use the
+  docs site, the README, `indikit new`, and the generated starter file, and they use the
   panel mostly to confirm the driver they just wrote does what they meant.
-- **Frontend builders** - developers composing `@indi-nexus/client` and `@indi-nexus/react`
+- **Frontend builders** - developers composing `@indikit/client` and `@indikit/react`
   into their own observatory UI. The reference panel is a worked example they will replace,
   and "build your own UI" is a first-class path, not a fallback.
 
@@ -28,10 +28,10 @@ driver. That ordering predates the decision above and is not itself a product co
 
 ## Product Purpose
 
-INDINexus is a Python toolkit for controlling astronomical instruments over the
+INDIkit is a Python toolkit for controlling astronomical instruments over the
 [INDI protocol](https://docs.indilib.org/protocol/), plus the web UI operators work from.
 Telescopes, domes, cameras, focusers and weather stations at an observatory all speak INDI
-through a per-instrument driver; INDINexus is how you write those drivers in modern typed
+through a per-instrument driver; INDIkit is how you write those drivers in modern typed
 Python, how you talk to them from Python, and how you put them on a screen.
 
 Three parts ship together and are independently useful: a driver SDK, an async client, and
@@ -45,7 +45,7 @@ know INDI, and an author who can add an instrument without reimplementing INDI's
 
 **It plugs into the observatory that already exists rather than replacing it.** The C
 `indiserver` binary stays the hub; a driver written here is an ordinary INDI driver, so
-KStars/Ekos, PHD2 and third-party drivers keep working against it unchanged. INDINexus
+KStars/Ekos, PHD2 and third-party drivers keep working against it unchanged. INDIkit
 modernizes the Python and browser layers only, and does not reimplement `indiserver`.
 
 What a neighboring project would have to copy to match it:
@@ -57,7 +57,7 @@ What a neighboring project would have to copy to match it:
   as the single wire contract, and hand-authored TypeScript mirroring those models.
 - A driver is testable with nothing plugged in. `DeviceHarness` drives a `Device` directly,
   with no instrument, no `indiserver` and no socket.
-- The panel builds itself from whatever a device declares, so it renders hardware INDINexus
+- The panel builds itself from whatever a device declares, so it renders hardware INDIkit
   has never seen.
 - One install gets you a running UI. The compiled panel is bundled into the Python wheel, so
   `pip install` needs no Node toolchain, and `serve --device` runs a driver in-process so
@@ -88,7 +88,7 @@ alone, so the interface has to be the thing that tells them something went wrong
 per-device config persistence). An async reconnecting client with a property cache. A
 FastAPI bridge exposing INDI over a WebSocket as typed JSON, with REST and debug surfaces.
 A Typer CLI (`new`, `serve`, `run`, `monitor`). A reference React panel bundled into the
-wheel. Two published-intent npm libraries, `@indi-nexus/client` and `@indi-nexus/react`.
+wheel. Two published-intent npm libraries, `@indikit/client` and `@indikit/react`.
 
 **Product direction: the panel grows toward observing sessions.** Today it is generic and
 property-level - it renders whatever a device declares and has no notion of a target, a run,
@@ -111,7 +111,7 @@ assume either answer.
 - Monorepo. INDI 1.7 is frozen, so browser wire types are hand-authored TypeScript mirroring
   the Pydantic models, kept in step by a golden wire schema.
 - Frontend is TypeScript + React (Vite) over WebSockets, styled with shadcn/ui, in three
-  layers: `@indi-nexus/client`, `@indi-nexus/react`, and the reference panel. Both
+  layers: `@indikit/client`, `@indikit/react`, and the reference panel. Both
   "batteries-included app" and "build your own UI" are first-class.
 - Python 3.12+. MIT licensed.
 - A WebSocket is exempt from same-origin and CORS, so the bridge's origin allow-list and
@@ -130,8 +130,8 @@ deferred. Read it before starting, and delete an entry in the commit that resolv
 
 ## Brand Commitments
 
-**Name:** INDINexus, package `indi-nexus`. **Owner:** Sidereal Software (MIT, © 2026).
-**Home:** <https://indi-nexus.sidereal.software/>.
+**Name:** INDIkit, package `indikit`. **Owner:** Sidereal Software (MIT, © 2026).
+**Home:** <https://indikit.sidereal.software/>.
 
 **No visual identity is committed.** There is no logo, no wordmark, and no agreed palette.
 The panel currently has no favicon at all, and `CONCERNS.md` records that as an open
@@ -151,7 +151,7 @@ solid, `classDef ext` thin and dashed). Node labels take no HTML beyond `<br/>`.
 
 - Eleven runnable example drivers and clients in `examples/`, every one covered by tests -
   including `openmeteo_device.py`, which drives a live public weather API.
-- One in-browser [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
+- One in-browser [live demo](https://indikit.sidereal.software/demo-app/index.html)
   running a simulated dome and weather station through a single client, with a toggle
   between the shipping panel and a custom observatory wallboard built on the same library.
 - A published docs site with guides, a porting guide from pyINDI, and generated API

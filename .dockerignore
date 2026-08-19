@@ -34,4 +34,4 @@
 **/.ruff_cache
 **/*.egg-info
 web/**/dist
-src/indi_nexus/web/static/panel
+src/indikit/web/static/panel

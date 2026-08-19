@@ -7,7 +7,7 @@
  * and device panel - through real JSON frames.
  */
 
-import { CLIENT_PROTOCOL_VERSION } from "@indi-nexus/client";
+import { CLIENT_PROTOCOL_VERSION } from "@indikit/client";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";

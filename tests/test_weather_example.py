@@ -1,6 +1,6 @@
 """Tests for the hardware-shaped weather example - the pattern to copy.
 
-Everything here goes through :class:`~indi_nexus.testing.DeviceHarness`: no
+Everything here goes through :class:`~indikit.testing.DeviceHarness`: no
 ``indiserver``, no sockets, no station. The station client is the one thing
 stubbed out, because it is the one thing that would be real hardware.
 """
@@ -13,8 +13,8 @@ import time
 import pytest
 
 from examples.weather_device import CONDITIONS, WeatherError, WeatherStation
-from indi_nexus.protocol import IPState, ISState
-from indi_nexus.testing import DeviceHarness
+from indikit.protocol import IPState, ISState
+from indikit.testing import DeviceHarness
 
 NOMINAL = {
     "temperature": 11.0,

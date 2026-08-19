@@ -13,7 +13,7 @@ to leave alone - is only settled by what real libindi puts on the wire, and the
 answer turned out to be that its CCD simulator emits ``.fz`` and never ``.z``.
 
 **None of this can move to the fast suite.** ``InProcessHub`` has no ``enableBLOB``
-gate (see :mod:`indi_nexus.hub`), so every driver frame reaches a client there whether
+gate (see :mod:`indikit.hub`), so every driver frame reaches a client there whether
 or not it asked, and the three policies are indistinguishable. A real ``indiserver``
 is the only thing that enforces them, so these tests run in Docker or not at all.
 """
@@ -26,8 +26,8 @@ import zlib
 import pytest
 from drivers.zlib_blob_driver import FRAME
 
-from indi_nexus.client import IndiClient
-from indi_nexus.protocol import BLOB, BLOBPolicy, BLOBVector, IPState
+from indikit.client import IndiClient
+from indikit.protocol import BLOB, BLOBPolicy, BLOBVector, IPState
 
 DEVICE = "CCD Simulator"
 

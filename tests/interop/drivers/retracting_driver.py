@@ -13,8 +13,8 @@ driven by ``tests/interop/test_reverse_interop.py`` against a real
 
 from __future__ import annotations
 
-from indi_nexus.driver import Device
-from indi_nexus.protocol import IPState, Number
+from indikit.driver import Device
+from indikit.protocol import IPState, Number
 
 #: What the sensor reads once the (imaginary) camera is talking.
 AMBIENT_C = 25.0

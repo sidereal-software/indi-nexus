@@ -21,13 +21,13 @@ Run it as a child of ``indiserver``::
 
 or, to try it without installing ``indiserver`` first::
 
-    indi-nexus serve --device examples.flat_panel:FlatPanel
+    indikit serve --device examples.flat_panel:FlatPanel
 """
 
 from __future__ import annotations
 
-from indi_nexus.driver import Device, on_new
-from indi_nexus.protocol import (
+from indikit.driver import Device, on_new
+from indikit.protocol import (
     IPState,
     ISRule,
     ISState,

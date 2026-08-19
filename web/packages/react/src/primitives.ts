@@ -2,7 +2,7 @@
  * Re-exports of the themed shadcn/ui primitives.
  *
  * These are the standard shadcn components (Button, Card, Sidebar, ...) carrying
- * the INDINexus theme. They are re-exported so a consumer building their own
+ * the INDIkit theme. They are re-exported so a consumer building their own
  * frontend gets both the INDI-aware components and the underlying primitives from
  * a single package.
  */

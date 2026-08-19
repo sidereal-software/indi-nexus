@@ -1,6 +1,6 @@
 /** A card presenting one INDI property vector: header + kind-specific control. */
 
-import { displayLabel, type Vector } from "@indi-nexus/client";
+import { displayLabel, type Vector } from "@indikit/client";
 import { memo, useId } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";

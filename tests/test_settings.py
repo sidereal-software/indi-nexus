@@ -1,4 +1,4 @@
-"""Tests for the ``INDI_NEXUS_*`` environment model.
+"""Tests for the ``INDIKIT_*`` environment model.
 
 The names here are a 1.0 contract - an operator writes them into a compose file -
 so the defaults are pinned to the values the code used before the model existed,
@@ -13,17 +13,17 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from indi_nexus.settings import LogLevel, Settings, settings
+from indikit.settings import LogLevel, Settings, settings
 
 
 @pytest.fixture(autouse=True)
 def _clean_environment(monkeypatch):
-    """Remove every ``INDI_NEXUS_*`` variable and drop the cached settings.
+    """Remove every ``INDIKIT_*`` variable and drop the cached settings.
 
     The developer running the suite may well have some of these set, and
     :func:`settings` is cached for the life of the process.
     """
-    for name in [key for key in dict(os.environ) if key.startswith("INDI_NEXUS_")]:
+    for name in [key for key in dict(os.environ) if key.startswith("INDIKIT_")]:
         monkeypatch.delenv(name, raising=False)
     settings.cache_clear()
     yield
@@ -49,15 +49,15 @@ def test_the_defaults_are_todays_values():
 
 def test_every_name_parses_to_its_type(monkeypatch):
     """Each variable is read under the prefix and coerced to its field type."""
-    monkeypatch.setenv("INDI_NEXUS_LOG_LEVEL", "WARNING")
-    monkeypatch.setenv("INDI_NEXUS_WIRE_LOG", "1")
-    monkeypatch.setenv("INDI_NEXUS_CONNECT_TIMEOUT", "3.5")
-    monkeypatch.setenv("INDI_NEXUS_RECONNECT_DELAY", "0.25")
-    monkeypatch.setenv("INDI_NEXUS_MESSAGE_HISTORY", "7")
-    monkeypatch.setenv("INDI_NEXUS_MAX_BACKLOG", "9")
-    monkeypatch.setenv("INDI_NEXUS_TOKEN", "secret")
-    monkeypatch.setenv("INDI_NEXUS_ALLOWED_ORIGINS", "http://localhost:5173")
-    monkeypatch.setenv("INDI_NEXUS_ALLOW_INSECURE_BIND", "1")
+    monkeypatch.setenv("INDIKIT_LOG_LEVEL", "WARNING")
+    monkeypatch.setenv("INDIKIT_WIRE_LOG", "1")
+    monkeypatch.setenv("INDIKIT_CONNECT_TIMEOUT", "3.5")
+    monkeypatch.setenv("INDIKIT_RECONNECT_DELAY", "0.25")
+    monkeypatch.setenv("INDIKIT_MESSAGE_HISTORY", "7")
+    monkeypatch.setenv("INDIKIT_MAX_BACKLOG", "9")
+    monkeypatch.setenv("INDIKIT_TOKEN", "secret")
+    monkeypatch.setenv("INDIKIT_ALLOWED_ORIGINS", "http://localhost:5173")
+    monkeypatch.setenv("INDIKIT_ALLOW_INSECURE_BIND", "1")
     config = Settings()
     assert config.log_level is LogLevel.WARNING
     assert config.wire_log is True
@@ -89,7 +89,7 @@ def test_allowed_origins_is_space_separated(monkeypatch, raw, expected):
     ``NoDecode`` pydantic-settings would try to JSON-decode a collection field
     and reject every one of these.
     """
-    monkeypatch.setenv("INDI_NEXUS_ALLOWED_ORIGINS", raw)
+    monkeypatch.setenv("INDIKIT_ALLOWED_ORIGINS", raw)
     assert Settings().allowed_origins == expected
 
 
@@ -106,21 +106,21 @@ def test_allowed_origins_accepts_a_list_from_python():
 
 
 def test_a_lowercase_log_level_is_accepted(monkeypatch):
-    """``INDI_NEXUS_LOG_LEVEL=debug`` is what somebody will actually type."""
-    monkeypatch.setenv("INDI_NEXUS_LOG_LEVEL", "debug")
+    """``INDIKIT_LOG_LEVEL=debug`` is what somebody will actually type."""
+    monkeypatch.setenv("INDIKIT_LOG_LEVEL", "debug")
     assert Settings().log_level is LogLevel.DEBUG
 
 
 def test_a_malformed_value_names_the_variable(monkeypatch):
     """A value that will not parse fails loudly, saying which one it was."""
-    monkeypatch.setenv("INDI_NEXUS_RECONNECT_DELAY", "2.0s")
+    monkeypatch.setenv("INDIKIT_RECONNECT_DELAY", "2.0s")
     with pytest.raises(ValidationError, match="reconnect_delay"):
         Settings()
 
 
 def test_an_unknown_log_level_is_refused(monkeypatch):
     """The level is a closed set, because uvicorn is started at it too."""
-    monkeypatch.setenv("INDI_NEXUS_LOG_LEVEL", "CHATTY")
+    monkeypatch.setenv("INDIKIT_LOG_LEVEL", "CHATTY")
     with pytest.raises(ValidationError, match="log_level"):
         Settings()
 
@@ -129,32 +129,32 @@ def test_other_prefixed_names_are_ignored(monkeypatch):
     """A prefixed name this model does not know is not an error.
 
     ``extra="ignore"`` is load-bearing rather than tidy. The prefix is not
-    reserved for this model - this suite ships ``INDI_NEXUS_UPDATE_GOLDEN``, and
+    reserved for this model - this suite ships ``INDIKIT_UPDATE_GOLDEN``, and
     an operator's own tooling may set anything - and under the default ``forbid``
     one such name would raise out of every entrypoint at once: the CLI, the
     bridge and every driver.
     """
-    monkeypatch.setenv("INDI_NEXUS_UPDATE_GOLDEN", "1")
-    monkeypatch.setenv("INDI_NEXUS_SOMETHING_A_LATER_VERSION_ADDS", "x")
+    monkeypatch.setenv("INDIKIT_UPDATE_GOLDEN", "1")
+    monkeypatch.setenv("INDIKIT_SOMETHING_A_LATER_VERSION_ADDS", "x")
     assert Settings().log_level is LogLevel.INFO
 
 
 def test_config_dir_is_taken_from_the_variable_first(monkeypatch, tmp_path):
-    """``INDI_NEXUS_CONFIG_DIR`` wins over the computed default."""
+    """``INDIKIT_CONFIG_DIR`` wins over the computed default."""
     monkeypatch.setenv("HOME", "/home/observer")
-    monkeypatch.setenv("INDI_NEXUS_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("INDIKIT_CONFIG_DIR", str(tmp_path))
     assert Settings().config_dir == tmp_path
 
 
 def test_config_dir_defaults_to_the_posix_app_directory(monkeypatch):
-    """With no variable of ours, it is ``~/.indi-nexus``, expanded from HOME.
+    """With no variable of ours, it is ``~/.indikit``, expanded from HOME.
 
     ``click.get_app_dir(..., force_posix=True)`` gives that answer on Linux and
     macOS alike, which is the point: one path on every machine an operator
     administers, and it sits beside libindi's own ``~/.indi``.
     """
     monkeypatch.setenv("HOME", "/home/observer")
-    assert Settings().config_dir == Path("/home/observer/.indi-nexus")
+    assert Settings().config_dir == Path("/home/observer/.indikit")
 
 
 def test_config_dir_ignores_xdg_config_home(monkeypatch):
@@ -162,12 +162,12 @@ def test_config_dir_ignores_xdg_config_home(monkeypatch):
 
     It is what ``force_posix=True`` costs, and it was taken knowingly: the same
     path everywhere beats obeying a variable one platform of the three defines.
-    ``INDI_NEXUS_CONFIG_DIR`` is the supported way to move the directory, and it
+    ``INDIKIT_CONFIG_DIR`` is the supported way to move the directory, and it
     is what the ``ConfigError`` names.
     """
     monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
     monkeypatch.setenv("HOME", "/home/observer")
-    assert Settings().config_dir == Path("/home/observer/.indi-nexus")
+    assert Settings().config_dir == Path("/home/observer/.indikit")
 
 
 def test_config_dir_is_none_when_there_is_no_home(monkeypatch):
@@ -179,7 +179,7 @@ def test_config_dir_is_none_when_there_is_no_home(monkeypatch):
     every save and lose the lot at the next reboot without a word. The third
     wrong answer is the one this default now has to guard against on its own:
     ``os.path.expanduser`` leaves the ``~`` in place instead of raising, so an
-    unguarded ``click.get_app_dir`` hands back the relative ``~/.indi-nexus``
+    unguarded ``click.get_app_dir`` hands back the relative ``~/.indikit``
     and a driver saves into its working directory.
     """
     monkeypatch.delenv("HOME", raising=False)
@@ -198,16 +198,16 @@ def test_the_config_dir_default_is_not_evaluated_at_import(monkeypatch):
     runner makes the variable's precedence a lie.
     """
     monkeypatch.setenv("HOME", "/home/first")
-    assert Settings().config_dir == Path("/home/first/.indi-nexus")
+    assert Settings().config_dir == Path("/home/first/.indikit")
     monkeypatch.setenv("HOME", "/home/second")
-    assert Settings().config_dir == Path("/home/second/.indi-nexus")
+    assert Settings().config_dir == Path("/home/second/.indikit")
 
 
 def test_settings_is_read_once(monkeypatch):
     """The accessor caches, and a test can clear it."""
-    monkeypatch.setenv("INDI_NEXUS_MAX_BACKLOG", "11")
+    monkeypatch.setenv("INDIKIT_MAX_BACKLOG", "11")
     assert settings().max_backlog == 11
-    monkeypatch.setenv("INDI_NEXUS_MAX_BACKLOG", "12")
+    monkeypatch.setenv("INDIKIT_MAX_BACKLOG", "12")
     assert settings().max_backlog == 11
     settings.cache_clear()
     assert settings().max_backlog == 12

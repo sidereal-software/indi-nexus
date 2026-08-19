@@ -15,9 +15,9 @@ import asyncio
 
 from conftest import getprop, wait_until
 
-from indi_nexus.client import IndiClient
-from indi_nexus.protocol import BLOBVector, LightVector, NumberVector, SwitchVector, TextVector
-from indi_nexus.protocol.numbers import parse_number
+from indikit.client import IndiClient
+from indikit.protocol import BLOBVector, LightVector, NumberVector, SwitchVector, TextVector
+from indikit.protocol.numbers import parse_number
 
 # One of each kind of driver, chosen for the property shapes they bring: RA/Dec
 # sexagesimal, a temperature and exposure, and a weather station's many numbers.

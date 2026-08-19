@@ -1,0 +1,45 @@
+"""The INDIkit driver SDK.
+
+Write a driver by subclassing :class:`Device`, defining properties in
+:meth:`Device.setup`, polling with :func:`every`, and handling client writes with
+:func:`on_new`::
+
+    from indikit.driver import Device, every, on_new
+    from indikit.protocol import Number, IPState, IPerm
+
+    class Mount(Device):
+        name = "Mount"
+
+        async def setup(self) -> None:
+            self.define_connection()
+            self.define_number(
+                "EQUATORIAL_EOD_COORD",
+                [Number(name="RA", format="%9.6m"), Number(name="DEC", format="%9.6m")],
+                perm=IPerm.RO,
+            )
+
+        @every(seconds=1, when_connected=True)
+        async def poll(self) -> None:
+            ra, dec = await self.read_mount()
+            self["EQUATORIAL_EOD_COORD"].set(RA=ra, DEC=dec, state=IPState.OK)
+
+    if __name__ == "__main__":
+        Mount.run()
+"""
+
+from indikit.driver.device import Device
+from indikit.driver.dispatch import on_new
+from indikit.driver.property import BoundProperty, EmitPolicy
+from indikit.driver.runtime import DriverRuntime, run, serve_stdio
+from indikit.driver.scheduling import every
+
+__all__ = [
+    "Device",
+    "BoundProperty",
+    "EmitPolicy",
+    "every",
+    "on_new",
+    "DriverRuntime",
+    "run",
+    "serve_stdio",
+]

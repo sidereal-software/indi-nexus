@@ -1,5 +1,5 @@
 /**
- * Hand-authored TypeScript mirror of `indi_nexus.protocol.models`.
+ * Hand-authored TypeScript mirror of `indikit.protocol.models`.
  *
  * This is the browser side of the wire contract. The bridge serialises the same
  * Pydantic models to JSON, so these interfaces must stay structurally identical to
@@ -217,7 +217,7 @@ export type IndiMessage =
  * 1.7 `version` attribute. Bumped **only** on a breaking change - a field
  * removed, renamed, or given a new meaning - because a client that ignores an
  * unknown key is already handling an additive change correctly. Mirrors
- * `BRIDGE_PROTOCOL_VERSION` in `indi_nexus/web/control_frames.py`.
+ * `BRIDGE_PROTOCOL_VERSION` in `indikit/web/control_frames.py`.
  */
 export const CLIENT_PROTOCOL_VERSION = 1;
 
@@ -233,7 +233,7 @@ export interface HelloFrame {
   event: "hello";
   /** The bridge's contract version; compare with {@link CLIENT_PROTOCOL_VERSION}. */
   protocol: number;
-  /** The INDINexus version serving this socket, for display and bug reports. */
+  /** The INDIkit version serving this socket, for display and bug reports. */
   server: string;
 }
 
@@ -242,7 +242,7 @@ export interface HelloFrame {
  *
  * The INDI protocol has no message for "the hub connected/disconnected", but the
  * UI needs it, so the bridge sends this small control frame (see
- * `indi_nexus.web.bridge.Bridge.connection_frame`).
+ * `indikit.web.bridge.Bridge.connection_frame`).
  */
 export interface ConnectionFrame {
   event: "connection";
@@ -271,7 +271,7 @@ export interface ErrorFrame {
 /**
  * Any bridge control frame, discriminated on `event`.
  *
- * The mirror of `BridgeFrame` in `indi_nexus/web/control_frames.py`. An `event`
+ * The mirror of `BridgeFrame` in `indikit/web/control_frames.py`. An `event`
  * this build does not know is dropped rather than coerced, which is what makes
  * the bridge free to add one without breaking an older browser.
  */

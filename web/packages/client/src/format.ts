@@ -7,7 +7,7 @@
  * meets), and `label ?? name` renders those as nothing at all.
  *
  * {@link formatNumber} is a hand-authored mirror of
- * `indi_nexus.protocol.xml.format_number`: it handles
+ * `indikit.protocol.xml.format_number`: it handles
  * the INDI `%m` sexagesimal form (e.g. `%9.6m`, field-width padded like
  * libindi's `fs_sexa`) plus the printf conversions elements actually use
  * (`%g` - the default for a Number element - along with `%f`, `%e` and

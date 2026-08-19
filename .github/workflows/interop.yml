@@ -19,8 +19,8 @@ on:
     paths:
       - "tests/interop/**"
       - ".github/workflows/interop.yml"
-      - "src/indi_nexus/protocol/**"
-      - "src/indi_nexus/client/**"
+      - "src/indikit/protocol/**"
+      - "src/indikit/client/**"
 
 concurrency:
   group: interop-${{ github.ref }}
@@ -62,7 +62,7 @@ jobs:
           # would fail here instead of reporting the zero that diagnoses it.
           echo "simulators: $(find /usr/bin -maxdepth 1 -name 'indi_simulator_*' | wc -l)"
 
-      - name: Install INDINexus
+      - name: Install INDIkit
         run: |
           uv venv --python 3.12
           uv pip install -e ".[dev,interop]"

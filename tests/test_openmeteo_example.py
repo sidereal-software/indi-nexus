@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 
 from examples.openmeteo_device import OpenMeteo, describe, moon_phase_name
-from indi_nexus.protocol import IPState, ISState
-from indi_nexus.testing import DeviceHarness
+from indikit.protocol import IPState, ISState
+from indikit.testing import DeviceHarness
 
 RESPONSE = json.loads((Path(__file__).parent / "data" / "open_meteo_response.json").read_text())
 

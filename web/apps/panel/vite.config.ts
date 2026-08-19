@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // In dev, proxy the bridge's HTTP + WebSocket endpoints to a locally running
-// `indi-nexus serve` (or `indi-nexus serve --device`) on :8000. In production the
+// `indikit serve` (or `indikit serve --device`) on :8000. In production the
 // panel is served by that same FastAPI app, so these paths are same-origin.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -16,7 +16,7 @@ export default defineConfig({
   },
   build: {
     // Emit into the Python package so FastAPI serves the built panel at `/`.
-    outDir: "../../../src/indi_nexus/web/static/panel",
+    outDir: "../../../src/indikit/web/static/panel",
     emptyOutDir: true,
   },
 });

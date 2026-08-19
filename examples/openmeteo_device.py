@@ -9,7 +9,7 @@ sky conditions for your own site.
 It is also the shape almost every real driver has:
 
 * a **blocking** client (``urllib``, standing in for ``pyserial`` or a vendor
-  SDK) kept off the event loop with :meth:`~indi_nexus.driver.device.Device.off_thread`;
+  SDK) kept off the event loop with :meth:`~indikit.driver.device.Device.off_thread`;
 * the standard Connect lifecycle, where connecting means "prove we can reach it";
 * readings that go ``Idle`` - not stale - when the source stops answering;
 * a writable site location, so the operator can point it anywhere;
@@ -17,7 +17,7 @@ It is also the shape almost every real driver has:
 
 Run it in the web panel::
 
-    indi-nexus serve --device examples.openmeteo_device:OpenMeteo
+    indikit serve --device examples.openmeteo_device:OpenMeteo
 
 or under ``indiserver``::
 
@@ -34,9 +34,9 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from indi_nexus import ConfigError
-from indi_nexus.driver import Device, every, on_new
-from indi_nexus.protocol import (
+from indikit import ConfigError
+from indikit.driver import Device, every, on_new
+from indikit.protocol import (
     IPerm,
     IPState,
     Light,

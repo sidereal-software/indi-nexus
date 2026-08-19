@@ -1,4 +1,4 @@
-# `indi_nexus.web`
+# `indikit.web`
 
 The FastAPI web bridge: one shared upstream `IndiClient` relayed to browsers
 as typed JSON over a WebSocket, plus a REST snapshot and the bundled panel.
@@ -11,11 +11,11 @@ itself is `WebSecurity`, under [Security](#security) below.
 
 ## App
 
-::: indi_nexus.web.app
+::: indikit.web.app
 
 ## Bridge
 
-::: indi_nexus.web.bridge
+::: indikit.web.bridge
 
 ## Control frames
 
@@ -24,8 +24,8 @@ plus `BRIDGE_PROTOCOL_VERSION`, the version of that contract. See
 [Protocol concepts](../../guides/protocol.md#versioning-the-browser-contract)
 for what a client does with a version mismatch.
 
-::: indi_nexus.web.control_frames
+::: indikit.web.control_frames
 
 ## Security
 
-::: indi_nexus.web.security
+::: indikit.web.security

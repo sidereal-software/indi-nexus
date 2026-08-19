@@ -16,7 +16,7 @@ from pathlib import Path
 
 from conftest import wait_until
 
-from indi_nexus.client import IndiClient
+from indikit.client import IndiClient
 
 DEVICE = "Telescope Simulator"
 

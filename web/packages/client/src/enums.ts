@@ -1,7 +1,7 @@
 /**
  * INDI protocol enumerations.
  *
- * These mirror `indi_nexus.protocol.enums` on the Python side. Each is a frozen
+ * These mirror `indikit.protocol.enums` on the Python side. Each is a frozen
  * object whose members equal their exact INDI wire token (so `IPState.Ok === "Ok"`),
  * paired with a string-literal type of the same name - the TypeScript equivalent of
  * Python's `StrEnum`. Because the protocol is INDI 1.7 (frozen), these are hand

@@ -27,7 +27,7 @@ import {
   type TextElement,
   type TextVector,
   type Vector,
-} from "@indi-nexus/client";
+} from "@indikit/client";
 import type { FormEvent } from "react";
 import { Button } from "@/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/ui/field";

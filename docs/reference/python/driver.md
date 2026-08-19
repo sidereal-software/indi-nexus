@@ -1,29 +1,29 @@
-# `indi_nexus.driver`
+# `indikit.driver`
 
-The driver SDK: subclass [`Device`][indi_nexus.driver.device.Device], declare
+The driver SDK: subclass [`Device`][indikit.driver.device.Device], declare
 properties in `setup()`, poll with `@every`, handle client writes with
 `@on_new`, and serve over stdio under `indiserver`.
 
 ## Device
 
-::: indi_nexus.driver.device
+::: indikit.driver.device
 
 ## BoundProperty
 
-::: indi_nexus.driver.property
+::: indikit.driver.property
 
 ## Scheduling (`@every`)
 
-::: indi_nexus.driver.scheduling
+::: indikit.driver.scheduling
 
 ## Dispatch (`@on_new`)
 
-::: indi_nexus.driver.dispatch
+::: indikit.driver.dispatch
 
 ## Configuration persistence
 
-::: indi_nexus.driver.config
+::: indikit.driver.config
 
 ## Runtime
 
-::: indi_nexus.driver.runtime
+::: indikit.driver.runtime

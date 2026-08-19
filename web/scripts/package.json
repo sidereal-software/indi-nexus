@@ -1,5 +1,5 @@
 {
-  "name": "@indi-nexus/doc-snippets",
+  "name": "@indikit/doc-snippets",
   "version": "0.0.0",
   "private": true,
   "description": "Extracts the documentation's TypeScript fences into modules the packages typecheck.",

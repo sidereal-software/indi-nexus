@@ -6,7 +6,7 @@ and run `docker compose up`.
 
 Two kinds of file work here:
 
-- a `.py` driver written against the INDINexus SDK, which needs no executable bit -
+- a `.py` driver written against the INDIkit SDK, which needs no executable bit -
   the container wraps it in a shim that runs it under the interpreter the package is
   installed into;
 - any other executable, which is run as-is. That covers a compiled C++ driver, or a

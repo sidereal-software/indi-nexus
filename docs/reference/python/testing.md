@@ -1,4 +1,4 @@
-# `indi_nexus.testing`
+# `indikit.testing`
 
 Test a driver by driving it the way a client would - no `indiserver`, no
 sockets, no hardware. See
@@ -7,4 +7,4 @@ the guide, and `tests/test_weather_example.py` for a worked set.
 
 ## DeviceHarness
 
-::: indi_nexus.testing
+::: indikit.testing

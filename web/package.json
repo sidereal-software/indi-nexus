@@ -1,5 +1,5 @@
 {
-  "name": "indi-nexus-workspace",
+  "name": "indikit-workspace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "pnpm --filter @indi-nexus/panel dev",
+    "dev": "pnpm --filter @indikit/panel dev",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "lint:diagrams": "mkdir -p node_modules/.mermaid-check && cd .. && for f in $(git grep -l '```mermaid' -- '*.md'); do echo \"mermaid: $f\" && pnpm dlx @mermaid-js/mermaid-cli@11.16.0 -q -i \"$f\" -o web/node_modules/.mermaid-check/out.md || exit 1; done",
@@ -19,7 +19,7 @@
     "docs": "pnpm docs:client && pnpm docs:react && pnpm docs:demo",
     "docs:client": "typedoc --tsconfig packages/client/tsconfig.json --out ../docs/reference/typescript/client packages/client/src/index.ts",
     "docs:react": "typedoc --tsconfig packages/react/tsconfig.json --out ../docs/reference/typescript/react packages/react/src/index.ts",
-    "docs:demo": "pnpm --filter @indi-nexus/panel build:demo"
+    "docs:demo": "pnpm --filter @indikit/panel build:demo"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",

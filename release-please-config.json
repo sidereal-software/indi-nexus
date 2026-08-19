@@ -61,8 +61,8 @@
   "packages": {
     ".": {
       "release-type": "python",
-      "package-name": "indi-nexus",
-      "component": "indi-nexus"
+      "package-name": "indikit",
+      "component": "indikit"
     },
     "web/packages/client": {
       "release-type": "node",
@@ -76,9 +76,9 @@
   "plugins": [
     {
       "type": "linked-versions",
-      "groupName": "indi-nexus",
+      "groupName": "indikit",
       "components": [
-        "indi-nexus",
+        "indikit",
         "client",
         "react"
       ]
