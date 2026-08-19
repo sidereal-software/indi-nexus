@@ -160,7 +160,12 @@ function applyVector(msg) {
 // packages/client/src/store.ts.
 function applyDelete(msg) {
   if (!store[msg.device]) return;
-  if (msg.name) delete store[msg.device][msg.name]; else delete store[msg.device];
+  // `msg.name == null`, not a falsy test: an empty-string name reaches here as
+  // `""` (the parser does not degrade it), and both stores read that as a named
+  // delete of a property nothing answers to. A falsy test took the else branch
+  // and dropped the whole device instead - the one input on which these three
+  // implementations disagreed.
+  if (msg.name == null) delete store[msg.device]; else delete store[msg.device][msg.name];
 }
 
 function render() {
