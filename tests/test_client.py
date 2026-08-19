@@ -9,6 +9,7 @@ M1 codec to assert on the exact wire output.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 
 import indi_nexus.client.client as client_module
@@ -16,6 +17,7 @@ from indi_nexus.client import IndiClient
 from indi_nexus.exceptions import NotConnectedError, SendQueueFull
 from indi_nexus.logging_config import WIRE_LOGGER
 from indi_nexus.protocol import (
+    BLOBPolicy,
     BLOBVector,
     DefVector,
     DelProperty,
@@ -1081,3 +1083,684 @@ def test_wire_logging_is_silent_below_debug(caplog):
         asyncio.run(scenario())
 
     assert [r for r in caplog.records if r.name == WIRE_LOGGER] == []
+
+
+# --------------------------------------------------------------------------- #
+# Interleavings: a send racing a disconnect, and aclose racing a write         #
+# --------------------------------------------------------------------------- #
+async def _until(predicate, seconds: float = 2.0) -> None:
+    """Yield to the loop until ``predicate()`` holds, or fail the test.
+
+    The timeout is a failure bound rather than a wait: the loop spins on the
+    condition, so a passing run costs only as many turns as the client needs.
+
+    Parameters
+    ----------
+    predicate : Callable
+        Called with no arguments; the wait ends when it returns a true value.
+    seconds : float, optional
+        How long to keep trying before giving up.
+    """
+    async with asyncio.timeout(seconds):
+        # noqa is not a lapse: the condition is another task's progress, which
+        # has no event to wait on, so yielding the loop is exactly the wait.
+        while not predicate():  # noqa: ASYNC110
+            await asyncio.sleep(0)
+
+
+def _wedged_first_connection(server: _Server):
+    """Return a connect factory whose first connection can never be written to.
+
+    The first attempt hands back a writer that blocks forever, so everything
+    :meth:`IndiClient.send` accepts on that connection stays in the outbox; the
+    second attempt is the real server. The returned gate releases the blocked
+    write so nothing is left pending at the end of the test.
+
+    Parameters
+    ----------
+    server : _Server
+        The fake indiserver the second connection reaches.
+
+    Returns
+    -------
+    connect : Callable
+        The connect factory.
+    gate : asyncio.Event
+        Set it to release the wedged writer.
+    """
+    gate = asyncio.Event()
+    real_connect = server.connect()
+    attempts = 0
+
+    async def wedged_write(data: bytes) -> None:
+        """Accept the bytes and never return, as a socket under back-pressure does."""
+        await gate.wait()
+
+    async def connect() -> tuple[object, object, object]:
+        """Hand out the wedged transport once, then the healthy server."""
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return server.read, wedged_write, server.close
+        return await real_connect()
+
+    return connect, gate
+
+
+def test_a_send_queued_before_a_drop_is_not_delivered_on_the_next_connection():
+    """The outbox belongs to one connection, so a lost one takes its queue with it.
+
+    The send is accepted - there was a live connection when it was made - and
+    then the writer never drains it and the link dies. Replaying it on the next
+    connection is the exact failure the never-queue rule exists to prevent, only
+    arrived at from the other side: the command was legal when issued and is a
+    lie by the time the hub comes back.
+    """
+
+    async def scenario() -> _Server:
+        server = _Server()
+        connect, gate = _wedged_first_connection(server)
+        client = IndiClient(connect=connect, reconnect_delay=0.0)
+        await client.start()
+        try:
+            await client.set_number("CCD", "EXPOSURE", {"secs": 1.0})
+            # The writer is stuck on the handshake, so the command is still queued.
+            await _until(lambda: client._outbox.qsize() >= 1)
+
+            server.eof()  # the wedged connection ends with the command undelivered
+            await _until(lambda: client.connected and client._outbox.qsize() == 0)
+            await _settle()
+        finally:
+            gate.set()
+            await client.aclose()
+        return server
+
+    server = asyncio.run(scenario())
+    # The second connection is the real server, and it re-enumerated...
+    assert any(isinstance(m, GetProperties) for m in server.sent())
+    # ...but the exposure addressed to the dead one never reached it.
+    assert not [m for m in server.sent() if isinstance(m, NewVector)]
+
+
+def test_aclose_releases_the_transport_with_a_write_still_in_flight():
+    """Cancelling the loop mid-write still runs the close, so the peer sees FIN.
+
+    ``aclose()`` reaches the connection as a cancellation, which lands inside
+    the writer's ``await write(...)``. The release of the socket lives in a
+    ``finally`` for that reason: without it a browser-facing bridge shutting
+    down while a browser's frame was in flight would leak the upstream socket.
+    """
+
+    async def scenario() -> _Server:
+        server = _Server()
+        connect, gate = _wedged_first_connection(server)
+        client = IndiClient(connect=connect, reconnect_delay=0.0)
+        await client.start()
+        await _settle()
+        await client.aclose()
+        gate.set()
+        return server
+
+    server = asyncio.run(scenario())
+    assert server.closed == 1
+
+
+def test_send_after_aclose_raises_rather_than_being_accepted():
+    """A closed client has no connection, and says so instead of swallowing a write."""
+
+    async def scenario() -> None:
+        server = _Server()
+        client = IndiClient(connect=server.connect())
+        await client.start()
+        await client.aclose()
+
+        try:
+            await client.set_number("CCD", "EXPOSURE", {"secs": 1.0})
+            raise AssertionError("expected NotConnectedError")
+        except NotConnectedError:
+            pass
+        assert client._outbox.qsize() == 0
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# wait_for: deletions, several waiters, bad predicates, degenerate timeouts    #
+# --------------------------------------------------------------------------- #
+def test_a_parked_wait_for_survives_a_reconnect():
+    """A wait outlives the connection it was made on, because the property does.
+
+    A reconnect replaces the parser and re-enumerates the server, and a script
+    parked on "slew finished" has no way to reissue its wait. If a reconnect
+    dropped the waiter it would hang for good, which is the failure ``aclose``
+    was taught to avoid and a reconnect must not reintroduce.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            waiting = asyncio.create_task(client.wait_for("CCD", "EXPOSURE"))
+            await _settle()
+            assert not waiting.done()
+
+            server.eof()
+            await _until(lambda: client.connected and client.stats.reconnects == 1)
+            assert not waiting.done()
+
+            server.feed(DefVector(vector=_numvec(4.0)))
+            async with asyncio.timeout(2):
+                vec = await waiting
+            assert vec.element("secs").value == 4.0
+
+    asyncio.run(scenario())
+
+
+def test_a_deletion_does_not_resolve_a_wait_but_a_redefinition_does():
+    """A ``del`` has no vector, so it can satisfy no predicate.
+
+    A property retracted and redefined is the ordinary life of a connect-time
+    property, not an edge case. Resolving the wait on the deletion would hand a
+    caller the vector it had before the driver withdrew it, or nothing at all.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            server.feed(DefVector(vector=_numvec(1.0, IPState.BUSY)))
+            await _settle()
+
+            waiting = asyncio.create_task(
+                client.wait_for("CCD", "EXPOSURE", lambda v: v.state == IPState.OK)
+            )
+            await _settle()
+
+            server.feed(DelProperty(device="CCD", name="EXPOSURE"))
+            await _settle()
+            assert not waiting.done()
+
+            server.feed(DefVector(vector=_numvec(9.0, IPState.OK)))
+            async with asyncio.timeout(2):
+                vec = await waiting
+            assert vec.element("secs").value == 9.0
+
+    asyncio.run(scenario())
+
+
+def test_two_waits_on_one_property_resolve_on_their_own_predicates():
+    """Each wait owns its subscription, so one resolving leaves the other parked.
+
+    The commonest scripted shape is "wait for Busy, then wait for Ok" from two
+    coroutines at once. A registry keyed by property rather than by waiter would
+    let the first resolution unsubscribe the second, and the second would then
+    sit out its whole timeout with the answer already on the wire.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            busy = asyncio.create_task(
+                client.wait_for("CCD", "EXPOSURE", lambda v: v.state == IPState.BUSY)
+            )
+            ok = asyncio.create_task(
+                client.wait_for("CCD", "EXPOSURE", lambda v: v.state == IPState.OK)
+            )
+            await _settle()
+
+            server.feed(DefVector(vector=_numvec(1.0, IPState.BUSY)))
+            await _settle()
+            assert busy.done()
+            assert not ok.done()
+
+            server.feed(SetVector(vector=_numvec(2.0, IPState.OK)))
+            async with asyncio.timeout(2):
+                assert (await ok).element("secs").value == 2.0
+            assert (await busy).state == IPState.BUSY
+
+    asyncio.run(scenario())
+
+
+def test_a_raising_predicate_costs_one_event_and_not_the_connection():
+    """A predicate is application code, and it goes through the same isolation.
+
+    A predicate that raises on a state it did not expect is an ordinary bug in a
+    script. Left unisolated it comes up through the reader, ends the connection
+    and looks exactly like ``indiserver`` dropping - the diagnosis a user would
+    then spend the evening on.
+    """
+    seen: list[IPState] = []
+
+    def flaky(vector: object) -> bool:
+        """Raise on the first state seen, then behave."""
+        seen.append(vector.state)
+        if vector.state is IPState.BUSY:
+            raise RuntimeError("predicate has a bug in it")
+        return vector.state is IPState.OK
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            waiting = asyncio.create_task(client.wait_for("CCD", "EXPOSURE", flaky))
+            await _settle()
+
+            server.feed(DefVector(vector=_numvec(1.0, IPState.BUSY)))
+            await _settle()
+            assert seen == [IPState.BUSY]
+            assert not waiting.done()
+            assert client.connected
+            assert client._loop_task is not None and not client._loop_task.done()
+
+            server.feed(SetVector(vector=_numvec(2.0, IPState.OK)))
+            async with asyncio.timeout(2):
+                assert (await waiting).state == IPState.OK
+
+    asyncio.run(scenario())
+
+
+def test_a_zero_timeout_still_answers_from_the_cache():
+    """The cache is consulted before any deadline exists, so ``timeout=0`` works.
+
+    ``asyncio.timeout(0)`` is expired the instant it is entered, so a
+    rearrangement that wrapped the cache check in it would turn every
+    already-satisfied wait with a zero (or already-elapsed) timeout into a
+    ``TimeoutError`` - the one case where the answer was there all along.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            server.feed(DefVector(vector=_numvec(1.0)))
+            await _settle()
+
+            vec = await client.wait_for("CCD", "EXPOSURE", timeout=0)
+            assert vec.element("secs").value == 1.0
+
+    asyncio.run(scenario())
+
+
+def test_a_zero_timeout_with_nothing_cached_fails_at_once():
+    """Nothing cached and no time to wait is a timeout, not a hang."""
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            try:
+                await client.wait_for("CCD", "EXPOSURE", timeout=0)
+                raise AssertionError("expected TimeoutError")
+            except TimeoutError:
+                pass
+            # The waiter deregistered itself on the way out.
+            assert client._waiters == {}
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# BLOB policies                                                                #
+# --------------------------------------------------------------------------- #
+def test_the_latest_policy_for_one_target_is_the_one_replayed():
+    """A policy is standing state, so the handshake replays the current one only.
+
+    Recorded in a list rather than keyed, a session that turned BLOBs on and
+    then off would replay both on the next connection, and whichever
+    ``indiserver`` applied last would decide - silently, and differently
+    depending on the order they happened to be recorded in.
+    """
+
+    async def scenario() -> _Server:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await client.enable_blob("CCD", policy=BLOBPolicy.ONLY)
+            await client.enable_blob("CCD", policy=BLOBPolicy.NEVER)
+            await _settle()
+            server.written.clear()
+
+            server.eof()
+            await _until(lambda: client.connected and client.stats.reconnects == 1)
+            await _settle()
+        return server
+
+    server = asyncio.run(scenario())
+    replayed = [m for m in server.sent() if isinstance(m, EnableBLOB)]
+    assert [m.policy for m in replayed] == [BLOBPolicy.NEVER]
+
+
+def test_a_whole_device_policy_and_a_per_property_one_are_both_replayed():
+    """``(device, name)`` is the key, so the two requests do not overwrite each other.
+
+    "BLOBs from this device, but only the guide chip's" is two statements, and
+    keying on the device alone would silently drop one of them on every
+    reconnect.
+    """
+
+    async def scenario() -> _Server:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await client.enable_blob("CCD")
+            await client.enable_blob("CCD", "CCD1", BLOBPolicy.ONLY)
+            await _settle()
+            server.written.clear()
+
+            server.eof()
+            await _until(lambda: client.connected and client.stats.reconnects == 1)
+            await _settle()
+        return server
+
+    server = asyncio.run(scenario())
+    replayed = [m for m in server.sent() if isinstance(m, EnableBLOB)]
+    assert {(m.device, m.name, m.policy) for m in replayed} == {
+        ("CCD", None, BLOBPolicy.ALSO),
+        ("CCD", "CCD1", BLOBPolicy.ONLY),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Subscribers that edit the registry from inside a callback                    #
+# --------------------------------------------------------------------------- #
+def test_a_subscriber_may_unsubscribe_itself_from_inside_its_own_callback():
+    """The ordinary one-shot idiom: do this once, then stop listening.
+
+    Dispatching straight over the live registry makes it a
+    ``RuntimeError: dictionary changed size during iteration``, which
+    ``_invoke`` would swallow into a log line - so the callbacks after it in the
+    same event would silently never run.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        once: list[str] = []
+        every: list[str] = []
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            unsubscribe: list[object] = []
+
+            def one_shot(event: object) -> None:
+                """Record the first event and then remove this subscription."""
+                once.append(event.type)
+                unsubscribe[0]()
+
+            unsubscribe.append(client.subscribe(one_shot, device="CCD"))
+            client.subscribe(lambda e: every.append(e.type), device="CCD")
+
+            server.feed(DefVector(vector=_numvec(1.0)))
+            server.feed(SetVector(vector=_numvec(2.0)))
+            await _settle()
+
+        assert once == ["def"]
+        # The subscriber registered after the one-shot still saw both events, so
+        # the self-removal cost nobody else their dispatch.
+        assert every == ["def", "set"]
+
+    asyncio.run(scenario())
+
+
+def test_a_subscriber_added_from_inside_a_callback_starts_at_the_next_event():
+    """The set of recipients is decided before the first callback runs.
+
+    A handler that subscribes on a ``def`` - the shape a UI uses to start
+    watching a property it has just learned about - must not be re-entered for
+    the very event that created it, and must not perturb the dispatch in flight.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        late: list[str] = []
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+
+            def on_def(event: object) -> None:
+                """Start watching the property this definition announced."""
+                if event.type == "def":
+                    client.subscribe(lambda e: late.append(e.type), device="CCD")
+
+            client.subscribe(on_def, device="CCD")
+
+            server.feed(DefVector(vector=_numvec(1.0)))
+            server.feed(SetVector(vector=_numvec(2.0)))
+            await _settle()
+
+        assert late == ["set"]
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The parser is per connection                                                 #
+# --------------------------------------------------------------------------- #
+def test_half_a_message_dies_with_the_connection_that_carried_it():
+    """A new connection starts a new document, so two halves can never be joined.
+
+    The identity check beside this proves the parser object is replaced; this
+    proves what that is *for*. Held for the client's lifetime, a message cut off
+    by a dropped socket would be completed by whatever the reconnected peer sent
+    next, and a property assembled from two different connections would land in
+    the cache looking exactly like a real one.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            server.feed(
+                b"<defNumberVector device='CCD' name='EXPOSURE'>"
+                b"<oneNumber name='secs' format='%.2f'>1.0"
+            )
+            await _settle()
+            assert client.get("CCD", "EXPOSURE") is None
+
+            server.eof()
+            await _until(lambda: client.connected and client.stats.reconnects == 1)
+
+            # The tail of the truncated message, arriving on the new connection.
+            server.feed(b"</oneNumber></defNumberVector>")
+            await _settle()
+            assert client.get("CCD", "EXPOSURE") is None
+            assert client.connected
+
+    asyncio.run(scenario())
+
+
+def test_resets_are_per_connection_and_the_total_is_history():
+    """A framing reset describes the peer on one stream; the total answers "ever".
+
+    ``resets`` has the same two-counter shape as ``dropped`` and none of its
+    coverage, so a fold that got one right and the other wrong - the live
+    parser added to one total and not the other - would go unnoticed.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            await _settle()
+            server.feed(b"</indinexus>")  # an unmatched close reopens the document
+            await _until(lambda: client.stats.resets == 1)
+            assert client.stats.resets_total == 1
+
+            server.eof()
+            await _until(lambda: client.connected and client.stats.reconnects == 1)
+            after = client.stats
+            assert after.resets == 0
+            assert after.resets_total == 1
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Subscription filters: who hears a named event                                #
+# --------------------------------------------------------------------------- #
+def test_a_name_filtered_subscriber_hears_nothing_about_another_property():
+    """A name filter is a filter, and only a nameless event is exempt from it.
+
+    The exemption is real and pinned next door by
+    ``test_whole_device_delete_reaches_a_name_filtered_subscriber``: a
+    whole-device ``del`` carries no name and reaches every watcher of that
+    device. Read one step too far it becomes "a ``del`` reaches everyone", and a
+    script watching EXPOSURE is woken by the retraction of a temperature readout
+    it never asked about - which for a ``wait_for`` built on these events is an
+    answer about the wrong property. The unfiltered watcher beside it is the
+    control: every event really was dispatched, so the silence is the filter and
+    not a message that never arrived.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        exposure: list[tuple[str, str | None]] = []
+        everything: list[tuple[str, str | None]] = []
+        temperature = NumberVector(
+            device="CCD",
+            name="TEMPERATURE",
+            elements=[Number(name="celsius", format="%.1f", value=-10.0)],
+        )
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+            client.subscribe(
+                lambda e: exposure.append((e.type, e.name)), device="CCD", name="EXPOSURE"
+            )
+            client.subscribe(lambda e: everything.append((e.type, e.name)), device="CCD")
+
+            server.feed(DefVector(vector=_numvec(1.0)))
+            server.feed(DefVector(vector=temperature))
+            server.feed(SetVector(vector=temperature))
+            server.feed(DelProperty(device="CCD", name="TEMPERATURE"))
+            server.feed(DelProperty(device="CCD", name="EXPOSURE"))
+            await _until(lambda: len(everything) == 5)
+
+        assert everything == [
+            ("def", "EXPOSURE"),
+            ("def", "TEMPERATURE"),
+            ("set", "TEMPERATURE"),
+            ("del", "TEMPERATURE"),
+            ("del", "EXPOSURE"),
+        ]
+        # Its own property, defined and retracted, and nothing about the other.
+        assert exposure == [("def", "EXPOSURE"), ("del", "EXPOSURE")]
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# Merge semantics: what a set is allowed to move                               #
+# --------------------------------------------------------------------------- #
+def test_a_set_moves_the_cached_timestamp_only_when_it_carried_one():
+    """A stamp on the wire replaces the cached one; an absent one changes nothing.
+
+    ``timestamp`` is ``#IMPLIED`` on a ``set*Vector`` exactly as ``state`` is, so
+    a merge that assigned it unconditionally would blank the last stamp the
+    driver gave every time it sent a bare value update - and "when was this
+    reading taken" is the question every stale-data check asks. Both frames here
+    are stateless too, so the latched Alert is watched throughout: moving the
+    stamp must not move anything the driver said nothing about.
+    """
+    defined_at = dt.datetime(2026, 1, 2, 3, 4, 0, tzinfo=dt.UTC)
+    set_at = dt.datetime(2026, 1, 2, 3, 4, 5, tzinfo=dt.UTC)
+
+    async def scenario() -> None:
+        server = _Server()
+        async with IndiClient(connect=server.connect(), reconnect_delay=0.0) as client:
+
+            def secs() -> float | None:
+                """Return the cached exposure value, or `None` before one is cached."""
+                vec = client.get("CCD", "EXPOSURE")
+                return None if vec is None else vec.element("secs").value
+
+            server.feed(
+                DefVector(
+                    vector=NumberVector(
+                        device="CCD",
+                        name="EXPOSURE",
+                        state=IPState.ALERT,
+                        timestamp=defined_at,
+                        elements=[Number(name="secs", format="%.2f", value=1.0)],
+                    )
+                )
+            )
+            # Raw bytes because to_xml always writes a state on a set: this is the
+            # stateless value update a driver sends, stamped with when it read it.
+            server.feed(
+                b"<setNumberVector device='CCD' name='EXPOSURE' timestamp='2026-01-02T03:04:05'>"
+                b"<oneNumber name='secs'>2.0</oneNumber></setNumberVector>"
+            )
+            await _until(lambda: secs() == 2.0)
+
+            stamped = client.get("CCD", "EXPOSURE")
+            assert stamped is not None
+            assert stamped.timestamp == set_at
+            assert stamped.state == IPState.ALERT  # still latched where the driver left it
+
+            # The same update, saying nothing about when it was taken.
+            server.feed(
+                b"<setNumberVector device='CCD' name='EXPOSURE'>"
+                b"<oneNumber name='secs'>3.0</oneNumber></setNumberVector>"
+            )
+            await _until(lambda: secs() == 3.0)
+
+            unstamped = client.get("CCD", "EXPOSURE")
+            assert unstamped is not None
+            assert unstamped.timestamp == set_at  # not blanked by a frame that was silent
+            assert unstamped.state == IPState.ALERT
+
+    asyncio.run(scenario())
+
+
+# --------------------------------------------------------------------------- #
+# The connection loop's own failure                                            #
+# --------------------------------------------------------------------------- #
+def test_a_transport_failing_unexpectedly_stops_the_loop_loudly(caplog):
+    """The loop is the whole engine, so it may not die quietly in a task nobody awaits.
+
+    A transport raising something outside the ``OSError`` family a dropped
+    socket arrives as is not retried - a loop that retries a failure it does not
+    understand spins hot for ever - so all that is left is to say so. Without
+    the report the client keeps answering ``get`` from a cache nothing updates
+    again, still looking alive to everything except ``stats``.
+    """
+
+    async def scenario() -> asyncio.Task[None]:
+        server = _Server()
+
+        async def broken_read() -> bytes:
+            """Fail the way a broken transport does, not the way a socket does."""
+            raise RuntimeError("the transport is broken")
+
+        async def connect() -> tuple[object, object, object]:
+            """Hand back a transport whose reader will not survive first use."""
+            return broken_read, server.write, server.close
+
+        client = IndiClient(connect=connect, reconnect_delay=0.0)
+        await client.start(wait=False)
+        loop_task = client._loop_task
+        assert loop_task is not None
+
+        await _until(loop_task.done)
+        assert not client.connected
+        await client.aclose()
+        return loop_task
+
+    with caplog.at_level(logging.ERROR, logger="indi_nexus.client.client"):
+        loop_task = asyncio.run(scenario())
+
+    # Re-raised, not swallowed: whoever holds the task can see what killed it.
+    assert isinstance(loop_task.exception(), RuntimeError)
+    records = [r for r in caplog.records if r.name == "indi_nexus.client.client"]
+    assert [r.getMessage() for r in records] == ["indi client connection loop stopped"]
+    assert records[0].exc_info is not None  # logged with the traceback, not just a line
+
+
+def test_aclose_ends_the_loop_without_reporting_a_failure(caplog):
+    """Cancellation is how the loop is meant to end, and it is reported as nothing.
+
+    ``aclose()`` reaches the loop as a ``CancelledError`` and is re-raised ahead
+    of the handler that logs. Fold the two exits together and every ordinary
+    shutdown files an error with a traceback attached, which is how an operator
+    is taught to scroll past the one that means something.
+    """
+
+    async def scenario() -> None:
+        server = _Server()
+        client = IndiClient(connect=server.connect(), reconnect_delay=0.0)
+        await client.start()
+        await _settle()
+        await client.aclose()
+        assert not client.connected
+
+    with caplog.at_level(logging.ERROR, logger="indi_nexus.client.client"):
+        asyncio.run(scenario())
+
+    assert [r for r in caplog.records if r.name == "indi_nexus.client.client"] == []
