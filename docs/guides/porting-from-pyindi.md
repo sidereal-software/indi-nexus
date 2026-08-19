@@ -43,15 +43,15 @@ emits its `def`. The argument order that differs per vector class in pyINDI
 (`ILightVector` has no `perm`, so everything after it shifts) becomes
 keyword-only arguments with one shape.
 
-Client writes arrive parsed, one handler per property. Instead of four `ISNew*`
-methods demultiplexing on `name`, tag one method per property with
-`@on_new("name")`. It receives the vector the client sent, so there are no
-parallel `values`/`names` lists to zip back together.
+Client writes arrive parsed, one handler per property. Tag one method per
+property with `@on_new("name")`, in place of four `ISNew*` methods
+demultiplexing on `name`. The handler receives the vector the client sent, so
+there are no parallel `values`/`names` lists to zip back together.
 
-Updates are atomic. In pyINDI you mutate `.value` on elements and then remember
-to `IDSet(vp)`; forgetting it, or typing `==` where you meant `=`, silently does
-nothing. `set(...)` writes the elements and emits the update together, or not at
-all.
+Updates are atomic. `set(...)` writes the elements and emits the update
+together, or not at all. In pyINDI you mutate `.value` on elements and then
+remember to `IDSet(vp)`, and forgetting it, or typing `==` where you meant `=`,
+silently does nothing.
 
 Importing a driver module runs nothing. A pyINDI driver file ends by
 constructing and starting a device at module scope, which is why a test cannot
@@ -59,21 +59,23 @@ import it. An INDINexus driver is a class, and `run()` happens under
 `if __name__ == "__main__"`.
 
 Blocking hardware calls need `off_thread`. pyINDI's callbacks are synchronous,
-so a blocking instrument call was merely slow; here it stalls the event loop.
+so a blocking instrument call was merely slow. Here it stalls the event loop.
 See [Talking to real hardware](writing-drivers.md#talking-to-real-hardware).
 
 Failures are isolated. A raising handler or poll tick is reported to the client
 and swallowed, rather than killing a task and leaving the UI frozen on stale
 values.
 
-Configuration is declared, not written. libindi picks the subset to persist
-inside `saveConfigItems`, so which properties Save covers is buried in a method
-and invisible on the wire. Here you mark each one where it is defined -
-`define_*(..., persist=True)` - and call `define_config()` once to publish the
-`CONFIG_PROCESS` switch. Because the choice is declarative, the SDK can also
-publish the answer as `NEXUS_CONFIG_PERSISTED`, which a panel reads to name what
-Save writes. Restoring stays yours: `await self.load_config()` where you want the
-I/O to happen, and `on_config_loaded(names)` to act on the values it applied. See
+Configuration is declared, not written. Mark each persisted property where it is
+defined, with `define_*(..., persist=True)`, and call `define_config()` once to
+publish the `CONFIG_PROCESS` switch. libindi instead picks the subset inside
+`saveConfigItems`, so which properties Save covers is buried in a method and
+invisible on the wire.
+
+Declaring it is what lets the SDK publish the answer as
+`NEXUS_CONFIG_PERSISTED`, which a panel reads to name what Save writes.
+Restoring stays yours: `await self.load_config()` where you want the I/O to
+happen, and `on_config_loaded(names)` to act on the values it applied. See
 [Saving configuration](writing-drivers.md#saving-configuration).
 
 ## A worked fragment
@@ -136,7 +138,7 @@ async def update(self) -> None:
 
 ## Then add tests
 
-This is the part with no pyINDI equivalent. A driver that could only be
-exercised against the instrument itself now runs in a test in milliseconds. See
+This part has no pyINDI equivalent. A driver that could only be exercised
+against the instrument itself now runs in a test in milliseconds. See
 [Testing without hardware](writing-drivers.md#testing-without-hardware), and
 `tests/test_weather_example.py` for a full worked set.

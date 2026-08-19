@@ -29,10 +29,12 @@ export function App() {
 ```
 
 That is a working control panel: every property of the dome, under a heading for its INDI
-group, each drawn with the right control for its kind. Numbers come with their units and
-limits, switches render as radio buttons or checkboxes depending on the INDI rule, lights
-as a coloured dot with its state written beside it, BLOBs as download links. Writable
-properties get editable controls and read-only ones do not. Status badges update live.
+group, each drawn with the right control for its kind.
+
+Numbers come with their units and limits. Switches render as radio buttons or checkboxes
+depending on the INDI rule, lights as a coloured dot with its state written beside it,
+BLOBs as download links. Writable properties get editable controls and read-only ones do
+not. Status badges update live.
 
 Two components do the work. `IndiProvider` opens a WebSocket to the bridge, keeps it open
 (reconnecting if the observatory restarts), and mirrors everything it hears into a store.
@@ -44,13 +46,15 @@ Not every property is equally interesting, so three of them are treated differen
 from the alphabetical run of groups.
 
 **Configuration is not on the panel at all.** Every libindi driver publishes
-`CONFIG_PROCESS`, but it is a set of actions on the device rather than something to
-read, and one of them deletes a file with no undo, so it does not belong beside live
-instrument readings. `DeviceConfigDialog` offers it from the sidebar instead, and
-`DevicePanel` leaves it out rather than drawing it as four anonymous buttons. The same
-goes for `NEXUS_CONFIG_PERSISTED`, the list an INDINexus driver publishes of what Save
-writes: the dialog renders it as a sentence, and a read-only card full of wire names says
-less in more space.
+`CONFIG_PROCESS`. It is a set of actions on the device rather than something to read, and
+one of them deletes a file with no undo, so it does not belong beside live instrument
+readings.
+
+`DeviceConfigDialog` offers it from the sidebar instead, and `DevicePanel` leaves it out
+rather than drawing it as four anonymous buttons. The same goes for
+`NEXUS_CONFIG_PERSISTED`, the list an INDINexus driver publishes of what Save writes: the
+dialog renders it as a sentence, and a read-only card full of wire names says less in more
+space.
 
 **`Main Control` comes first**, because that is where a driver puts the controls an
 operator came for. Everything else follows alphabetically, so the layout is the same
@@ -58,27 +62,32 @@ every time you open the page.
 
 **The driver's own machinery folds away last.** `DEBUG`, `SIMULATION`, `ACTIVE_DEVICES`,
 the logging levels and `FILE_DEBUG` are about the driver process rather than the
-instrument, and drivers scatter them through whichever group they chose - usually
-`Options`, next to settings you do want. They collect in a collapsed **Driver
-internals** section instead, one click away rather than gone. The set is exported as
-`DRIVER_MACHINERY` if your own layout wants to ask the same question. `CONNECTION` is
-deliberately not in it: Ekos hides `CONNECTION` because it drives connection from its own
-toolbar, and the panel has no second home for the button an operator reaches for first.
+instrument. Drivers scatter them through whichever group they chose, usually `Options`,
+next to settings you do want.
 
-Because the fold is worked out from what the device has right now, a driver that
-defines `DEBUG_LEVEL` when you switch debugging on, and deletes it again when you switch
-it off, moves it in and out on its own.
+They collect in a collapsed **Driver internals** section instead: one click away rather
+than gone. The set is exported as `DRIVER_MACHINERY` if your own layout wants to ask the
+same question.
+
+`CONNECTION` is deliberately not in it. Ekos hides `CONNECTION` because it drives
+connection from its own toolbar, and the panel has no second home for the button an
+operator reaches for first.
+
+The fold is worked out from what the device has right now. A driver that defines
+`DEBUG_LEVEL` when you switch debugging on, and deletes it again when you switch it off,
+moves it in and out on its own.
 
 ### What `DeviceConfigDialog` does and does not promise
 
-`CONFIG_PROCESS` persists a device's settings on the observatory computer - to
+`CONFIG_PROCESS` persists a device's settings on the observatory computer: to
 `$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under `~/.indi-nexus` for
-an INDINexus one. `DeviceConfigDialog` is the entry
-that offers it: give it the
-selected device and it renders a sidebar item that opens the actions in a modal, or
-nothing at all when no device is selected or the selected one has no `CONFIG_PROCESS`.
-Give it a child element and that becomes the trigger instead, so a screen with its own
-shell opens the same modal from wherever suits it.
+an INDINexus one.
+
+`DeviceConfigDialog` is what offers it. Give it the selected device and it renders a
+sidebar item that opens the actions in a modal. It renders nothing at all when no device
+is selected, or when the selected one has no `CONFIG_PROCESS`. Give it a child element and
+that becomes the trigger instead, so a screen with its own shell opens the same modal from
+wherever suits it.
 
 Three things about the property are not what the INDI names suggest, and the dialog says
 so on screen rather than in a manual nobody has open at 2am:
@@ -88,51 +97,54 @@ so on screen rather than in a manual nobody has open at 2am:
   It is not the factory settings, and on a driver that was misconfigured before its first
   save it restores the misconfiguration.
 - **Purging cannot be undone.** `CONFIG_PURGE` is a bare file deletion in libindi, with no
-  backup and no confirmation anywhere in the library. It is behind a second confirmation
-  that names the device, and nothing is sent until you confirm. Dismissing that
+  backup and no confirmation anywhere in the library. The dialog puts it behind a second
+  confirmation that names the device, and sends nothing until you confirm. Dismissing that
   confirmation leaves the configuration modal open and sends nothing.
 - **Save does not necessarily save what you see.** Each driver chooses which properties it
   persists. A libindi driver makes that choice in `saveConfigItems`, which nothing on the
-  wire exposes, so the dialog says outright that it cannot tell you rather than letting the
-  screen imply "everything". An INDINexus driver declares persistence at define time and
-  publishes the list as `NEXUS_CONFIG_PERSISTED`, and for those the dialog names the
-  properties Save writes - or says plainly that Save writes none of them, which is a
+  wire exposes. The dialog therefore says outright that it cannot tell you, rather than
+  letting the screen imply "everything". An INDINexus driver declares persistence at
+  define time
+  and publishes the list as `NEXUS_CONFIG_PERSISTED`. For those the dialog names the
+  properties Save writes, or says plainly that Save writes none of them, which is a
   different statement from not knowing.
 
-Loading a configuration - `CONFIG_LOAD` or `CONFIG_DEFAULT` - replays every saved value
-through the driver as though it had just been sent, so on a connected instrument it is a
-hardware command and can move the mount, the focuser or the filter wheel. Those confirm
-while the device is connected, and do not bother you while it is not.
+Loading a configuration replays every saved value through the driver as though it had just
+been sent. On a connected instrument that is a hardware command, and it can move the
+mount, the focuser or the filter wheel. `CONFIG_LOAD` and `CONFIG_DEFAULT` therefore
+confirm while the device is connected, and do not bother you while it is not.
 
 Feedback is the property's own Idle/Ok/Busy/Alert state, as everywhere else: the driver
 answering is what says the action happened.
 
 ## Letting your app connect
 
-Your app is served from its own origin - `http://localhost:5173` under Vite - and the
-bridge accepts its own by default, so name yours when you start it:
+Name your app's origin when you start the bridge:
 
 ```bash
 indi-nexus serve --allow-origin http://localhost:5173
 ```
 
-Repeat the flag for more, or set `INDI_NEXUS_ALLOWED_ORIGINS` to a space-separated list
-(the flag wins if you do both). Skipping it is not an
-option the bridge can quietly take for you: `/ws` is its whole write surface, a frame
-sent there becomes an INDI `new*` that moves hardware, and a WebSocket is exempt from
-both the same-origin policy and CORS - so without the check, any page an operator
-happens to have open can drive the instrument. The panel the bridge itself serves, and
-the Vite dev proxy in `web/apps/panel/vite.config.ts`, are same-origin and need
-nothing.
+Your app is served from its own origin, `http://localhost:5173` under Vite, and the bridge
+accepts only its own by default. Repeat the flag for more origins, or set
+`INDI_NEXUS_ALLOWED_ORIGINS` to a space-separated list. The flag wins if you do both.
 
-If the bridge was started with `--token` (which the Docker image does by default), pass
-it as `?token=` on the URL: `ws://localhost:8000/ws?token=...`. A browser cannot put a
+The bridge cannot quietly skip that check for you. `/ws` is its whole write surface, a
+frame sent there becomes an INDI `new*` that moves hardware, and a WebSocket is exempt
+from both the same-origin policy and CORS. Without the check, any page an operator happens
+to have open can drive the instrument.
+
+The panel the bridge itself serves, and the Vite dev proxy in
+`web/apps/panel/vite.config.ts`, are same-origin and need nothing.
+
+Pass a token as `?token=` on the URL when the bridge was started with `--token`, which the
+Docker image does by default: `ws://localhost:8000/ws?token=...`. A browser cannot put a
 token in a header on a WebSocket handshake, so the query parameter is the only form
 available.
 
 The stylesheet is prebuilt, so you do not need Tailwind. If you *are* running Tailwind,
-import `@indi-nexus/react/theme.css` instead - just the design tokens - and let your own
-build generate the utilities.
+import `@indi-nexus/react/theme.css` instead. That is the design tokens alone, and your
+own build generates the utilities.
 
 ## Showing several devices
 
@@ -152,8 +164,8 @@ device your own shell has selected.
 
 ## Building your own layout
 
-For a purpose-built screen, such as the few numbers a night operator needs at a size
-readable across the room, use the hooks and write your own markup:
+Use the hooks and write your own markup for a purpose-built screen: the few numbers a
+night operator needs, at a size readable across the room.
 
 ```tsx
 import { useNumber } from "@indi-nexus/react";
@@ -187,8 +199,8 @@ re-renders when the data it reads changes rather than on every frame that arrive
 
 ## Sending commands
 
-Get the client from `useIndiClient()` and ask for a change. It mirrors the Python client,
-so the names transfer:
+Get the client from `useIndiClient()` and ask for a change. The client mirrors the Python
+one, so the names transfer:
 
 ```tsx
 function ShutterButtons() {
@@ -230,12 +242,13 @@ for scripting a sequence.
 
 ### Knowing which changes you asked for
 
-Because a command is a request, the answer arrives as an ordinary `set` frame - and an
-ordinary `set` frame is also what a driver sends when a cloud sensor updates or another
-client moves the mount. Nothing in the frame says who asked. So the client reports its own
-sends instead: `onWrite` fires with the device and property name of every `new` frame that
-goes on the wire, whether from a `set*` helper or from a frame you built yourself, and
-returns an unsubscribe function.
+A command is a request, so the answer arrives as an ordinary `set` frame. An ordinary
+`set` frame is also what a driver sends when a cloud sensor updates or another client
+moves the mount. Nothing in the frame says who asked.
+
+The client reports its own sends instead. `onWrite` fires with the device and property
+name of every `new` frame that goes on the wire, whether from a `set*` helper or from a
+frame you built yourself, and returns an unsubscribe function.
 
 ```tsx
 import { useEffect, useState } from "react";
@@ -250,9 +263,10 @@ function LastCommand() {
 }
 ```
 
-That is how a UI treats an operator's own command as feedback and the rest of the stream as
-telemetry - it is what `StatusAnnouncer` uses, and what any confirmation of your own would
-need. It fires on the send rather than on an acknowledgement, because the socket buffers
+That is how a UI treats an operator's own command as feedback and the rest of the stream
+as telemetry. `StatusAnnouncer` uses it, and any confirmation of your own would need it.
+
+`onWrite` fires on the send rather than on an acknowledgement, because the socket buffers
 while the connection is down and the operator pressed the button either way.
 
 ## The components
@@ -274,32 +288,37 @@ while the connection is down and the operator pressed the button either way.
 | `StatusAnnouncer` | the spoken status region: a fault, your own write settling, the connection |
 
 Mix them with your own markup: `PropertyVectorCard` on the two properties that matter,
-hand-built widgets around them. `VectorControl` is the seam to reach through when your own
-markup already supplies the heading and the badge - hand it any vector from `useProperty`
-and it renders the right control, which is what keeps a hand-laid screen working against
-an instrument you have not seen. The four per-kind controls underneath it are exported for
-the case where you already know the kind and want to skip the dispatch.
+hand-built widgets around them.
+
+`VectorControl` is the seam to reach through when your own markup already supplies the
+heading and the badge. Hand it any vector from `useProperty` and it renders the right
+control, which is what keeps a hand-laid screen working against an instrument you have not
+seen. The four per-kind controls underneath it are exported for the case where you already
+know the kind and want to skip the dispatch.
 
 !!! important "`StatusAnnouncer` is the only thing that speaks"
 
+    Render `StatusAnnouncer` once, anywhere. It watches every device, not just the one on
+    screen.
+
     Everything on this page arrives over a socket, and a screen reader announces none of
     it on its own: a property going `Ok` to `Alert` redraws a badge and says nothing.
-    `StatusAnnouncer` is the live region that fixes that. Render it once, anywhere - it
-    watches every device, not just the one on screen.
+    `StatusAnnouncer` is the live region that fixes that.
 
     It is deliberately not a spoken copy of the stream. `set` frames are telemetry, and a
-    driver polling once a second would talk over itself continuously, so exactly three
-    things qualify:
+    driver polling once a second would talk over itself continuously. Exactly three things
+    qualify:
 
     1. **A vector entering `Alert`.** Entering, not being: a `set` that carries no state
        leaves the cached one alone, so a latched Alert re-emits with every later frame and
        only the transition is announced.
     2. **A vector this browser wrote to, until it settles.** A state change is telemetry
-       only when nobody asked for it. Press Open and you hear "Shutter on Dome Simulator is
-       Busy." and then "...is Ok."; the first state that is not `Busy` disarms it, so one
-       press buys at most two sentences and a driver still emitting afterwards is back to
-       being telemetry. [`client.onWrite`](#knowing-which-changes-you-asked-for) is what
-       tells the two apart, and only the sender can.
+       only when nobody asked for it. Press Open and you hear "Shutter on Dome Simulator
+       is Busy." and then "...is Ok.". The first state that is not `Busy` disarms it, so
+       one press buys at most two sentences, and a driver still emitting afterwards is
+       back to being telemetry.
+       [`client.onWrite`](#knowing-which-changes-you-asked-for) tells the two apart, and
+       only the sender can.
     3. **The connection.** The socket dropping, or the bridge losing `indiserver`, plus the
        matching recovery. A recovery is announced only if the loss was announced first,
        which is what keeps a freshly opened session quiet.
@@ -309,15 +328,16 @@ the case where you already know the kind and want to skip the dispatch.
 
 !!! important "`MessageLog` is where a refused write shows up"
 
-    When the bridge will not forward a frame - the upstream `indiserver` is down, its
-    queue is full, or the frame is not one a client may send - it answers that browser
-    alone with an error frame, and the client turns it into a log line reading
+    The bridge answers that browser alone with an error frame whenever it will not
+    forward a frame: the upstream `indiserver` is down, its queue is full, or the frame is
+    not one a client may send. The client turns that into a log line reading
     `newNumberVector was not sent: not connected to indiserver; the write was not sent`.
 
     Nothing retries it and no control changes appearance, because the driver never
-    published anything. So a UI that drops `MessageLog` has no surface at all for a
-    failed command, and a user is left watching a control that simply does not move. If
-    you build your own, subscribe with `client.onMessage(...)` and show it somewhere.
+    published anything. A UI that drops `MessageLog` therefore has no surface at all for
+    a failed command, and a user is left watching a control that simply does not move.
+
+    If you build your own, subscribe with `client.onMessage(...)` and show it somewhere.
 
 ## Without React
 
@@ -332,9 +352,10 @@ client.subscribe((event) => console.log(event.device, event.name, event.vector?.
 client.connect();
 ```
 
-`@indi-nexus/react` re-exports all of it, so a React app needs only the one package. The
-same origin rule applies: start the bridge with `--allow-origin` naming wherever this
-code is served from. A peer that is not a browser - Node, a script, a test - sends no
+`@indi-nexus/react` re-exports all of it, so a React app needs only the one package.
+
+The same origin rule applies. Start the bridge with `--allow-origin` naming wherever this
+code is served from. A peer that is not a browser (Node, a script, a test) sends no
 `Origin` at all and needs nothing.
 
 ## Full API

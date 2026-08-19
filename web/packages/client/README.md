@@ -5,9 +5,10 @@ Framework-agnostic TypeScript client and typed property store for the
 
 Observatory instruments (telescopes, domes, cameras, focusers, weather stations) speak
 [INDI](https://docs.indilib.org/protocol/). The INDINexus bridge puts that traffic behind a
-WebSocket as typed JSON, and this package is the browser side of it: it handles the socket,
-reconnects on its own, and mirrors everything the bridge reports into a property cache you
-can read and subscribe to.
+WebSocket as typed JSON.
+
+This package is the browser side of it. It handles the socket, reconnects on its own, and
+mirrors everything the bridge reports into a property cache you can read and subscribe to.
 
 No framework or UI dependency. If you are building with React, use
 [`@indi-nexus/react`](https://www.npmjs.com/package/@indi-nexus/react), which wraps this in
@@ -47,19 +48,24 @@ client.get("Mount", "EQUATORIAL_EOD_COORD"); // a single vector, or undefined
 ```
 
 The connection reconnects by itself, replays any BLOB policies you set, and reports
-transitions through `onConnection`. `connectionState` carries three fields: `transport`,
-the browser-to-bridge socket; `upstream`, the bridge's own link to `indiserver`; and
-`protocol`, the contract version the bridge announced in its `hello` frame (`null` until
-one arrives). Compare it with the exported `CLIENT_PROTOCOL_VERSION` if you want to know
-whether the bridge and this build agree; a mismatch is never fatal, and the client only
-logs one line.
+transitions through `onConnection`.
+
+`connectionState` carries three fields:
+
+- `transport` - the browser-to-bridge socket.
+- `upstream` - the bridge's own link to `indiserver`.
+- `protocol` - the contract version the bridge announced in its `hello` frame, `null`
+  until one arrives.
+
+Compare `protocol` with the exported `CLIENT_PROTOCOL_VERSION` to know whether the bridge
+and this build agree. A mismatch is never fatal: the client logs one line and carries on.
 
 ## Knowing which changes you asked for
 
 `onWrite` is the outbound counterpart to `subscribe`. It fires with the device and property
-name of every `new` frame `send` puts on the wire - from the four `set*` helpers or from a
-frame you built yourself - and returns an unsubscribe function, like every other listener
-here:
+name of every `new` frame `send` puts on the wire, whether from the four `set*` helpers or
+from a frame you built yourself, and returns an unsubscribe function like every other
+listener here:
 
 ```ts
 const stop = client.onWrite((device, name) => console.log("sent", device, name));
@@ -70,9 +76,11 @@ stop();
 Nothing else can make that distinction. A vector going `Busy` and then `Ok` looks the same
 on the wire whether this browser asked for it or another client did, so it has to be
 recorded on the way out. That is what lets a UI treat an operator's own command as feedback
-and the rest of the stream as telemetry. It fires on the send rather than on an
-acknowledgement, because the socket buffers while the connection is down and the operator
-pressed the button either way. The callback type is exported as `WriteCallback`.
+and the rest of the stream as telemetry.
+
+`onWrite` fires on the send rather than on an acknowledgement, because the socket buffers
+while the connection is down and the operator pressed the button either way. The callback
+type is exported as `WriteCallback`.
 
 ## Documentation
 

@@ -1,15 +1,15 @@
 # INDINexus
 
-INDINexus is a Python toolkit for writing INDI instrument drivers. If you have written
-one before, what is different here is that the plumbing is already done: a driver is one
-Python class, it runs under the `indiserver` you already have, you can test all of it
-with nothing plugged in, and a browser control panel comes with it. If INDI itself is new
-to you, [the protocol page](guides/protocol.md) has the vocabulary.
+INDINexus is a Python toolkit for writing INDI instrument drivers. The plumbing is already
+done. A driver is one Python class, it runs under the `indiserver` you already have, you
+can test all of it with nothing plugged in, and a browser control panel comes with it.
 
-To see it running first, [drive a simulated dome in your browser](demo-app/index.html):
-the real panel, with nothing installed. [Two more demos are below](#demos-in-your-browser).
+If INDI itself is new to you, [the protocol page](guides/protocol.md) has the vocabulary.
 
-Here is a complete driver for a flat-field lamp - a switch and a brightness dial:
+To see it running first, [open the live demo](demo-app/index.html): a simulated dome and a
+simulated weather station, in the real panel, with nothing installed.
+
+Here is a complete driver for a flat-field lamp, a switch and a brightness dial:
 
 ```python title="examples/flat_panel.py, trimmed for this page"
 from indi_nexus.driver import Device, on_new
@@ -93,23 +93,26 @@ if __name__ == "__main__":
 
 That is
 [`examples/flat_panel.py`](https://github.com/sidereal-software/indi-nexus/blob/main/examples/flat_panel.py),
-shown trimmed for this page - the file in the repository carries its module header and
-fuller docstrings, and folds nothing. It is covered
-by the test suite, it is the driver the [driver guide](guides/writing-drivers.md) builds
-one property at a time, and you can [drive it in your browser](flat-demo/flat.html)
-without installing anything.
+trimmed for this page. The file in the repository carries its module header and fuller
+docstrings, and folds nothing.
+
+The test suite covers it, and the [driver guide](guides/writing-drivers.md) builds it one
+property at a time.
 
 ## The plumbing it replaces
 
-What INDINexus stands in for is the driver you would otherwise hand-roll: the read loop
-over stdin, the XML parser that has to survive a start tag split across two reads, the
-dispatch chain on property name, the timer whose period drifts by the length of each
-tick, and the poll that lands on top of a command that arrived while it was out.
+INDINexus stands in for the driver you would otherwise hand-roll:
+
+- the read loop over stdin;
+- the XML parser that has to survive a start tag split across two reads;
+- the dispatch chain on property name;
+- the timer whose period drifts by the length of each tick;
+- the poll that lands on top of a command that arrived while it was out.
 
 The last two are handled explicitly. `@every` runs against a rolling deadline, so a job's
-period does not drift by the tick's own duration, and
-[ticks and client writes never overlap](guides/writing-drivers.md#serialised-dispatch),
-so a slow poll cannot publish pre-write state over a button the operator just pressed.
+period does not drift by the tick's own duration.
+[Ticks and client writes never overlap](guides/writing-drivers.md#serialised-dispatch), so
+a slow poll cannot publish pre-write state over a button the operator just pressed.
 
 ## Install and run
 
@@ -120,47 +123,30 @@ indi-nexus serve --device my_driver:MyDriver
 ```
 
 Open <http://localhost:8000/>. The driver `new` just wrote is in the sidebar with a
-control panel in front of it: press Connect and its telemetry starts counting.
+control panel in front of it. Press Connect and its telemetry starts counting.
 
 Python 3.12 or newer is the only requirement. The panel is compiled into the wheel, so
-there is no Node build, and `--device` runs the driver in-process, so there is no
-`indiserver` to install first.
+there is no Node build. `--device` runs the driver in-process, so there is no `indiserver`
+to install first.
 
 [Getting started, a step at a time](getting-started.md){ .md-button .md-button--primary }
 
-## Demos in your browser
+## The demo in your browser
 
-Each one runs the real panel against a driver simulated inside your browser, speaking
-the same JSON the FastAPI bridge speaks. The simulation runs in the page itself, so there
-is nothing to download and no server or account involved.
+One page runs two simulated drivers - a dome and a weather station - through a single
+client, speaking the same JSON the FastAPI bridge speaks. The simulation runs in the page
+itself: nothing to download, no server, no account.
 
-<div class="grid cards" markdown>
+Press Connect and the dome moves. Open the shutter, send it to an azimuth, park it, hit
+Abort mid-slew. The weather readings are fetched live from Open-Meteo, falling back to a
+recorded reply when the API cannot be reached. The message log narrates what both drivers
+are saying, the way it would at a real site.
 
--   **A dome you can move**
+The same two devices are shown two ways, switchable: the panel that generates itself from
+whatever the drivers declare, and a hand-built observatory wallboard. The
+[tutorial](guides/tutorial-open-meteo.md) writes the weather driver and the wallboard.
 
-    Press Connect, open the shutter, send it to an azimuth, park it, hit Abort
-    mid-slew. The message log narrates what the driver is saying, the way it would at
-    a real site.
-
-    [Open the dome demo](demo-app/index.html){ .md-button }
-
--   **The driver at the top of this page**
-
-    The same flat panel: same property names, same exclusive switch rule, same clamped
-    brightness range. Press Connect, light the lamp, then disconnect and watch it go
-    out.
-
-    [Open the lamp demo](flat-demo/flat.html){ .md-button }
-
--   **Live data, one device, two UIs**
-
-    Real readings fetched from Open-Meteo, shown twice from a single client: the panel
-    that generates itself, and a hand-built operator screen. The
-    [tutorial](guides/tutorial-open-meteo.md) writes both.
-
-    [Open the weather demo](weather-demo/weather.html){ .md-button }
-
-</div>
+[Open the live demo](demo-app/index.html){ .md-button }
 
 ## Testing without hardware
 
@@ -186,10 +172,12 @@ async def test_lamp_turns_on():
 ```
 
 Nothing in that test opens a socket, starts a subprocess, parses XML or touches an
-instrument. `write()` builds the partial vector a real client sends and routes it through
-the device's real dispatch (the `@on_new` map, the device-name guard, the serialisation
-lock), so a handler that passes here works under `indiserver`. `tick(job)` runs one
-iteration of an `@every` job without waiting out its interval.
+instrument.
+
+`write()` builds the partial vector a real client sends and routes it through the device's
+real dispatch: the `@on_new` map, the device-name guard, the serialisation lock. A handler
+that passes here works under `indiserver`. `tick(job)` runs one iteration of an `@every`
+job without waiting out its interval.
 
 Every example in the repository is covered this way, the flat panel above included. The
 driver guide's [testing section](guides/writing-drivers.md#testing-without-hardware) is
@@ -197,13 +185,14 @@ the full account.
 
 !!! note "Running that test"
 
-    It is written for `pytest` with [pytest-asyncio](https://pytest-asyncio.readthedocs.io/)
-    in `asyncio_mode = "auto"`. Without that, wrap the body in `asyncio.run`.
+    That test is written for `pytest` with
+    [pytest-asyncio](https://pytest-asyncio.readthedocs.io/) in `asyncio_mode = "auto"`.
+    Without that, wrap the body in `asyncio.run`.
 
 ## The generated control panel
 
-Every INDI device says what it has - properties, kinds, ranges, labels - so the UI can
-be generated from the device rather than written per instrument:
+Every INDI device says what it has: properties, kinds, ranges, labels. The UI can
+therefore be generated from the device rather than written per instrument.
 
 ```tsx
 import { IndiProvider, DevicePanel } from "@indi-nexus/react";
@@ -218,17 +207,18 @@ export function App() {
 }
 ```
 
-Numbers get their units and limits, switches become radio buttons or checkboxes according
-to the INDI rule, lights become a coloured dot with its state written beside it, BLOBs
-become download links, and read-only properties are not editable. For a purpose-built
-screen instead, the same data is on hooks. [Building a frontend](guides/frontend.md)
-covers both.
+Numbers get their units and limits. Switches become radio buttons or checkboxes according
+to the INDI rule. Lights become a coloured dot with its state written beside it, BLOBs
+become download links, and read-only properties are not editable.
+
+For a purpose-built screen, the same data is on hooks.
+[Building a frontend](guides/frontend.md) covers both.
 
 ## How the pieces fit
 
-INDINexus does not replace `indiserver`, the hub program observatories already run - it
-plugs into it. Your driver is an ordinary INDI driver, so existing INDI software
-(KStars/Ekos, PHD2, other drivers) works with it unchanged.
+INDINexus plugs into `indiserver`, the hub program observatories already run. It does not
+replace it. Your driver is an ordinary INDI driver, so existing INDI software (KStars/Ekos,
+PHD2, other drivers) works with it unchanged.
 
 ```mermaid
 flowchart LR
@@ -260,20 +250,20 @@ flowchart LR
   and watch from Python.
 - The bridge puts that cache behind a WebSocket so a browser can show it.
 
-You do not need all three; writing only a driver is the common case.
+You do not need all three. Writing only a driver is the common case.
 
 ## What this does not do
 
-- It does not reimplement `indiserver`. The C hub stays the hub and your driver runs as
-  its child, which is what keeps the rest of the INDI ecosystem working against it. Only
-  the Python and browser layers are new here.
-- `--device` is not a hub. It runs drivers inside the web process: one client, and it
+- **It does not reimplement `indiserver`.** The C hub stays the hub and your driver runs
+  as its child, which is what keeps the rest of the INDI ecosystem working against it.
+  Only the Python and browser layers are new here.
+- **`--device` is not a hub.** It runs drivers inside the web process: one client, and it
   stops when you stop the command. It exists so that trying this out needs one install
-  instead of two. Run anything real under `indiserver`. (It is not an unguarded surface:
-  `--token` and `--allow-origin` apply the same as without `--device`, and a non-loopback
-  `--host` with no token is refused either way.)
-- It does not talk to your instrument for you. There is no vendor library in here. You
-  write the link to the hardware; `await self.off_thread(...)` keeps a blocking vendor
+  instead of two, so run anything real under `indiserver`. Access control is the same
+  either way: `--token` and `--allow-origin` apply with `--device` as without it, and a
+  non-loopback `--host` with no token is refused in both.
+- **It does not talk to your instrument for you.** There is no vendor library in here. You
+  write the link to the hardware. `await self.off_thread(...)` keeps a blocking vendor
   call from stalling the event loop, and that is the extent of the help.
 
 ## Pick a starting point

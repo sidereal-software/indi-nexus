@@ -5,15 +5,19 @@ search:
 
 # Tutorial: a driver for real data, and a UI for it
 
-The simulators show the shape of a driver, but their readings are invented. This
-tutorial builds a driver against [Open-Meteo](https://open-meteo.com), a free
-weather API that needs no account or key, and then a custom screen for it. At the
-end you will have real sky conditions for your own site, on a screen you laid out
-yourself.
+This tutorial builds a driver against [Open-Meteo](https://open-meteo.com), a
+free weather API that needs no account or key, and then a custom screen for it.
+At the end you will have real sky conditions for your own site, on a screen you
+laid out yourself.
 
-The [finished version runs in your browser](../weather-demo/weather.html), driver
-and custom screen both, with nothing to install. Press Connect and it calls the
-real API, falling back to a recorded reply if it cannot reach it.
+The simulators elsewhere in these guides show the shape of a driver, but their
+readings are invented. These readings are not.
+
+The [finished version runs in your browser](../demo-app/index.html), driver and
+custom screen both, with nothing to install. Press Connect and it calls the real
+API, falling back to a recorded reply if it cannot reach it. That page runs a
+simulated dome alongside this driver, because the custom screen at the end of
+this tutorial is a board for a whole observatory rather than for one device.
 
 The finished code is `examples/openmeteo_device.py`, and its tests are
 `tests/test_openmeteo_example.py`. Following every step below leaves you with
@@ -68,13 +72,13 @@ Two things to notice, because they shape the driver:
 
 - `current_units` says whether you are getting °F or °C, so the driver takes its
   labels from the reply instead of guessing.
-- `daily` holds a list per field, one entry per forecast day. We ask for one day,
-  so index `0` is today.
+- `daily` holds a list per field, one entry per forecast day. The request asks
+  for one day, so index `0` is today.
 
 ## 2. Declare the readings once
 
-Rather than repeating field names across the definitions, the readings, and the
-safety checks, put them in one place:
+Put the field names in one place, rather than repeating them across the
+definitions, the readings, and the safety checks:
 
 ```python
 #: (API field, element name, label, safe low, safe high)
@@ -153,9 +157,9 @@ async def on_connect(self) -> None:
     self._offline = False
 ```
 
-There is no error handling here on purpose. If the fetch raises, the SDK puts
-the Connect switch back to Disconnected and shows the reason, which is the right
-outcome at a site whose internet is down.
+There is no error handling here on purpose. A fetch that raises puts the Connect
+switch back to Disconnected and shows the reason, which is the right outcome at
+a site whose internet is down.
 
 ## 5. Poll slowly, and cope with silence
 
@@ -230,8 +234,10 @@ work done.
 ## 8. Remember the site across restarts
 
 An operator who points the driver at their own site expects it to still be there
-tomorrow. `define_config()` publishes the standard INDI `CONFIG_PROCESS` switch -
-Load, Save, Purge - that every libindi driver has, and `persist=True` says which
+tomorrow.
+
+`define_config()` publishes the standard INDI `CONFIG_PROCESS` switch: Load,
+Save, Purge. Every libindi driver has it, and `persist=True` says which
 properties those buttons cover:
 
 ```python
@@ -254,12 +260,13 @@ async def setup(self) -> None:
 
 Two lines in there look like boilerplate and are not.
 
-`define_config()` does no file I/O - it only defines the property. Restoring is
+`define_config()` does no file I/O. It only defines the property. Restoring is
 the explicit `await self.load_config()`, because reading a file is the blocking
-work step 3 told you to be deliberate about. And having nothing saved is the
-ordinary first run rather than a failure, so it arrives as `ConfigError` (an
-`OSError`, imported from `indi_nexus`) and gets caught: without the `except`, a
-first start would look like a broken driver.
+work step 3 told you to be deliberate about.
+
+Having nothing saved is the ordinary first run rather than a failure, so it
+arrives as `ConfigError` (an `OSError`, imported from `indi_nexus`) and gets
+caught. Without the `except`, a first start would look like a broken driver.
 
 Restoring a value is not the same as acting on it. `load_config()` puts the saved
 numbers into `GEOGRAPHIC_COORD`, but the driver is still fetching for wherever it
@@ -276,12 +283,13 @@ async def on_config_loaded(self, names: list[str]) -> None:
     await self._apply_site()
 ```
 
-That is why `_move_site` kept its body in `_apply_site`: a site that arrives from
+That is why `_move_site` kept its body in `_apply_site`. A site that arrives from
 a file does exactly what one typed into the panel does, and there is one place to
-fix when that changes. [Saving
-configuration](writing-drivers.md#saving-configuration) covers the rest, including
-`NEXUS_CONFIG_PERSISTED` - the property this driver publishes to tell a panel
-which settings Save writes.
+fix when that changes.
+
+[Saving configuration](writing-drivers.md#saving-configuration) covers the rest,
+including `NEXUS_CONFIG_PERSISTED`: the property this driver publishes to tell a
+panel which settings Save writes.
 
 ## 9. Run it
 
@@ -289,12 +297,15 @@ which settings Save writes.
 indi-nexus serve --device examples.openmeteo_device:OpenMeteo
 ```
 
-Open <http://localhost:8000/> and press Connect: the readings are live weather.
-Edit the Site latitude and longitude and the driver follows. Then open
-Configuration in the sidebar, press Save, then restart the driver: it comes back
-already showing the site you chose, with `Restored 1 property.` in the message
-log. On the very first run, before anything is saved, the same log reads
-`Using the built-in site: ...` - that is the `except ConfigError` above, not a
+Open <http://localhost:8000/> and press Connect. The readings are live weather.
+Edit the Site latitude and longitude and the driver follows.
+
+Then open Configuration in the sidebar, press Save, and restart the driver. It
+comes back already showing the site you chose, with `Restored 1 property.` in the
+message log.
+
+On the very first run, before anything is saved, the same log reads
+`Using the built-in site: ...`. That is the `except ConfigError` above, not a
 fault.
 
 ## 10. A screen of your own
@@ -304,20 +315,46 @@ the device says it has. That is what you want for commissioning and the wrong
 thing for the screen above the control-room door.
 
 The custom UI here is a wallboard: the display an observer glances at from
-across the room to answer one question. It is
-`web/apps/panel/demo/sky-report.tsx` (the layout) and `sky-visuals.tsx` (the
-drawn figures), built entirely from `@indi-nexus/react`.
+across the room to answer one question. The code is
+`web/apps/panel/demo/observatory-board.tsx` for the layout and
+`board-visuals.tsx` for the drawn figures, built entirely from
+`@indi-nexus/react`.
+
+It reads two devices, not one. This driver supplies the weather half and a
+simulated dome supplies the other, both arriving through a single client. That
+is the ordinary case - an observatory is several instruments on one connection -
+and it changes nothing about how the screen is written, because every hook below
+takes a device name and a second device is more calls to the same hooks. What it
+does change is what the board leads with.
 
 ### What a wallboard has to do differently
 
 | A desktop panel | A wallboard |
 |---|---|
-| Read at 40 cm | Read at 4 m - type sized in viewport units, the verdict ~10 vw |
+| Read at 40 cm | Read at 4 m - type sized in viewport units, not pixels, so the board fills whatever it is plugged into |
 | You can hover, click, scroll | Nobody touches it. One screen, no tooltips |
 | A stale number is a nuisance | A stale number is dangerous - it must blank out |
 | Ratios suit thin meters | A 2 px track with a 1 px limit tick is invisible; use a big number and a thick state bar |
+| Everything the device has, because you asked for it | Only what earns its space, because nobody asked for any of it |
 
-### Reading a value and its verdict together
+### Leading with the decision
+
+Something has to be the largest thing on the screen, and picking it is the
+design. Here it is the dome shutter - `OPEN`, `CLOSED` or `UNKNOWN` - first,
+ahead of the instrument names and every measurement. Las Cumbres Observatory's
+public site board is laid out the same way, with a column headed `OPEN?` before
+any reading.
+
+The weather is what argues for or against that word, so it comes second, and the
+readings currently in Alert are named rather than left for the reader to work
+out: **Alert: Humidity · Cloud cover**.
+
+Notice what the board does *not* do: it never decides what counts as too windy.
+Each tile shows the light the driver published for that reading, and step 6 is
+where the safe ranges live. One place to change them, and the stock panel, this
+board and any script all agree.
+
+### Reading a value and its state together
 
 Almost every tile needs the same two values, so they come from one small hook:
 
@@ -329,11 +366,10 @@ function useReading(element: string) {
 }
 ```
 
-### Naming the readings that caused the verdict
+### Naming the readings that are out of range
 
-A verdict of "HOLD" on its own leaves the reader asking which reading caused it.
-The driver publishes one light per reading, so the board can list the ones in
-Alert.
+A row of coloured bars leaves the reader hunting for which one went red. The
+driver publishes one light per reading, so the board can just say.
 
 ```tsx
 function useAlerting(): string[] {
@@ -347,43 +383,69 @@ function useAlerting(): string[] {
 optional, and libindi drivers really do publish elements whose label is the empty
 string, so `label ?? name` prints a blank where a reading should be.
 
-The board then reads **HOLD** / *Humidity · Cloud cover*.
+The board then carries **Alert: Humidity · Cloud cover** under the shutter word.
 
-### Blanking out stale readings
+### Saying "I do not know"
 
 When Open-Meteo stops answering, the driver parks its readings at `Idle` rather
 than leaving stale numbers looking current. The board honours that: every value
-becomes `--`, the state bars go grey, and the verdict becomes **NO DATA -
-weather source is not answering**. A wallboard showing last hour's wind speed as
-though it were current is worse than a blank one.
+becomes `--`, its state bar goes grey, its state word becomes `no data`, and the
+header says the weather source is not answering. A wallboard showing last hour's
+wind speed as though it were current is worse than a blank one.
 
 ```tsx
 const live = parameters !== undefined && parameters.state !== "Idle";
 ```
 
+The dome half needs the same honesty and cannot use the same mechanism, because
+a shutter has no `--`. So `UNKNOWN` is a first-class third state beside open and
+closed, and the board reaches it for real: aborting a shutter move leaves
+`DOME_SHUTTER` in `Alert` with `Shutter operation aborted. Status: unknown.`,
+and at that moment the switch still reports the position that was *commanded*.
+A disconnected driver is in the same position - repeating its last reading
+rather than reporting hardware.
+
+It is styled neutrally rather than as an alarm, which every real observatory
+board does too: Las Cumbres prints `?` in the same weight as its yes and its no.
+"I do not know" is not a fault, and dressing it as one teaches the room to stop
+believing the colour.
+
 ### Picking a form for each reading
 
 | Reading | Form | Why |
 |---|---|---|
-| Temperature | **hero figure** | The one number the board leads with. Exactly one per view. |
-| Cloud, humidity, wind, gust, pressure | **big number + state bar** | At four metres, distance beats precision. |
+| Shutter open or closed | **the word itself, largest on the screen** | The board's whole question. Nothing else is that size. |
+| Dome azimuth | **plan view from above** | The dome drawn as a circle with the aperture cut out of the wall, rotated to the true bearing. That is the established idiom rather than an invention - MaxIm DL and Rubin's control interface both draw it - so an observer already knows how to read it. |
+| Temperature, humidity, wind, gust, cloud, pressure | **big number + state bar** | At four metres, distance beats precision. Six of them at one size: none outranks the others until one goes into Alert, and then the header says which. |
 | Wind direction | **compass** | The one genuinely *angular* reading - the case where a dial beats a bar. |
-| Moon phase, site | **drawn figures** | See `sky-visuals.tsx`; each is a pure function of its props. |
+| Moon phase, sunrise and sunset | **drawn figures** | See `board-visuals.tsx`; each is a pure function of its props. |
+
+There is no map of the site. The latitude and longitude are on the board's own
+device and would have drawn nicely, and they never change while the board is up
+- so on a screen nobody asked for, they are a picture that costs space and says
+nothing new. Constant facts belong on the panel, where somebody went looking for
+them.
 
 ### Two rules the board follows
 
 - Status is never colour alone. In this theme Alert and Busy are ΔE 14.6 apart
   for a reader with full colour vision and 5.7 under protanopia, so across a
   room they are the same colour. Every state is therefore also a word: `ALERT`,
-  `OK`, in type you can read from the door.
-- The verdict belongs to the driver rather than the UI. OPEN/HOLD reads
-  `WEATHER_STATUS.state`, so the safety rule lives in one place and this board,
-  the stock panel and any script all agree.
+  `OK`, in type you can read from the door. The dome's three shutter readings go
+  further and differ in *shape* before they differ in hue - a band, a solid
+  panel, a dashed span.
+- The judgement belongs to the driver rather than the UI. Every state the board
+  shows is one a device published, so the safety rule lives in one place and
+  this board, the stock panel and any script all agree about it.
 
-Colour comes from theme tokens rather than hex (`bg-state-*`, `fill-chart-3`,
-`stroke-border`), so the board follows light and dark mode without extra work.
+Colour comes from theme tokens rather than hex, so the board follows light and
+dark mode without extra work. Anything whose colour is an INDI state carries
+`data-indi-state={state}` and paints with `var(--indi-state)`; the stylesheet
+does the mapping, so no component holds a four-way switch on `Idle`/`Ok`/`Busy`/
+`Alert`. Everything else is an ordinary token: `stroke-muted-foreground`,
+`fill-chart-3`.
 
-## 11. Test both halves
+## 11. Test it
 
 The driver is tested against a recorded real response, so the field names are
 checked against what the service sends rather than guessed:
@@ -399,9 +461,17 @@ async def test_status_lights_flag_the_readings_that_are_out_of_range(site):
     assert status.state is IPState.ALERT               # the vector takes the worst
 ```
 
-The board is tested the same way, against the vectors the driver really emits,
-so the two halves are checked where they meet. See
-`web/apps/panel/demo/sky-report.test.tsx`.
+`tests/test_openmeteo_example.py` is the whole set: every reading landing, a
+context reading getting no status light, rain overriding the numbers, the site
+surviving a restart, and a dead API parking the readings and saying so once.
+
+A screen built on these hooks is tested the same way, against the frames a
+driver really sends. `@indi-nexus/react/testing` is what makes that cheap:
+`renderConnected(ui)` mounts your component under a provider wired to a fake
+socket that has already sent its `hello`, and `receive(socket, frame)` feeds it
+what the driver would have said. The
+[React package README](https://github.com/sidereal-software/indi-nexus/blob/main/web/packages/react/README.md#testing-your-own-components)
+has the details.
 
 ## Where to take it
 

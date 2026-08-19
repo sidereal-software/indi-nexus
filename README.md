@@ -8,14 +8,14 @@ a *driver* sits between each instrument and everything else, translating. INDINe
 toolkit for writing those drivers in modern Python, and for building the screens
 operators work from.
 
-It has three parts:
+INDINexus has three parts:
 
 1. A driver SDK. Describe what your instrument exposes, say how to read it and how to
    command it, and the standard INDI machinery is handled for you.
 2. A Python client. Connect to an observatory, watch instruments change, send commands.
 3. A web UI: a ready-made control panel, plus React components for building your own.
 
-Everything is fully typed, and drivers can be tested with no hardware attached.
+Everything is fully typed. Drivers can be tested with no hardware attached.
 
 Documentation: <https://indi-nexus.sidereal.software/> has the guides, a live in-browser
 demo, and the full API reference. [DEVELOPMENT.md](DEVELOPMENT.md) covers working on
@@ -23,8 +23,8 @@ INDINexus itself.
 
 ## How the pieces fit
 
-INDINexus does not replace the standard `indiserver` program that observatories already
-run - it plugs into it. Your driver is a normal INDI driver, so existing INDI software
+INDINexus plugs into `indiserver`, the standard hub program observatories already run. It
+does not replace it. Your driver is a normal INDI driver, so existing INDI software
 (KStars/Ekos, PHD2, other drivers) works with it unchanged.
 
 ```mermaid
@@ -57,7 +57,7 @@ Reading left to right: your driver talks to the instrument and speaks INDI to
 and mirrors everything it sees into a typed cache. The bridge puts that cache behind a
 WebSocket so a browser can show it.
 
-You do not need all three; writing only a driver is normal.
+You do not need all three. Writing only a driver is normal.
 
 ## Try it
 
@@ -72,16 +72,16 @@ indi-nexus serve --device my_driver:MyDriver   # run it, with the panel
 ```
 
 Open <http://localhost:8000/> for a working control panel driven by the driver you just
-made. Press Connect and its telemetry starts counting; flip the power switch and a line
+made. Press Connect and its telemetry starts counting. Flip the power switch and a line
 appears in the message log.
 
-`--device` runs the driver inside the web process so that trying it out needs one install
-instead of two. Real observatories run their drivers under `indiserver`, and so should
-you: `indiserver ./my_driver.py`, then `indi-nexus serve` with no `--device`. The driver
-file is the same either way.
+`--device` runs the driver inside the web process, so trying it out needs one install
+instead of two. Run anything real under `indiserver` instead: `indiserver ./my_driver.py`,
+then `indi-nexus serve` with no `--device`. The driver file is the same either way.
 
 To look before installing, the [live demo](https://indi-nexus.sidereal.software/demo-app/index.html)
-runs the real panel against a simulated dome inside your browser.
+runs the real panel against a simulated dome and a simulated weather station inside your
+browser, and switches between the stock panel and a hand-built observatory wallboard.
 
 ## Writing a driver
 
@@ -124,10 +124,11 @@ if __name__ == "__main__":
     Mount.run()
 ```
 
-`open_serial_link`, `read_mount` and `slew_to` are the only parts you write; they are
+`open_serial_link`, `read_mount` and `slew_to` are the only parts you write. They are
 whatever talks to your instrument. The Connect button and its lifecycle, the timer, the
-dispatch, the wire format and the error handling all come from the framework. For a
-driver that runs as written, see [`examples/flat_panel.py`](examples/flat_panel.py).
+dispatch, the wire format and the error handling all come from the framework.
+
+For a driver that runs as written, see [`examples/flat_panel.py`](examples/flat_panel.py).
 
 Or start from a working file and open it in the panel:
 
@@ -175,22 +176,28 @@ export const App = () => (
 );
 ```
 
-Your app is served from its own origin, and the bridge accepts its own by default, so
-name yours when you start it: `indi-nexus serve --allow-origin http://localhost:5173`.
-A WebSocket is exempt from the same-origin policy and from CORS, so that check is the
+Name your app's origin when you start the bridge:
+
+```bash
+indi-nexus serve --allow-origin http://localhost:5173
+```
+
+The bridge accepts only its own origin by default, and your app is served from a different
+one. A WebSocket is exempt from the same-origin policy and from CORS, so that check is the
 only thing standing between `/ws` and any page an operator happens to visit.
 
 `DevicePanel` builds itself from whatever the device says it has, so it works for a device
-INDINexus has never seen. For your own layout, the same data is available through hooks;
-the [frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) covers both.
+INDINexus has never seen. For your own layout, the same data is available through hooks.
+The [frontend guide](https://indi-nexus.sidereal.software/guides/frontend/) covers both.
 
 ## The examples
 
 Every example in `examples/` runs and is covered by tests. Start with `flat_panel.py` for
-the shape of a driver, then `weather_device.py` - the one to copy for real hardware. There
-are also a dome, a telescope, a CCD, a two-device camera, a driver for a live public
-weather API, and three clients (`monitor_client.py` watches, `scripted_session.py` drives,
-`blob_receiver.py` collects images); the
+the shape of a driver, then `weather_device.py`, the one to copy for real hardware.
+
+There are also a dome, a telescope, a CCD, a two-device camera, a driver for a live public
+weather API, and three clients: `monitor_client.py` watches, `scripted_session.py` drives,
+`blob_receiver.py` collects images. The
 [examples guide](https://indi-nexus.sidereal.software/guides/examples/) says which to
 reach for and when.
 

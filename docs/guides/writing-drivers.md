@@ -42,7 +42,7 @@ reacts when a client asks to change one.
 
 ## A complete driver
 
-Here is a working driver for a flat-field lamp - a light panel with a brightness dial.
+Here is a working driver for a flat-field lamp: a light panel with a brightness dial.
 Every line is explained underneath.
 
 ```python
@@ -107,10 +107,10 @@ if __name__ == "__main__":
 2. `setup()` runs once, when a client first asks what this device has. Everything the
    device exposes is declared here.
 3. Every INDI device has a Connect button, and this one line is it. The
-   [next section](#connecting-and-disconnecting) is what it brings with it.
+   [next section](#connecting-and-disconnecting) covers what it brings with it.
 4. Elements carry a `name` (what the protocol uses) and a `label` (what a human reads).
    This one starts Off.
-5. `ONE_OF_MANY` means "exactly one of these is on" - a UI draws radio buttons. The other
+5. `ONE_OF_MANY` means exactly one of these is on, so a UI draws radio buttons. The other
    rules are `AT_MOST_ONE` (zero or one) and `ANY_OF_MANY` (independent checkboxes).
 6. `group` is the section a UI files the property under.
 7. Numbers can declare a display `format` and a valid range, and a UI will respect both.
@@ -118,7 +118,7 @@ if __name__ == "__main__":
 9. `on_disconnect()` runs when the operator disconnects. Leave the instrument safe here: a
    flat panel left lit fogs every exposure taken after the client went away.
 10. `@on_new("NAME")` is called when a client asks to change that property. Nothing changes
-    until you say so - the client is *requesting*.
+    until you say so. The client is *requesting*.
 11. Commands are refused while the link is down. `require_connected()` sends the standard
     "not connected" error to the client, so the guard is these two lines and nothing else.
 12. `selected()` answers "which member did they turn on?". Use it rather than checking a
@@ -126,8 +126,8 @@ if __name__ == "__main__":
 13. `set()` writes the values **and** tells every client, in one call. Turning one member
     on automatically turns the others off, because the rule says so.
 14. `get(name, default)` reads a requested value without assuming it was sent.
-15. A client may ask for anything. The `min`/`max` declared above is a promise about the
-    hardware, so hold the request to it rather than passing it straight through.
+15. Hold the request to the `min`/`max` declared above rather than passing it straight
+    through. A client may ask for anything, and that range is a promise about the hardware.
 16. `run()` serves the driver over standard input/output, which is how `indiserver`
     launches it.
 
@@ -138,10 +138,6 @@ in the reference panel:
 ```bash
 indi-nexus serve --device examples.flat_panel:FlatPanel
 ```
-
-Or [try it in your browser](../flat-demo/flat.html): the same driver simulated in
-JavaScript, driving the panel that ships in the wheel, with nothing to install. Press
-Connect first, as you would with the real thing.
 
 ## Connecting and disconnecting
 
@@ -161,17 +157,17 @@ async def on_disconnect(self) -> None:
 ```
 
 `on_disconnect` is for leaving the instrument safe, not only for dropping a handle. The
-client is walking away; anything still running is going to keep running unattended, which
-is why the panel puts the lamp out first.
+client is walking away, and anything still running keeps running unattended. That is why
+the panel puts the lamp out first.
 
-Then:
+Three more things come with the connection switch:
 
 - `self.require_connected()` is the one-line guard for a command handler.
 - `@every(seconds=1, when_connected=True)` pauses polling (the next section) while
   disconnected.
-- If `on_connect` raises, which is the usual way for hardware to say "I am not here", the
-  button springs back to Disconnected and the property shows `Alert` with the reason.
-  Let it raise; do not catch it.
+- A raising `on_connect` springs the button back to Disconnected and shows `Alert` with
+  the reason. Raising is the usual way for hardware to say "I am not here", so let it
+  raise and do not catch it.
 
 ## Properties that only exist while connected
 
@@ -188,12 +184,13 @@ async def on_disconnect(self) -> None:
 ```
 
 `delete_property` removes the property and tells the client it has gone, so a client
-connecting later is not offered a control that does nothing. Deleting a name that is not
-defined does nothing at all, which is why the hook above needs no guard: it is correct on
-the first disconnect and on every one after it.
+connecting later is not offered a control that does nothing.
+
+Deleting a name that is not defined does nothing at all. The hook above therefore needs no
+guard: it is correct on the first disconnect and on every one after it.
 
 Defining the same property again on the next connect is the normal cycle, not a special
-case. Each `define_*` hands back a fresh handle; a handle whose property has been deleted
+case. Each `define_*` hands back a fresh handle. A handle whose property has been deleted
 is dead, and publishing through it raises rather than sending an update for something the
 client was told is gone.
 
@@ -215,23 +212,24 @@ one out to 1.3 seconds.
 
 ### When the reading is not a number
 
-The snippet above hands a sensor reading straight to `set()`, and a real sensor
-eventually hands you `nan` or an infinity: a disconnected thermocouple, a divide by a
-zero wind count, a `float()` of a field the vendor left blank.
+The snippet above hands a sensor reading straight to `set()`. A real sensor eventually
+hands you `nan` or an infinity: a disconnected thermocouple, a divide by a zero wind count,
+a `float()` of a field the vendor left blank.
 
-**`set()` refuses those.** Neither wire format can carry a non-finite number - JSON has no
-literal for one - so `Number.value` forbids them and `set()` raises `ProtocolError`
+**`set()` refuses those.** Neither wire format can carry a non-finite number, because JSON
+has no literal for one. `Number.value` forbids them, and `set()` raises `ProtocolError`
 naming the element:
 
 ```
 ProtocolError: T.TEMP.C cannot be set to nan
 ```
 
-The raise happens before anything is written, so the property keeps its previous value
-and nothing goes on the wire. In a `@every` job the runtime catches it, reports it to the
-client and runs the next tick - but the property is then silently stale, still showing a
-reading that is no longer being taken. That is the worst outcome, so handle it yourself.
-Say the instrument is unwell:
+The raise happens before anything is written, so the property keeps its previous value and
+nothing goes on the wire.
+
+In a `@every` job the runtime catches it, reports it to the client and runs the next tick.
+The property is then silently stale, still showing a reading nobody is taking any more.
+That is the worst outcome, so handle it yourself and say the instrument is unwell:
 
 ```python
 @every(seconds=1, when_connected=True)
@@ -244,14 +242,16 @@ async def poll(self) -> None:
     self["WEATHER_PARAMETERS"].set(TEMPERATURE=reading, state=IPState.OK)
 ```
 
-That needs `import math`. Skipping the update entirely (`return` with no `set`) is the
-other reasonable choice, and it is the wrong one whenever a client could mistake a stale
-reading for a live one - which on a weather station deciding whether to open a roof is
-always. Prefer `IPState.ALERT`.
+That needs `import math`.
 
-The same rule applies to `min`, `max` and `step`, except that those *can* say "absent":
-a non-finite one degrades to `None` rather than raising, because the wire has a
-representation for a missing bound and none for `nan`.
+Prefer `IPState.ALERT` to skipping the update entirely. A bare `return` with no `set` is
+the other reasonable choice, and it is wrong whenever a client could mistake a stale
+reading for a live one. On a weather station deciding whether to open a roof, that is
+always.
+
+`min`, `max` and `step` differ in one way: those *can* say "absent". A non-finite one
+degrades to `None` rather than raising, because the wire has a representation for a
+missing bound and none for `nan`.
 
 ## Talking to real hardware
 
@@ -266,8 +266,10 @@ async def poll(self) -> None:
 ```
 
 ...and it freezes the entire driver for as long as that call takes. The freeze is not
-confined to that one property: the driver stops answering anything at all, and nothing
-reports an error. Hand blocking calls to `off_thread` instead:
+confined to that one property. The driver stops answering anything at all, and nothing
+reports an error.
+
+Hand blocking calls to `off_thread` instead:
 
 ```python
 @every(seconds=1, when_connected=True)
@@ -284,16 +286,19 @@ the instrument stops answering.
 ## Publishing an image
 
 A BLOB element carries bytes plus a `format`: the file-name suffix chain telling a client
-what it is receiving, `.fits` for a FITS frame. Publishing one is an ordinary `set` -
-`self["IMAGE"].set(IMAGE=frame, state=IPState.OK)` - which writes the payload and fills in
-`size` from it. `examples/ccd_device.py` is a worked camera.
+what it is receiving, `.fits` for a FITS frame.
+
+Publishing one is an ordinary `set`. `self["IMAGE"].set(IMAGE=frame, state=IPState.OK)`
+writes the payload and fills in `size` from it. `examples/ccd_device.py` is a worked
+camera.
 
 `size` is where compression comes in. INDI defines it as the **uncompressed** length, so
-`len(data)` is right only for a payload that is not compressed. If you want to deflate a
-frame for the wire - the `.z` convention the
-[protocol guide](protocol.md#compressed-payloads) describes - INDINexus will not do it for
-you, and `set()` cannot supply a `size` it would have to inflate the bytes to learn. Write
-the three fields yourself, then emit a `set` that names no element:
+`len(data)` is right only for a payload that is not compressed.
+
+To deflate a frame for the wire, write the three fields yourself and then emit a `set`
+that names no element. INDINexus will not deflate for you, and `set()` cannot supply a
+`size` it would have to inflate the bytes to learn. The convention is the `.z` suffix the
+[protocol guide](protocol.md#compressed-payloads) describes.
 
 ```python
 async def publish_frame(self, frame: bytes) -> None:
@@ -304,24 +309,29 @@ async def publish_frame(self, frame: bytes) -> None:
     self.blob("IMAGE").set(state=IPState.OK)  # names no element, so size stands
 ```
 
-That needs `import zlib`. Naming the element works too - `set(IMAGE=zlib.compress(frame))`
-is fine once `size` has been declared - because `set()` leaves a compressed element's
-`size` alone rather than deriving it, which on a `.z` element would record deflate's output
-length under an attribute the specification defines as the uncompressed one. What it cannot
-do is invent that number, so a `.z` format with no `size` at all is refused outright: both
-`to_xml` and `to_json` raise `ProtocolError` rather than write the wrong length.
+That needs `import zlib`.
+
+Naming the element works too: `set(IMAGE=zlib.compress(frame))` is fine once `size` has
+been declared. `set()` leaves a compressed element's `size` alone rather than deriving it.
+Deriving it on a `.z` element would record deflate's output length under an attribute the
+specification defines as the uncompressed one.
+
+What `set()` cannot do is invent that number. A `.z` format with no `size` at all is
+refused outright: both `to_xml` and `to_json` raise `ProtocolError` rather than write the
+wrong length.
 
 Clients inflate on the way in, so nothing downstream ever sees the `.z`. Most drivers
-should not bother - libindi's `CCD_COMPRESSION` defaults to off - and `.fits.fz` (fpack,
+should not bother. libindi's `CCD_COMPRESSION` defaults to off, and `.fits.fz` (fpack,
 compression inside the FITS container) passes through untouched if that suits you better.
 
 ## Saving configuration
 
 An operator who points your driver at a site, sets a focuser offset or names the filter in
-slot 3 expects it to still know that after a reboot. `define_config()` publishes the
-standard INDI `CONFIG_PROCESS` switch - Load, Save and Purge - which every libindi driver
-has, so clients already know what the buttons do. Which properties it covers is declared
-per property, at define time:
+slot 3 expects it to still know that after a reboot.
+
+`define_config()` publishes the standard INDI `CONFIG_PROCESS` switch: Load, Save and
+Purge. Every libindi driver has it, so clients already know what the buttons do. Which
+properties it covers is declared per property, at define time:
 
 ```python
 async def setup(self) -> None:
@@ -336,24 +346,28 @@ async def setup(self) -> None:
 
 Two things there are deliberate.
 
-`persist=True` on a `define_*` call is what marks a property as configuration; everything
-else is left out. `examples/openmeteo_device.py` marks its `GEOGRAPHIC_COORD` and nothing
-else, because a temperature reading is not a setting.
+`persist=True` on a `define_*` call marks a property as configuration, and everything else
+is left out. `examples/openmeteo_device.py` marks its `GEOGRAPHIC_COORD` and nothing else,
+because a temperature reading is not a setting.
 
-**`define_config()` does no file I/O.** Restoring is the separate `await self.load_config()`
-above, which you write yourself, because reading a file is exactly the kind of blocking
-work the rest of this page tells you to be deliberate about. Having nothing saved is the
-ordinary first run, and it arrives as `ConfigError` (an `OSError`, from `indi_nexus`) - so
-catch it, or a first start would look like a broken driver.
+**`define_config()` does no file I/O.** Restoring is the separate
+`await self.load_config()` above, which you write yourself. Reading a file is exactly the
+kind of blocking work the rest of this page tells you to be deliberate about.
 
-Where you put the call is not a correctness question - a load applies to every persisted
-property already defined *and* waits for the ones defined after it, `on_connect`'s
-included - but the two orders differ in one visible way. Load *before* the persisted
-`define_*` calls and each property is announced once, already holding its saved value.
-Load after them, as above, and each is announced with its built-in default and corrected a
-moment later, in exchange for `on_config_loaded` being handed the names while the
-properties are all there - which is what a driver that also keeps its settings in ordinary
-Python attributes needs.
+Catch `ConfigError` around that call. Having nothing saved is the ordinary first run, and
+it arrives as that exception (an `OSError`, from `indi_nexus`). Without the `except`, a
+first start looks like a broken driver.
+
+Where you put the call is not a correctness question. A load applies to every persisted
+property already defined, and waits for the ones defined after it, `on_connect`'s
+included.
+
+The two orders differ in one visible way. Load *before* the persisted `define_*` calls and
+each property is announced once, already holding its saved value. Load after them, as
+above, and each is announced with its built-in default and corrected a moment later.
+
+In exchange, `on_config_loaded` is handed the names while the properties are all there.
+That is what a driver keeping its settings in ordinary Python attributes needs.
 
 What is written is values, keyed by property, and nothing else:
 
@@ -362,43 +376,52 @@ What is written is values, keyed by property, and nothing else:
  "properties": {"GEOGRAPHIC_COORD": {"LAT": 47.6, "LONG": -122.3}}}
 ```
 
-Definitions - labels, permissions, limits - stay in the code, which is the only thing that
-knows what this version of the driver publishes. The file lives in `~/.indi-nexus` - the
-same path on every platform, next to libindi's own `~/.indi` - or wherever
-`INDI_NEXUS_CONFIG_DIR` says. That variable is the only thing that moves it;
-`XDG_CONFIG_HOME` is not consulted.
+Definitions stay in the code: labels, permissions, limits. The code is the only thing that
+knows what this version of the driver publishes.
+
+The file lives in `~/.indi-nexus`, the same path on every platform, next to libindi's own
+`~/.indi`. `INDI_NEXUS_CONFIG_DIR` moves it, and nothing else does. `XDG_CONFIG_HOME` is
+not consulted.
 
 ### The driver says what Save writes
 
-Because `persist=True` is declared rather than decided inside a method, your driver can
-answer a question no libindi driver can: which properties does pressing Save actually
-write? A libindi driver chooses its subset in `saveConfigItems`, a C++ virtual nothing on
-the wire exposes, which is why a panel can only warn that Save may not cover what is on
-screen.
+Your driver can answer a question no libindi driver can: which properties does pressing
+Save actually write? `persist=True` is declared rather than decided inside a method, so
+the answer can go on the wire.
+
+A libindi driver chooses its subset in `saveConfigItems`, a C++ virtual nothing on the
+wire exposes. A panel facing one can only warn that Save may not cover what is on screen.
 
 `define_config()` publishes the answer for you, as a read-only `NEXUS_CONFIG_PERSISTED`
 text property whose `PROPERTIES` element holds the persisted property names separated by
-spaces. You write nothing extra: it goes out once `setup()` returns, so it names the whole
-set at once, and it is restated when the set really changes - a persisted property defined
-in `on_connect`, or withdrawn in `on_disconnect`. The reference panel reads it and names
-those properties in the configuration dialog instead of apologising.
+spaces. You write nothing extra.
 
-Two consequences are worth knowing. A driver that calls `define_config()` and persists
-nothing publishes the property **empty**, because "Save writes nothing" and "this driver
-cannot tell you" are different answers and only the property's absence means the second.
-And a `persist=True` property may not have whitespace in its name - INDI itself allows it,
-the list's encoding does not - so that is a `ValueError` at define time.
+The property goes out once `setup()` returns, so it names the whole set at once, and it is
+restated whenever the set really changes: a persisted property defined in `on_connect`, or
+withdrawn in `on_disconnect`. The reference panel reads it and names those properties in
+the configuration dialog instead of apologising.
+
+Two consequences are worth knowing.
+
+A driver that calls `define_config()` and persists nothing publishes the property
+**empty**. "Save writes nothing" and "this driver cannot tell you" are different answers,
+and only the property's absence means the second.
+
+A `persist=True` property may not have whitespace in its name. INDI itself allows it; the
+list's encoding does not. That is a `ValueError` at define time.
 
 ### Acting on what was restored
 
-Restoring a value is not the same as acting on it. A focuser that saved its position has to
-physically move; a driver that saved a site has to start fetching for it. `on_config_loaded`
-is where that happens, and it is handed the names of the properties the load applied to.
+Restoring a value is not the same as acting on it. A focuser that saved its position has
+to physically move. A driver that saved a site has to start fetching for it.
 
-It hands you names rather than doing the work itself because the work is yours. The shape
-that survives contact with a real driver is to keep the body of the corresponding `@on_new`
-handler in a method of its own, and call it from both, so a value that arrives from a file
-does exactly what one typed into the panel does:
+`on_config_loaded` is where that happens, and it is handed the names of the properties the
+load applied to. The hook hands you names rather than doing the work itself, because the
+work is yours.
+
+Keep the body of the corresponding `@on_new` handler in a method of its own and call it
+from both. A value that arrives from a file then does exactly what one typed into the
+panel does:
 
 ```python
 async def on_config_loaded(self, names: list[str]) -> None:
@@ -419,10 +442,11 @@ async def _apply_site(self) -> None:
     ...
 ```
 
-Saving needs no hook at all: `CONFIG_SAVE` reads the persisted properties itself. It also
-writes the properties that are *not* defined at that moment - a connect-time property is
-captured as it is withdrawn - so a Save taken while the instrument is disconnected does not
-quietly erase half the configuration.
+Saving needs no hook at all. `CONFIG_SAVE` reads the persisted properties itself.
+
+It also writes the properties that are *not* defined at that moment, because a
+connect-time property is captured as it is withdrawn. A Save taken while the instrument is
+disconnected therefore does not quietly erase half the configuration.
 
 ## Handy shortcuts
 
@@ -441,14 +465,14 @@ self["state_message"].select("opening", IPState.BUSY)
 Use `if reported not in self["state_message"]` to guard the `select` when the value comes
 from hardware that might say something unexpected.
 
-By default a driver that polls every second sends the same unchanged values every second,
-forever. Declare the property `on_change` and it only speaks when something differs:
+Declare a property `on_change` and it speaks only when something differs. By default a
+driver that polls every second sends the same unchanged values every second, forever:
 
 ```python
 self.define_number("WEATHER_PARAMETERS", [...], perm=IPerm.RO, emit="on_change")
 ```
 
-Values are still recorded either way - only the notification is skipped.
+Values are recorded either way. Only the notification is skipped.
 
 ## Serialised dispatch
 
@@ -456,12 +480,12 @@ A driver that both polls hardware and accepts commands has a subtle problem: a p
 started before the operator pressed a button can finish afterwards and publish what it
 read *before* the press, undoing it. The button springs back out, seemingly at random.
 
-INDINexus prevents this: `@every` ticks and `@on_new` handlers never run at the same time
-on one device. Each sees a settled device, and hardware access is serialised, which a
+INDINexus prevents that. `@every` ticks and `@on_new` handlers never run at the same time
+on one device, so each sees a settled device and hardware access is serialised, which a
 single serial port wants anyway. The trade is that a click waits for a poll already in
 flight.
 
-If you have a device where that is wrong, set `serialize_dispatch = False` on the class.
+Set `serialize_dispatch = False` on the class for a device where that trade is wrong.
 
 ## Several devices in one driver
 
@@ -479,8 +503,10 @@ if __name__ == "__main__":
 Nothing else changes. `indiserver ./my_driver.py` launches it as before, and the three
 devices appear as three devices on the first `getProperties`. From the command line,
 `indi-nexus run my_driver:Camera my_driver:GuideChip` does the same with no `__main__`
-block. Each device keeps its own name, properties, handlers and `@every` jobs; they are
-ordinary independent objects that happen to share a process, which is the point - it is how
+block.
+
+Each device keeps its own name, properties, handlers and `@every` jobs. They are ordinary
+independent objects that happen to share a process. That is the point: one process is how
 they share the one USB handle or serial port the hardware actually has.
 
 `examples/guided_camera.py` is the worked version: a camera and its guide chip behind one
@@ -494,14 +520,17 @@ What they share, and what they do not:
   is not waiting for any of them. A busy device does not delay another's updates.
 - **Client writes are handled one at a time, across all of them.** The driver reads the
   next message only after the current handler returns, so a handler that takes two seconds
-  delays the *next* write - for every device in the process, not only its own.
+  delays the *next* write for every device in the process, not only its own.
 
 That last one is the trade, and it is what libindi has always done. It is usually right,
 because devices sharing a process usually share hardware that has to take turns anyway.
-Note what does *not* change it: `off_thread` keeps the event loop free but the handler
-still waits for it, and `serialize_dispatch = False` drops a lock that the other device was
-never waiting on. If two devices must never delay each other's commands, run them as two
-drivers - `indiserver ./camera.py ./wheel.py` launches both, and that is the real answer.
+
+Two things do *not* change it. `off_thread` keeps the event loop free, but the handler
+still waits for it. `serialize_dispatch = False` drops a lock the other device was never
+waiting on.
+
+Run them as two drivers if two devices must never delay each other's commands.
+`indiserver ./camera.py ./wheel.py` launches both, and that is the real answer.
 
 ## Testing without hardware
 
@@ -525,10 +554,10 @@ async def test_lamp_turns_on():
 - `write(name, **values)` sends exactly what a real client would and routes it through the
   device's real dispatch, so a handler that passes here works under `indiserver`.
 - `tick(job)` runs one iteration of an `@every` method without waiting out its interval.
-- `defs()`, `sets()`, `deletes()`, `messages` and `latest(name)` are what the device said;
+- `defs()`, `sets()`, `deletes()`, `messages` and `latest(name)` are what the device said.
   `clear()` forgets the history so far, to separate setup from the thing being tested.
   `deletes()` is how you assert a retraction: a `delete_property` in `on_disconnect`
-  shows up there, and nowhere else.
+  shows up there and nowhere else.
 
 `tests/test_weather_example.py` is a complete worked set, including a failing instrument
 and a dropped connection.

@@ -1,8 +1,7 @@
 # Changelog
 
 All three packages ship at the same version, so a version number means the same release
-everywhere. Each one records its own changes, and they are all here so nothing is only
-findable if you already knew where to look.
+everywhere. Each package's own notes are below.
 
 The [releases page](https://github.com/sidereal-software/indi-nexus/releases) carries the
 same notes with links to the commits.
