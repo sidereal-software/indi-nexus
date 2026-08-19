@@ -1,0 +1,48 @@
+/*
+ * The documentation site's faces, self-hosted.
+ *
+ * Material links Roboto from fonts.googleapis.com by default, which this site
+ * did until now: a third-party request on every page load, transmitting the
+ * reader's IP without consent (a German court has held that to be a GDPR
+ * violation), for a face the design never chose. `font: false` in mkdocs.yml
+ * turns that off.
+ *
+ * PROSE IS NOT SET IN THE PANEL'S FACE, and that is deliberate rather than an
+ * oversight. The panel is monospaced because it is full of readouts, wire names
+ * and aligned columns, where a fixed advance is doing real work. A guide is
+ * prose, and monospaced prose is slower to read for no gain. So the two surfaces
+ * share the identity where it means something - the achromatic chrome and the
+ * reserved-hue rule - and part company on the body face.
+ *
+ * Prose therefore takes the reader's own system stack: nothing to download,
+ * nothing to hotlink, and the face their OS already renders best. Code takes
+ * JetBrains Mono, which is exactly what `--font-mono` reads in the panel, so a
+ * property name looks the same in the guide as on the instrument.
+ *
+ * SIL Open Font License 1.1; `fonts/OFL-jetbrainsmono.txt` ships beside the file
+ * and must stay with it.
+ */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/jetbrains-mono-400.woff2") format("woff2");
+}
+
+/*
+ * Set `--md-code-font`, NOT `--md-code-font-family`. Material composes the
+ * second from the first - `var(--md-code-font, _), SFMono-Regular, Consolas,
+ * Menlo, monospace` - and does it on a selector that beats `:root` for anything
+ * inheriting inside `body`, so overriding the composed value here looks correct
+ * in devtools on `<html>` and does nothing to a `<code>`. Setting the base
+ * variable lets Material's own composition carry it, fallbacks included.
+ *
+ * `--md-text-font` is deliberately left unset: with `font: false` it stays at
+ * Material's `_` placeholder and prose falls through to the system stack, which
+ * is exactly what prose should have here. Nothing to download for the body face.
+ */
+:root {
+  --md-code-font: "JetBrains Mono";
+}

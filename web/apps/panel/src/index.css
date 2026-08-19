@@ -6,6 +6,15 @@
  * would instead `@import "@indikit/react/theme.css"` and
  * `@source "./node_modules/@indikit/react/dist"`.
  */
+/*
+ * The faces the theme names, self-hosted. Without this the panel renders in
+ * whatever mono the machine has, and a wordmark that separates its halves by
+ * weight is relying on a letterform it never shipped. A standalone app would
+ * `@import "@indikit/react/fonts.css"`; the monorepo-relative path is used here
+ * for the same reason the theme import below is.
+ */
+@import "../../../packages/react/src/fonts.css";
+
 @import "../../../packages/react/src/theme.css";
 @source "../../../packages/react/src/**/*.{ts,tsx}";
 

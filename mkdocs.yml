@@ -8,6 +8,10 @@ repo_name: indikit
 
 theme:
   name: material
+  # Off, or Material links Roboto from fonts.googleapis.com on every page load.
+  # `docs/stylesheets/fonts.css` says why this site self-hosts instead, and sets
+  # the prose and code families itself.
+  font: false
   # `custom` matches no rule Material ships, which is the point: docs/stylesheets/palette.css
   # then owns every primary/accent variable outright. Read the comment at the top of that
   # file before changing either of these - `custom` also forfeits Material's per-colour link
@@ -48,6 +52,7 @@ theme:
     - search.suggest
 
 extra_css:
+  - stylesheets/fonts.css
   - stylesheets/palette.css
 
 markdown_extensions:

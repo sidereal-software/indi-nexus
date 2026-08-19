@@ -43,10 +43,12 @@
       "import": "./dist/testing/index.js"
     },
     "./styles.css": "./dist/styles.css",
-    "./theme.css": "./dist/theme.css"
+    "./theme.css": "./dist/theme.css",
+    "./fonts.css": "./dist/fonts.css",
+    "./fonts/*": "./dist/fonts/*"
   },
   "scripts": {
-    "build": "tsup && pnpm build:css && cp src/theme.css dist/theme.css",
+    "build": "tsup && pnpm build:css && cp src/theme.css dist/theme.css && cp src/fonts.css dist/fonts.css && cp -R src/fonts dist/fonts",
     "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
     "dev": "tsup --watch",
     "typecheck": "node ../../scripts/extract-doc-snippets.mjs --only=react && tsc --noEmit && tsc -p tsconfig.test.json",

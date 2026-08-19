@@ -1,0 +1,77 @@
+/*
+ * Self-hosted faces for the INDIkit theme. Opt-in: `@indikit/react/fonts.css`.
+ *
+ * WHY THIS IS SELF-HOSTED RATHER THAN LINKED. `theme.css` names Geist Mono and
+ * JetBrains Mono, and a font stack that only *names* a face renders in whatever
+ * mono the machine happens to have - Menlo, Consolas, DejaVu - so a design whose
+ * wordmark distinguishes its halves by weight was relying on a letterform it did
+ * not ship. The obvious remedy is a `<link>` to fonts.googleapis.com, and it is
+ * the wrong one here: PRODUCT.md's operating context has instruments at a dark
+ * site where "connectivity is not guaranteed", and the panel is served from the
+ * operator's own machine by `indikit serve`. A CDN link would make the typeface
+ * the only thing on that page needing the public internet, so the readouts would
+ * silently change shape exactly where the product claims to work. Hotlinking also
+ * transmits the reader's IP to a third party on every page load, which a German
+ * court has held to be a GDPR violation without consent.
+ *
+ * WHY IT IS OPT-IN RATHER THAN PART OF `styles.css`. This is a component library,
+ * and a consuming application owns its own typography; forcing 72KB of faces on
+ * an app that already loads its own would be shipping them twice. The reference
+ * panel imports this file because the panel is an application - and the one
+ * bundled into the Python wheel, which is the copy an operator actually runs.
+ *
+ * LICENSING. Both families are SIL Open Font License 1.1, which permits bundling
+ * and redistribution as part of a larger work and requires the licence to travel
+ * with the font. `OFL-geistmono.txt` and `OFL-jetbrainsmono.txt` sit beside these
+ * files and ship with them; do not separate them.
+ *
+ * These are the latin subsets, and only the weights the interface renders: four
+ * of Geist Mono (400 body, 500 labels, 600 titles, 700 the wordmark's second
+ * half) and one of JetBrains Mono, which `--font-mono` uses for readings, wire
+ * names and the message log. Adding a weight to the design means adding a file
+ * here, or the browser synthesises it and the letterform stops being the one
+ * that was designed against.
+ *
+ * `font-display: swap` on purpose: a readout an operator is waiting on should
+ * appear in a fallback face rather than not appear.
+ */
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/geist-mono-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/geist-mono-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/geist-mono-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./fonts/geist-mono-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/jetbrains-mono-400.woff2") format("woff2");
+}

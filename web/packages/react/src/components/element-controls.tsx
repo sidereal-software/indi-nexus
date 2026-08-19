@@ -146,9 +146,16 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
             reading exactly "Set". The visible word stays - the card title is
             right above it - but the accessible name carries the vector, so a
             list of controls tells exposure from binning from gain. */}
+        {/* The default variant, not `secondary`. This is the control that writes
+            to the instrument, and with the brand's hue removed value is the only
+            thing left to carry action hierarchy. Measured, `--secondary` sits
+            1.22:1 against the card in light, 1.43 in dark, 1.21 in night - it is
+            not a filled control at all, it is a label on the card, which is why
+            it read as disabled beside an unselected switch segment. The default
+            fill is 18.29 / 14.66 / 9.89:1 against the same cards, with its label
+            at 18.29 / 15.31 / 10.24:1. */}
         <Button
           type="submit"
-          variant="secondary"
           size="sm"
           className="self-end"
           aria-label={`Set ${displayLabel(vector)}`}

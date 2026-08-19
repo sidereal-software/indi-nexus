@@ -837,3 +837,27 @@ html:not(.dark) [class~="hover:bg-secondary/80"]:hover {
     opacity: 0;
   }
 }
+
+/* Selection and the caret, which the browser otherwise paints from its own
+   defaults - the two surfaces this otherwise exhaustive stylesheet skipped.
+   Both matter more here than on an ordinary page: an operator selects a wire
+   name out of the message log to paste into a terminal, and types a coordinate
+   into a number field on a near-black ground where a default blue caret is both
+   off-world and, at 1px on that ground, genuinely hard to find.
+
+   `::selection` takes `--accent` behind `--foreground`, which measures 15.01 :1
+   light, 10.27 dark, 7.62 night - selected text stays at least AA-large-plus in
+   every scheme and clears AAA in two, where a browser default guarantees
+   nothing about a themed page. `caret-color` takes `--foreground` itself, which
+   is 12.54 / 9.79 / 6.75:1 against the `bg-input/30` fill it blinks inside.
+
+   Layered normally rather than in the unlayered corrections above: neither
+   competes with a registry utility, so neither needs to outrank one. */
+::selection {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+* {
+  caret-color: var(--foreground);
+}
