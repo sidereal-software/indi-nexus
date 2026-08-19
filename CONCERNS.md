@@ -17,29 +17,6 @@ here.
 
 ## Needs a decision or an account you cannot make from a checkout
 
-### The docs are served at the old hostname, and the new one fails TLS
-
-The rename pointed every published URL at `indikit.sidereal.software` -
-`pyproject.toml`, both `package.json` files, `mkdocs.yml`, and the docs themselves. The DNS
-record for it exists and resolves to GitHub's Pages addresses. The repository's Pages
-**custom domain setting** was not moved with it, and still reads
-`indi-nexus.sidereal.software`.
-
-The result is a site that works and cannot be reached by the name it advertises. Pages
-serves the renamed content correctly at the old hostname, certificate and all, while
-`https://indikit.sidereal.software/` fails at the TLS handshake, because Pages neither
-routes that name to this repository nor holds a certificate for it. A visitor does not get
-a 404 they can interpret - they get a browser security warning.
-
-DNS resolving is not the check for this. The check is what `curl` gets from the hostname the
-tree advertises.
-
-**Resolved by:** Settings -> Pages -> Custom domain -> `indikit.sidereal.software`, then
-waiting for the Let's Encrypt certificate and turning on Enforce HTTPS. Both hostnames are
-without HTTPS for a few minutes while the certificate is issued, and the old one stops
-serving for good once the switch is made. Delete this entry when
-`curl -sSI https://indikit.sidereal.software/` returns 200.
-
 ### The 0.2.0 release tags are the last things still called `indi-nexus`
 
 `indi-nexus-v0.2.0` is on origin with a GitHub release attached, and
