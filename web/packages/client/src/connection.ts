@@ -82,6 +82,12 @@ export class ReconnectingConnection {
   /** Open the connection (idempotent while already connecting/connected). */
   start(): void {
     this.closing = false;
+    // `start()` supersedes any attempt an earlier close deferred: whichever
+    // socket we hold when this returns is the one to reconnect from. Leaving
+    // the timer booked opens a second socket on top of it later and orphans
+    // one of the two, and hands the next close a part-spent timer that
+    // `scheduleReconnect` then declines to replace, shortening the backoff.
+    this.cancelReconnect();
     if (this.socket !== null) return;
     this.open();
   }
@@ -89,10 +95,7 @@ export class ReconnectingConnection {
   /** Close the connection and stop reconnecting. */
   close(): void {
     this.closing = true;
-    if (this.reconnectTimer !== null) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.cancelReconnect();
     if (this.socket !== null) {
       const socket = this.socket;
       this.socket = null;
@@ -150,7 +153,19 @@ export class ReconnectingConnection {
     if (this.reconnectTimer !== null) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      if (!this.closing) this.open();
+      // A socket can have arrived while this was pending, and `open()` would
+      // overwrite `this.socket` with a third one - leaving the healthy socket
+      // alive, unowned and unclosed, with every frame it delivers dropped by
+      // the `current()` guard. The same guard that protects a socket we let go
+      // of has to protect the one we are still holding.
+      if (this.closing || this.socket !== null) return;
+      this.open();
     }, this.reconnectDelay);
+  }
+
+  private cancelReconnect(): void {
+    if (this.reconnectTimer === null) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 }
