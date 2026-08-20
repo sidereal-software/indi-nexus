@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.0](https://github.com/sidereal-software/indikit/compare/client-v0.2.0...client-v0.3.0) (2026-08-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* the distribution, the import package and the CLI are all `indikit`; the environment prefix is `INDIKIT_`; the npm packages are `@indikit/client` and `@indikit/react`; and the driver property `NEXUS_CONFIG_PERSISTED` is now `INDIKIT_CONFIG_PERSISTED`. Nothing was ever published under the old names, so no upgrade path is provided.
+* **a11y:** `AlertAnnouncer` is renamed to `StatusAnnouncer`. It now announces three things and only one of them is an alert: a vector entering Alert, an operator-initiated write reaching a settled state, and connection loss or recovery. The new name matches the `role="status"` it renders.
+
+### Added
+
+* **client:** add onWrite so a consumer can tell its writes from telemetry ([0c91fab](https://github.com/sidereal-software/indikit/commit/0c91fab9664111ca7a5328d83895f110eb544a20))
+* **web:** version the browser JSON contract with a hello frame ([6a4333a](https://github.com/sidereal-software/indikit/commit/6a4333ac00400652ca3f65649d35909a46802548))
+
+
+### Fixed
+
+* **a11y:** correct contrast, targets and motion from theme.css ([d37ca55](https://github.com/sidereal-software/indikit/commit/d37ca558033ede615659a7d7db482d1ca48451df))
+* **client:** fall back to the element name when a label is blank ([a887fbf](https://github.com/sidereal-software/indikit/commit/a887fbfdcd29bdd94c9e0e283d940792f199193d))
+* **client:** mirror the new protocol rules in the browser store ([398ab0b](https://github.com/sidereal-software/indikit/commit/398ab0b422d333e34059b5a73a43afcdad3fb160))
+* **client:** stop a reconnect timer orphaning a live socket ([cfa0311](https://github.com/sidereal-software/indikit/commit/cfa0311555ae28a784f80f6e9c5ef6b367900cdf))
+* **driver:** remove a property when it is deleted, as libindi does ([c5d3292](https://github.com/sidereal-software/indikit/commit/c5d32921f63338722e738820c6344593f0e7e4f9))
+* **protocol:** emit standard base64 for a BLOB, not the URL-safe alphabet ([064d1c7](https://github.com/sidereal-software/indikit/commit/064d1c72cd342d7adacb246099c44eaa789c2054))
+
+
+### Documentation
+
+* reconcile every document with the three new surfaces ([9c5c13c](https://github.com/sidereal-software/indikit/commit/9c5c13c050c4d5b0270acf4ae37774d58fb3a690))
+* reconcile the guides, the register and the conventions ([bdb2571](https://github.com/sidereal-software/indikit/commit/bdb2571bec68919c8b58f40096b4e7b7a41bb928))
+* rewrite the guides and READMEs in a plainer tone ([d6ad6cd](https://github.com/sidereal-software/indikit/commit/d6ad6cdd7e3fad2146ae609a31c36d7c9caee04e))
+
+
+### Changed
+
+* rename the project to INDIkit ([1b5cfd6](https://github.com/sidereal-software/indikit/commit/1b5cfd629a17ffd08c92866df6604ddf79b95c73))
+
 ## [0.2.0](https://github.com/sidereal-software/indi-nexus/compare/client-v0.1.0...client-v0.2.0) (2026-08-15)
 
 

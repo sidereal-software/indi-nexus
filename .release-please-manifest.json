@@ -1,5 +1,5 @@
 {
-  ".": "0.2.0",
-  "web/packages/client": "0.2.0",
-  "web/packages/react": "0.2.0"
+  ".": "0.3.0",
+  "web/packages/client": "0.3.0",
+  "web/packages/react": "0.3.0"
 }
