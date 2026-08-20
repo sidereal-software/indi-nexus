@@ -24,8 +24,21 @@ const buttonVariants = cva(
         // next `shadcn add button`.
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
+        // DEVIATION from the shadcn registry: `border-input` in light mode too.
+        // The registry emits a bare `border` here, which takes `--border` - and
+        // `--border` is decorative in this theme, a hairline that separates one
+        // surface from another. SC 1.4.11 asks 3:1 of the thing that tells you
+        // where a *control* is, and this variant's edge is exactly that: it is
+        // the Cancel beside a destructive confirm, and the only thing drawing it.
+        // Dark already hooked `--input` for this reason; light was relying on the
+        // decorative token and measured 1.24:1.
+        //
+        // Raising `--border` instead was tried and shipped and was wrong: it put
+        // a 3.78:1 line around every card, sidebar and strip on the page to fix
+        // one control, and the panel read as a wireframe. Fix the control.
+        // Keep this on the next `shadcn add button`.
         outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:

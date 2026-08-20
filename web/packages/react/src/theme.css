@@ -66,7 +66,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #fbfcfd;
+  --background: #f4f6f8;
   --foreground: #12151a;
   --card: #ffffff;
   --card-foreground: #12151a;
@@ -103,7 +103,7 @@
      variant hardcodes, on the button that deletes a saved configuration with no
      undo. */
   --destructive: #a3120f;
-  --border: #7c8490;
+  --border: #d3d8dd;
   /* 4.66 on the card, 3.82 on `--accent`, and 3.19 against its own
      `bg-input/30` fill. That fill renders #d3d6d9, with `--foreground` at
      12.54:1 on it and 9.39:1 on the `/50` hover.
@@ -137,13 +137,13 @@
   --chart-3: #8c939b;
   --chart-4: #adb2b8;
   --chart-5: #c8ccd0;
-  --sidebar: #f1f3f5;
+  --sidebar: #eceef1;
   --sidebar-foreground: #12151a;
   --sidebar-primary: #12151a;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e6e9ec;
   --sidebar-accent-foreground: #12151a;
-  --sidebar-border: #7c8490;
+  --sidebar-border: #d3d8dd;
   --sidebar-ring: #0a0c0f;
 
   --font-sans: Geist Mono, ui-monospace, monospace;
@@ -205,9 +205,9 @@
 .dark {
   --background: #0a0c0f;
   --foreground: #dfe4ea;
-  --card: #101216;
+  --card: #16191f;
   --card-foreground: #dfe4ea;
-  --popover: #101216;
+  --popover: #16191f;
   --popover-foreground: #dfe4ea;
   /* The continuum, not a colour. `--primary` is read as text here (the message
      log's device name, link-variant buttons) as well as filled behind
@@ -245,8 +245,8 @@
      the wrong trade on the button that deletes a saved configuration.
      The variant no longer draws this at `bg-destructive/60`: that composited to
      #973030 and measured 2.48:1, which is the defect this palette closes. */
-  --destructive: #c01b1b;
-  --border: #737b87;
+  --destructive: #c2321c;
+  --border: #2b3138;
   /* See the light value for why this token is not split. 4.87 on the card, 3.41
      on `--accent`, and 3.25 against its own `bg-input/30` fill. That fill renders
      #30343a, with `--foreground` at 9.79:1 on it and 6.89:1 on the `/50` hover.
@@ -265,7 +265,7 @@
   --sidebar-primary-foreground: #0a0c0f;
   --sidebar-accent: #2b3138;
   --sidebar-accent-foreground: #dfe4ea;
-  --sidebar-border: #737b87;
+  --sidebar-border: #2b3138;
   --sidebar-ring: #ffffff;
 
   --shadow-2xs: 0 1px 3px 0px rgb(0 0 0 / 0.04);
@@ -342,9 +342,9 @@
 .night {
   --background: #000000;
   --foreground: #a8b0b8;
-  --card: #050607;
+  --card: #0b0d0f;
   --card-foreground: #a8b0b8;
-  --popover: #050607;
+  --popover: #0b0d0f;
   --popover-foreground: #a8b0b8;
   --primary: #aeb6bf;
   --primary-foreground: #000000;
@@ -355,7 +355,7 @@
   --accent: #1b1e22;
   --accent-foreground: #a8b0b8;
   --destructive: #c72623;
-  --border: #636a74;
+  --border: #23272c;
   --input: #6f7780;
   --ring: #e8ecf0;
   --chart-1: #6f7780;
@@ -369,7 +369,7 @@
   --sidebar-primary-foreground: #000000;
   --sidebar-accent: #1b1e22;
   --sidebar-accent-foreground: #a8b0b8;
-  --sidebar-border: #636a74;
+  --sidebar-border: #23272c;
   --sidebar-ring: #e8ecf0;
 
   /* Unchanged from `.dark`: the states are the reason the ceiling is a
