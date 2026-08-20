@@ -238,13 +238,6 @@ components:
     rounded: "{rounded.md}"
     padding: "0 12px"
     height: "32px"
-  button-command-stop:
-    backgroundColor: "{colors.destructive}"
-    textColor: "#ffffff"
-    typography: "{typography.body}"
-    rounded: "{rounded.md}"
-    padding: "0 12px"
-    height: "32px"
 ---
 
 # Design System: INDIkit
@@ -783,9 +776,10 @@ panel and a dead one.
   the previous palette, putting the most dangerous button in the product at its weakest in the
   scheme an operator uses at night. Not fixable from `theme.css`, because `background-color` is
   a real property and an unlayered rule would also beat `hover:bg-destructive/90`.
-  Two controls wear it: `Purge` in the configuration dialog, and **`Abort` on the instrument
-  panel**. Label on fill 7.92 / 5.57 / 6.06:1; fill against the card 7.92 / 3.16 / 3.26:1,
-  which clears SC 1.4.11's 3:1 for the graphic in all three schemes.
+  **Exactly one control wears it: `Purge` in the configuration dialog.** That is the whole
+  list on purpose - a destructive button deletes something with no way back, and it lives on
+  a surface an operator opened deliberately, never on an instrument card beside a state
+  badge. Label on fill 7.92 / 5.57 / 6.06:1.
 - **Ghost / Outline:** chrome only - the theme toggle, the sidebar trigger, secondary dialog
   actions. Where the app owns the box it grows the control for real (`size-11`, 44px), so the
   hover tint and the focus ring grow with the target.
@@ -871,16 +865,22 @@ stops the instrument sat beside the genuinely unpressed halves of `Connect` and 
 identical to them and the palest thing on the tab, while the action colour was spent on
 `Unpark` reporting that nothing was happening.
 
-- **Stop commands are destructive**, on the element name libindi gives all four of them
-  (`ABORT`, on telescope, dome, focuser and camera). Not by analogy: stopping a moving dome
-  is what leaves `DOME_SHUTTER` in Alert reporting "Status: unknown", so the press really
-  does discard the instrument's position with nothing to undo it, and it is also the one
-  control that has to be found first at 3am.
-- **Every other command is primary**, the same split `DeviceConfigDialog` already makes over
-  `CONFIG_PROCESS`: `Save` primary, `Purge` destructive.
+- **Every command is primary, including `Abort`, and there is no second variant.** Abort was
+  drawn destructive for one release, on the true observation that stopping a moving dome
+  leaves `DOME_SHUTTER` in Alert with its position unknown. True, and not a reason to spend
+  a hue. Red here is the enumerated colour of a *destructive button in a dialog*; on an
+  instrument card that can carry an Alert badge two inches away it asks an operator to tell
+  "the instrument is in Alert" from "this button stops it" by hue, at 3am, which is the
+  confusion this palette exists to prevent. The card's title and the button's label already
+  say which command it is.
+- **Destructive stays where the press destroys something the operator cannot get back**, and
+  on this product that is `Purge` in the configuration dialog: a file deletion with no
+  backup, behind a confirmation, on a surface an operator opened deliberately. An instrument
+  command is not that, however urgent.
 - **Feedback is the card's state badge, not the button.** A push button has no on-state and
   needs none - the driver answering Busy and then Ok is what says the command landed, which
-  is the same channel every other control on this panel reports through.
+  is the same channel every other control on this panel reports through. An abort that put
+  the instrument into Alert says so there, in the state hue, where a state belongs.
 
 ### State Badge and Status Dot
 
@@ -1019,8 +1019,8 @@ density.
   never by reaching for a seventh hue.
 - **Do** leave a state badge on the four state hues and never on `--primary`; a badge is not
   a control.
-- **Do** draw a one-member `AtMostOne` switch as a push button, and a stop command
-  (element `ABORT`) as the destructive one.
+- **Do** draw a one-member `AtMostOne` switch as a push button, in the one action fill every
+  other writing control wears.
 - **Do** keep `--secondary` and `--ring` free of hue in light and dark, and let `.night` tint
   them along with the rest of the chrome.
 - **Do** re-measure a colour on every surface it appears over before changing it, and leave the
@@ -1052,6 +1052,10 @@ density.
 - **Don't** draw a momentary command as a toggle. `aria-pressed` on a control with one
   position is the same false claim the radio group made, and the look that comes with it is
   an unselected member's.
+- **Don't** reach for `--destructive` to mark a control as urgent or consequential. It is
+  the colour of a press that destroys something with no way back, and putting it on an
+  instrument card sets it beside the Alert badge it must never be confused with. Urgency is
+  the operator knowing where the control is, which position and label give it.
 - **Don't** adjust a `--state-*` fill to fix a contrast problem. Change the foreground, and
   record the shortfall where the ceiling makes AAA unreachable.
 - **Don't** let the safelight reach the four `--state-*` tokens. `.night`'s red is bounded to

@@ -334,20 +334,19 @@ describe("SwitchVectorControl: the momentary command shape", () => {
     expect(frame.vector.elements).toEqual([{ kind: "switch", name: "ABORT", value: "On" }]);
   });
 
-  it("gives a stop command the destructive fill and any other command the action fill", () => {
-    // `ABORT` is the element name libindi gives every stop command, on four
-    // different kinds of hardware, so the element is the check and no list of
-    // property names is needed. The two fills are the same split
-    // `DeviceConfigDialog` makes over CONFIG_PROCESS: destructive for the press
-    // that discards something, primary for the press that writes.
-    renderConnected(<SwitchVectorControl vector={commandVec()} />);
-    expect(screen.getByRole("button", { name: "Abort" }).className).toContain("bg-destructive");
-
-    cleanup();
-    renderConnected(<SwitchVectorControl vector={commandVec("HOME")} />);
-    const home = screen.getByRole("button", { name: "Abort" });
-    expect(home.className).toContain("bg-primary");
-    expect(home.className).not.toContain("bg-destructive");
+  it("gives every command the one action fill, including a stop command", () => {
+    // `Abort` was drawn `--destructive` for one release and is not any more.
+    // Red is the enumerated hue of a destructive button in a dialog, and this
+    // card can carry an Alert badge two inches from the control - so a red
+    // button asks an operator to tell "in Alert" from "stops it" by hue. Every
+    // command writes to the instrument and every one looks like it.
+    for (const element of ["ABORT", "HOME"]) {
+      renderConnected(<SwitchVectorControl vector={commandVec(element)} />);
+      const button = screen.getByRole("button", { name: "Abort" });
+      expect(button.className).toContain("bg-primary");
+      expect(button.className).not.toContain("bg-destructive");
+      cleanup();
+    }
   });
 
   it("leaves the other one-member rules as toggles", () => {

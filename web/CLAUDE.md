@@ -213,13 +213,15 @@ dome's Main Control the one control that stops the instrument sat beside the gen
 unpressed `Connect` and `Park`, indistinguishable from them and the palest thing on the tab,
 while `--primary` went to `Unpark` reporting that nothing was happening.
 
-The variant is the split `DeviceConfigDialog` already makes over `CONFIG_PROCESS`:
-`destructive` for the press that destroys something, `default` for the press that writes.
-**Element `ABORT` is the destructive case**, which is libindi's own name for the stop command
-on a telescope, a dome, a focuser and a camera alike - and not destructive by analogy, since
-aborting a shutter move is exactly what leaves `DOME_SHUTTER` in Alert with "Status:
-unknown". Feedback stays the card's state badge; a push button has no on-state and needs
-none.
+**There is one variant and no element is special.** `Abort` shipped as `destructive` for one
+release, and the argument for it was true - aborting a shutter move is exactly what leaves
+`DOME_SHUTTER` in Alert with "Status: unknown" - and still wrong. Red on this panel is the
+enumerated hue of a destructive button *in a dialog*; on an instrument card that can carry an
+Alert badge two inches away it asks an operator to separate "the instrument is in Alert" from
+"this button stops it" by hue at 3am. `--destructive` now has exactly one wearer in the
+product, `Purge`, and that is the list. Feedback stays the card's state badge; a push button
+has no on-state and needs none, and an abort that put the instrument into Alert says so
+there, in the state hue, where a state belongs.
 
 The button keeps the vector's `fieldset aria-label`, so two instruments with a stop command
 do not offer a reader two controls both called "Abort".

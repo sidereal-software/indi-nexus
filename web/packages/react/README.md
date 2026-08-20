@@ -143,7 +143,8 @@ entry.
 `SwitchVectorControl` has one shape rule worth knowing about too: a **single-member
 `AtMostOne`** vector is INDI's momentary command, not a selection, so it renders as one push
 button rather than as a toggle stuck in its off position. libindi's stop commands are all
-built that way, and the one whose element is named `ABORT` gets the destructive variant.
+built that way. Every command gets the same action fill, `Abort` included - the vector's own
+state badge is what reports the consequence.
 
 `DevicePanel` therefore leaves `CONFIG_PROCESS` out, and folds the driver's own machinery
 (`DRIVER_MACHINERY`: debug plumbing, snooping) into a collapsed section at the bottom.

@@ -212,16 +212,6 @@ const SWITCH_MEMBER_CLASSES =
   "data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground";
 
 /**
- * The element name libindi gives every command that stops an instrument.
- *
- * `TELESCOPE_ABORT_MOTION`, `DOME_ABORT_MOTION`, `FOCUS_ABORT_MOTION` and
- * `CCD_ABORT_EXPOSURE` are four different properties on four kinds of hardware
- * and all four name their member `ABORT`, so the element is the check and no
- * list of property names is needed.
- */
-const ABORT = "ABORT";
-
-/**
  * Whether a switch vector is a momentary command rather than a reported state.
  *
  * INDI has one switch type and uses it for two different objects: a selection
@@ -254,14 +244,16 @@ function isCommand(vector: SwitchVector): boolean {
  * the instrument the palest thing on the card. There is no other half here: the
  * member is not off, it has not been pressed.
  *
- * The variant follows the same two-way split {@link DeviceConfigDialog} makes
- * over `CONFIG_PROCESS`, which is the other momentary command on this panel:
- * `--primary` for a command that writes, `--destructive` for one that destroys
- * something. Abort is the destructive case, and not by analogy - stopping a
- * moving dome mid-travel is what leaves `DOME_SHUTTER` in Alert reporting
- * "Status: unknown", so the press really does discard the instrument's position
- * with nothing to undo it. It also has to be the thing an operator finds first
- * at 3am, which no other member of this control ever is.
+ * It wears `--primary`, the same fill every other control that writes to the
+ * instrument wears, and there is deliberately no second variant here. `Abort`
+ * was drawn `--destructive` for one release on the argument that stopping a
+ * moving dome discards the instrument's position - true, and still not a reason
+ * to spend a colour on it. Red on this panel is not "important", it is the
+ * enumerated hue that belongs to a *destructive* button in a dialog; on a card
+ * that can carry an Alert badge two inches away, a red control asks an operator
+ * to tell "the instrument is in Alert" from "this button stops it" by hue at
+ * 3am. The card's own title and the button's label already say which command
+ * this is, and every command on the panel now looks like every other.
  *
  * Feedback is the vector's own state badge, as everywhere else in this package.
  * A push button has no on-state to show, and it needs none: the driver answering
@@ -285,7 +277,6 @@ function CommandSwitchControl({ vector }: { vector: SwitchVector }) {
       <Button
         type="button"
         size="sm"
-        variant={element.name === ABORT ? "destructive" : "default"}
         disabled={!writable}
         onClick={() => client.setSwitch(vector.device, vector.name, { [element.name]: "On" })}
       >
