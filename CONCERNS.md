@@ -106,8 +106,9 @@ one, which is why it is still here.
 
 ### One interop test fails on CI and passes locally
 
-`interop` was green on 2026-08-17 (`40c9119`) and red on the 18th and 19th, on two tests.
-One of them is fixed. The other is this entry.
+`interop` was green on 2026-08-17 (`40c9119`) and has been red every night since, through
+the 20th. Two tests failed on the first two nights; one of them is fixed, and the 20th
+failed on this one alone.
 
 `tests/interop/test_blob.py::test_the_only_policy_delivers_the_frame_and_nothing_else`
 asserts that under `BLOBPolicy.ONLY` nothing but BLOBs arrives, and non-BLOB updates
@@ -117,8 +118,9 @@ arrive anyway - `CCD_STREAM_FRAME`, `FILTER_NAME`, `FILTER_SLOT`, `GUIDER_FRAME`
 **Two facts point the same way, and neither is about `ONLY` meaning something we misread.**
 The two CI legs report *different* property sets, where a fixed libindi rule would produce
 the same set on both. And the whole suite passes locally in the interop container - 39
-passed, 2 skipped, twice - against the same Ubuntu 24.04 and the same distro libindi the
-failing leg installs. The difference left is the machine: a shared CI runner is slower and
+passed, 2 skipped, three times now, most recently on the 20th against the same nightly that
+had just failed - on the same Ubuntu 24.04 and the same distro libindi the failing leg
+installs. The difference left is the machine: a shared CI runner is slower and
 noisier than a laptop, so this reads as a race between the policy taking effect and
 definitions already in flight, which a faster machine wins and a loaded one does not.
 
