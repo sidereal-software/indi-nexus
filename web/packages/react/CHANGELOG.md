@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.3.0](https://github.com/sidereal-software/indikit/compare/react-v0.2.0...react-v0.3.0) (2026-08-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **theme:** `--primary` is a blue rather than a neutral in the light and dark schemes, and every chrome token in `.night` is now red. A consumer who matched the previous neutral primary, or who relied on `.night` being a grey scheme, has to move.
+* **theme:** every colour token in `@indikit/react`'s theme changes value, including all four `--state-*` fills and their foregrounds, and a third scheme (`.night`) joins light and dark. A consumer who hardcoded any token's hex, or who toggles themes by writing the `dark` class directly, has to move: `night` is expressed as `dark night` together. `useTheme` now returns `cycle` rather than `toggle` and reports three schemes.
+* the distribution, the import package and the CLI are all `indikit`; the environment prefix is `INDIKIT_`; the npm packages are `@indikit/client` and `@indikit/react`; and the driver property `NEXUS_CONFIG_PERSISTED` is now `INDIKIT_CONFIG_PERSISTED`. Nothing was ever published under the old names, so no upgrade path is provided.
+* **a11y:** `AlertAnnouncer` is renamed to `StatusAnnouncer`. It now announces three things and only one of them is an alert: a vector entering Alert, an operator-initiated write reaching a settled state, and connection loss or recovery. The new name matches the `role="status"` it renders.
+* **react:** DeviceConfigCard and DeviceConfigCardProps are removed from @indi-nexus/react and replaced by DeviceConfigDialog and DeviceConfigDialogProps. The card was deleted rather than kept alongside the dialog: nothing used it once the panel stopped pinning it, and two components rendering identical copy is the pair that drifts.
+
+### Added
+
+* **docs:** repaint the site in an astronomy palette that passes AA ([5b916bb](https://github.com/sidereal-software/indikit/commit/5b916bb22d68ac6ff6194463deb793677f111de8))
+* **driver:** publish which properties Save will write ([e1b2cc1](https://github.com/sidereal-software/indikit/commit/e1b2cc15e9b5cf3e3dc38c13aa76a655b65eee58))
+* **react:** give CONFIG_PROCESS a card that tells the truth ([e526d11](https://github.com/sidereal-software/indikit/commit/e526d11d43c8065963088b361802b61a03993f51))
+* **react:** move configuration to a sidebar entry and a modal ([d3506f1](https://github.com/sidereal-software/indikit/commit/d3506f1c25874b360349c66a64e942f8751fedeb))
+* **theme:** a blue action, and a red safelight for night ([0bb3dcc](https://github.com/sidereal-software/indikit/commit/0bb3dcce4e2157301e6df3ead5e521db0f0f132f))
+* **theme:** commit the Emission Spectrum identity across three schemes ([e2d9092](https://github.com/sidereal-software/indikit/commit/e2d909248661c4ab0d1c434c844299691d5ba54c))
+* **theme:** self-host the faces, and let value carry the write action ([58e427f](https://github.com/sidereal-software/indikit/commit/58e427f292a7e30149c52e349eb0fa2f97abb0f8))
+* **theme:** the selected switch member wears the action colour ([1875524](https://github.com/sidereal-software/indikit/commit/1875524b78fcbb1316abdf748187ae51ab0a1c38))
+* **web:** version the browser JSON contract with a hello frame ([6a4333a](https://github.com/sidereal-software/indikit/commit/6a4333ac00400652ca3f65649d35909a46802548))
+
+
+### Fixed
+
+* **a11y:** correct contrast, targets and motion from theme.css ([d37ca55](https://github.com/sidereal-software/indikit/commit/d37ca558033ede615659a7d7db482d1ca48451df))
+* **client:** fall back to the element name when a label is blank ([a887fbf](https://github.com/sidereal-software/indikit/commit/a887fbfdcd29bdd94c9e0e283d940792f199193d))
+* **panel:** give a stop command the one action colour, not its own red ([83e3e71](https://github.com/sidereal-software/indikit/commit/83e3e716ca57099bdba8f5cd442c646cfac1e12b))
+* **panel:** nest configuration under its device, and draw a command as a button ([ba7c8ea](https://github.com/sidereal-software/indikit/commit/ba7c8eac5a3f90e29dd9ea77dab139b61a265203))
+* **protocol:** emit standard base64 for a BLOB, not the URL-safe alphabet ([064d1c7](https://github.com/sidereal-software/indikit/commit/064d1c72cd342d7adacb246099c44eaa789c2054))
+* **react:** give dark mode a destructive colour and a visible action colour ([ad9bea8](https://github.com/sidereal-software/indikit/commit/ad9bea8425f7fa6bbb88357322bd1ab3c7d52912))
+* **react:** make the panel usable without sight or a mouse ([6d39585](https://github.com/sidereal-software/indikit/commit/6d395859eaa9f10d938ede0f86f958c3b45800e7))
+* **react:** read an offsetless INDI timestamp as UTC ([3634466](https://github.com/sidereal-software/indikit/commit/3634466547767f42e32007e1dca5d5c13bd55c86))
+* **theme:** let a card be a surface, not a drawn box ([e1cd3d1](https://github.com/sidereal-software/indikit/commit/e1cd3d1c61e5543a93d82bbb26c2c4054732bb2a))
+* **web:** a device with no properties is not a missing device ([a74467b](https://github.com/sidereal-software/indikit/commit/a74467b14e01ca2a6643b8770d02edf65ee1d5a9))
+
+
+### Performance
+
+* **react:** memoise the property grid ([0c99a33](https://github.com/sidereal-software/indikit/commit/0c99a337820658a39296cab1f70101b8e1129aca))
+
+
+### Documentation
+
+* give the React layer equal billing and teach with a focuser ([1a6d861](https://github.com/sidereal-software/indikit/commit/1a6d8611b16ca419c94322411208e24438ad7d0a))
+* reconcile every document with the three new surfaces ([9c5c13c](https://github.com/sidereal-software/indikit/commit/9c5c13c050c4d5b0270acf4ae37774d58fb3a690))
+* reconcile the guides with a milestone they missed ([d7be286](https://github.com/sidereal-software/indikit/commit/d7be2863722d5cc93413499bcdd409408d9faad1))
+* reconcile the guides, the register and the conventions ([bdb2571](https://github.com/sidereal-software/indikit/commit/bdb2571bec68919c8b58f40096b4e7b7a41bb928))
+* rewrite the guides and READMEs in a plainer tone ([d6ad6cd](https://github.com/sidereal-software/indikit/commit/d6ad6cdd7e3fad2146ae609a31c36d7c9caee04e))
+
+
+### Changed
+
+* rename the project to INDIkit ([1b5cfd6](https://github.com/sidereal-software/indikit/commit/1b5cfd629a17ffd08c92866df6604ddf79b95c73))
+
 ## [0.2.0](https://github.com/sidereal-software/indi-nexus/compare/react-v0.1.0...react-v0.2.0) (2026-08-15)
 
 
