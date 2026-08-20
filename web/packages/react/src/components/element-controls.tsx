@@ -185,12 +185,31 @@ export function ValueVectorControl({ vector }: { vector: NumberVector | TextVect
  * selected look under the pointer, on specificity, since it carries the extra attribute
  * selector.
  */
+/*
+ * The ON member wears `--primary`, the same colour as the Set button.
+ *
+ * It used to wear `--secondary`, a raised neutral surface, and that was left
+ * over from a palette where the brand had no hue at all: with only value to
+ * work with, the selected member of a switch vector and an unselected one were
+ * a shade apart, and "which one is the instrument actually on?" was a question
+ * you had to lean in to answer. The theme's rule is now that hue is enumerated
+ * rather than absent, and this is the same entry the Set button uses: the
+ * colour of a control you act through.
+ *
+ * That does not make it a status colour. What the *instrument* is doing is the
+ * badge at the top of the card, in one of the four state hues, and the selected
+ * member stays clear of all of them - 18.18 CIEDE2000 in light and 18.75 in
+ * dark, at the worst of normal, deuteranopic and protanopic vision. Under the
+ * safelight it is 9.96, which is the ceiling that scheme is recorded as
+ * accepting rather than a slack threshold.
+ * Labels measure 8.64 / 7.70 / 10.58:1 on the fill.
+ */
 const SWITCH_MEMBER_CLASSES =
   "w-auto min-w-0 shrink-0 rounded-none border-l-0 px-3 shadow-none first:rounded-l-md " +
   "first:border-l last:rounded-r-md focus:z-10 focus-visible:z-10 " +
-  "hover:bg-muted hover:text-foreground data-[state=on]:bg-secondary " +
-  "data-[state=on]:font-semibold data-[state=on]:text-secondary-foreground " +
-  "data-[state=on]:hover:bg-secondary data-[state=on]:hover:text-secondary-foreground";
+  "hover:bg-muted hover:text-foreground data-[state=on]:bg-primary " +
+  "data-[state=on]:font-semibold data-[state=on]:text-primary-foreground " +
+  "data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground";
 
 /**
  * Switch vector: a group of toggle buttons honouring the selection rule.

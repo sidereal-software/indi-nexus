@@ -233,8 +233,11 @@ describe("SwitchVectorControl", () => {
     // The regression: selection and hover both resolved to `accent`, so a hovered
     // unselected member looked exactly like the selected one. Selection now wears the
     // same `secondary` as the Set button, which hover can never reach.
-    expect(on?.className).toContain("data-[state=on]:bg-secondary");
-    expect(on?.className).toContain("data-[state=on]:hover:bg-secondary");
+    // The ON member wears `--primary`, the colour of a control you act through -
+    // the same one the Set button wears. It was `--secondary` while the brand had
+    // no hue at all; the theme's rule is now that hue is enumerated, not absent.
+    expect(on?.className).toContain("data-[state=on]:bg-primary");
+    expect(on?.className).toContain("data-[state=on]:hover:bg-primary");
     expect(off?.className).toContain("hover:bg-muted");
     for (const button of [on, off]) {
       expect(button?.className).not.toContain("hover:bg-accent");

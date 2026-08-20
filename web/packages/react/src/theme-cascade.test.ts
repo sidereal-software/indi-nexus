@@ -184,11 +184,6 @@ const CORRECTIONS: readonly [plain: string, minified: string, description: strin
     "focus ring, destructive",
   ],
   [
-    'html:not(.dark) [class~="hover:bg-secondary/80"]:hover',
-    'html:not(.dark) [class~="hover:bg-secondary/80"]:hover',
-    "secondary hover fill",
-  ],
-  [
     '[data-slot="switch"]:not([class*="absolute"]):not([class*="fixed"])',
     "[data-slot=switch]:not([class*=absolute]):not([class*=fixed])",
     "switch positioning",

@@ -23,16 +23,12 @@
  * and a focus indicator are not things, and neither should claim a hue. Under
  * the safelight they are red like everything else in the chrome - the ground
  * itself is tinted there, so a surface that stayed grey would be the anomaly.
- * That is the scheme tinting them, not a token claiming a hue of its own. A brand hue competing with the four states is exactly the
- * failure the violet before it was one re-measure away from - it sat 22.4
- * CIEDE2000 from the nearest state, and the orange before *that* sat 8.3.
- * Removing hue from the brand removes the whole class of failure rather than
- * managing it.
+ * That is the scheme tinting them, not a token claiming a hue of its own.
  *
  * Three schemes, one world. An emission spectrum is bright lines on a dark
  * continuum (`.dark`); an absorption spectrum is dark lines on a bright one
- * (`:root`); `.night` is emission under MIL-STD-1472F's dark-adaptation
- * ceiling. Light mode is therefore dark badges on white, not light ones.
+ * (`:root`); and `.night` is that emission scheme under a red observatory
+ * safelight. Light mode is therefore dark badges on white, not light ones.
  *
  * Every ratio in this file was computed, not estimated, composited against the
  * real ancestor surface, and the state separations are the worst of normal,
@@ -81,12 +77,6 @@
   --card-foreground: #12151a;
   --popover: #ffffff;
   --popover-foreground: #12151a;
-  /* Zero chroma, on purpose: see the header. Read as a fill behind
-     `--primary-foreground` (18.29:1) and as `text-primary` on the background,
-     the sidebar and `--accent` (17.81 / 16.45 / 15.01:1). Its distance from the
-     nearest state is 15.72 CIEDE2000 in the worst of normal, deuteranopic and
-     protanopic vision - and that distance is structural rather than tuned,
-     because a neutral has no hue to collide with. */
   /* THE ACTION COLOUR. The brand carried no hue at all until this: every
      saturated pixel meant instrument state. The rule did not go away, it got
      an entry - hue is now ENUMERATED rather than absent, four states plus one
@@ -238,13 +228,11 @@
      share a screen without being read as each other. */
   --primary: #60a5fa;
   --primary-foreground: #0a0c0f;
-  /* Worn by the selected member of a switch vector and by the Set button. It was
-     a cyan, chosen because the #5f8787 before it sat only deltaE 5.7 from
-     `--state-idle` under deuteranomaly - so the one element a client had turned
-     On was near indistinguishable from an Idle light. Both attempts were the
-     same mistake at different distances: an action colour with a hue is a
-     near-miss for a status colour, and the fix is to have no hue. A raised
-     neutral surface now, 10.27:1 under `--secondary-foreground`. */
+  /* A raised neutral surface, and no longer an action colour. It used to be worn
+     by the Set button and by the selected member of a switch vector; both now
+     wear `--primary`, which is the entry the enumerated rule gives to "a control
+     you act through". What is left for this token is surface: a quieter button,
+     a raised panel. 10.27:1 under `--secondary-foreground`. */
   --secondary: #2b3138;
   --secondary-foreground: #dfe4ea;
   --muted: #1b1f24;
@@ -679,21 +667,18 @@
     var(--tw-ring-offset-color);
 }
 
-/* The Set button and any secondary button, LIGHT ONLY. The registry fades the
-   fill toward the surface on hover, which takes white-on-secondary from 5.05:1 to
-   3.38:1 - below AA, on the control that writes to the instrument. Dark is 5.71:1
-   at `/80` and keeps its hover: killing it there would buy nothing and cost the
-   affordance. Holding the fill is what SWITCH_MEMBER_CLASSES already does for the
-   selected member, so the action vocabulary stays consistent; the cost is that
-   light hover carries no colour change and the cursor and the focus ring are the
-   affordance, exactly as on the switch. `.dark` is toggled on <html>
-   (apps/panel/src/use-theme.ts).
-   Safe as a real property, by the second half of THE RULE: the hook IS the
-   registry's own hover class, so a consumer passing their own `hover:bg-*` makes
-   twMerge drop `hover:bg-secondary/80` and this rule stops matching them. */
-html:not(.dark) [class~="hover:bg-secondary/80"]:hover {
-  background-color: var(--secondary);
-}
+/* REMOVED, and the removal is the note. This slot held a rule pinning the light
+   `secondary` fill through hover, because the Set button was a saturated cyan
+   carrying white text and the registry's `/80` hover fade took it from 5.05:1 to
+   3.38:1 - below AA on the control that writes to an instrument.
+   Neither half of that is true now. The Set button wears `--primary`, and
+   `--secondary` is a raised neutral carrying dark text, so fading it toward the
+   surface *raises* contrast rather than dropping it: 15.01 to 15.60:1 in light,
+   10.27 to 10.99 in dark. A correction that no longer corrects anything is a
+   rule the next person has to disprove before they can touch the token, so it
+   goes rather than staying as decoration. The hover affordance comes back with
+   it. */
+
 
 /*
  * The mobile drawer's close button, which the registry renders and then hides.
