@@ -4,52 +4,53 @@ description: An instrument-grade control surface for astronomical hardware, buil
 colors:
   # Three schemes, one world. Light (`:root`) is the base; `.dark` overrides carry
   # a `-dark` suffix and `.night` a `-night` suffix. `.night` is applied *alongside*
-  # `.dark`, never instead of it, so it only moves token values.
-  background: "#fbfcfd"
+  # `.dark`, never instead of it, so it only moves token values. The night chrome is
+  # a red safelight; the four instrument states are byte-identical to `.dark`.
+  background: "#f4f6f8"
   background-dark: "#0a0c0f"
   background-night: "#000000"
   foreground: "#12151a"
   foreground-dark: "#dfe4ea"
-  foreground-night: "#a8b0b8"
+  foreground-night: "#e08585"
   card: "#ffffff"
-  card-dark: "#101216"
-  card-night: "#050607"
-  sidebar: "#f1f3f5"
+  card-dark: "#16191f"
+  card-night: "#140708"
+  sidebar: "#eceef1"
   sidebar-dark: "#0d0f13"
-  sidebar-night: "#020303"
+  sidebar-night: "#050102"
   muted: "#f1f3f5"
   muted-dark: "#1b1f24"
-  muted-night: "#121417"
+  muted-night: "#200a0b"
   accent: "#e6e9ec"
   accent-dark: "#2b3138"
-  accent-night: "#1b1e22"
-  primary: "#12151a"
-  primary-dark: "#dfe4ea"
-  primary-night: "#aeb6bf"
+  accent-night: "#24090b"
+  primary: "#1543ac"
+  primary-dark: "#60a5fa"
+  primary-night: "#e4afaf"
   primary-foreground: "#ffffff"
   primary-foreground-dark: "#0a0c0f"
-  primary-foreground-night: "#000000"
+  primary-foreground-night: "#1a0000"
   secondary: "#e6e9ec"
   secondary-dark: "#2b3138"
-  secondary-night: "#1b1e22"
+  secondary-night: "#24090b"
   secondary-foreground: "#12151a"
   secondary-foreground-dark: "#dfe4ea"
-  secondary-foreground-night: "#a8b0b8"
+  secondary-foreground-night: "#e08585"
   muted-foreground: "#434a53"
   muted-foreground-dark: "#b9c2cb"
-  muted-foreground-night: "#a1a9b2"
-  border: "#7c8490"
-  border-dark: "#737b87"
-  border-night: "#636a74"
+  muted-foreground-night: "#b06a6a"
+  border: "#d3d8dd"
+  border-dark: "#2b3138"
+  border-night: "#5c1f22"
   input: "#6d7580"
   input-dark: "#79838f"
-  input-night: "#6f7780"
+  input-night: "#ab5e5c"
   ring: "#0a0c0f"
   ring-dark: "#ffffff"
-  ring-night: "#e8ecf0"
+  ring-night: "#ff8f8f"
   destructive: "#a3120f"
-  destructive-dark: "#c01b1b"
-  destructive-night: "#c72623"
+  destructive-dark: "#c2321c"
+  destructive-night: "#c0201b"
   state-idle: "#6b7480"
   state-idle-foreground: "#ffffff"
   state-idle-dark: "#78848f"
@@ -73,7 +74,7 @@ colors:
   state-alert-dark: "#fa385f"
   state-alert-foreground-dark: "#000000"
   state-alert-night: "#fa385f"
-  state-alert-foreground-night: "#150303"
+  state-alert-foreground-night: "#000000"
   state-ok-ink: "#215c1f"
   state-ok-ink-dark: "#88dd88"
   state-ok-ink-night: "#88dd88"
@@ -90,11 +91,11 @@ colors:
   chart-3-dark: "#8c939b"
   chart-4-dark: "#687078"
   chart-5-dark: "#4c5157"
-  chart-1-night: "#6f7780"
-  chart-2-night: "#9aa2ab"
-  chart-3-night: "#c3cad2"
-  chart-4-night: "#545b63"
-  chart-5-night: "#3d444b"
+  chart-1-night: "#8a4442"
+  chart-2-night: "#a85f5f"
+  chart-3-night: "#c98b86"
+  chart-4-night: "#6e3230"
+  chart-5-night: "#4a2022"
   docs-link: "#085b6f"
   docs-link-dark: "#7fd6e8"
 typography:
@@ -155,7 +156,7 @@ components:
     padding: "8px 16px"
     height: "36px"
   button-primary-hover:
-    backgroundColor: "color-mix(in oklab, #12151a 90%, transparent)"
+    backgroundColor: "color-mix(in oklab, #1543ac 90%, transparent)"
     textColor: "{colors.primary-foreground}"
   button-secondary:
     backgroundColor: "{colors.secondary}"
@@ -239,21 +240,24 @@ components:
 
 An operator is alone at 3am, a hundred miles from the instrument, and this interface is the
 only thing that will tell them what is happening. That is the brief. What the system does
-with it is narrower than "be legible": it spends its entire colour channel on one question.
-Colour on this surface means what an instrument is doing, and nothing else. The chrome is a
-neutral continuum in three renditions - light is an absorption spectrum, dark marks on a
-bright ground; dark is an emission spectrum, bright marks on a dark one; night is emission
-under a luminance ceiling - and hue appears only as narrow saturated marks at fixed
-positions, which are the four INDI state badges.
+with it is narrower than "be legible": **hue is enumerated.** Six hues exist in the whole
+product - four instrument states, one action, and the documentation site's link cyan - and
+nothing outside that list may take one. Everything else is a continuum, in three renditions:
+light is an absorption spectrum, dark marks on a bright ground; dark is an emission spectrum,
+bright marks on a dark one; night is that same emission seen under a red observatory
+safelight, where the continuum itself turns red and the four states do not.
 
-That is why the brand has no colour at all. `--primary`, `--secondary` and `--ring` are pure
-neutrals in all three schemes, and the wordmark separates its halves by weight rather than by
-hue. This is a correction, not a starting position: the palette before this one carried a
-violet that sat 22.4 CIEDE2000 from the nearest state colour, and the one before *that* an
-orange at 8.3. Both were the same mistake at different distances - an identity colour with a
-hue is a near-miss for a status colour - and removing the hue removes the class of failure
-instead of managing it. The only reserved non-state hue in the whole product is the
-documentation site's link cyan, and it never appears in the panel.
+The list is short because it was arrived at by subtraction. The palette before this one
+carried a violet that sat 22.4 CIEDE2000 from the nearest state colour, and the one before
+*that* an orange at 8.3 from Busy - the same mistake at two distances, an identity colour
+that is a near-miss for a status colour. The answer was briefly to spend no chroma at all,
+which read cleanly and cost more than it bought: with value carrying the whole hierarchy, the
+Set button - the one control that writes to an instrument - measured 1.22:1 against the card
+in light and read as a label rather than a control, disabled-looking beside an unselected
+switch segment. So the rule became enumeration rather than absence. One hue was admitted, on
+measurement rather than taste, and the door closed behind it. `--secondary` and `--ring` took
+no hue and still hold none in light and dark: a raised surface and a focus indicator are not
+things, and neither should claim a colour.
 
 The register is instrument-grade, dense and professional, closer to a control desk than to a
 consumer app. Information density is a feature: the operator is an expert and slowing them
@@ -267,56 +271,74 @@ Future work inherits the obligation, not just the values.
 **Key Characteristics:**
 
 - Three schemes, each measured independently: light (absorption), dark (emission), and night
-  (emission under MIL-STD-1472F's 10 cd/m² dark-adaptation ceiling).
-- The brand spends no chroma. Every saturated pixel on the panel is an instrument talking.
+  (emission under a red observatory safelight, on a pure-black ground).
+- Hue is enumerated: four states, one action, one documentation link. Nothing else may take
+  one, and `--secondary` and `--ring` hold none in light or dark.
 - Four state hues (Idle / Ok / Busy / Alert), derived by search so every pair separates by at
-  least 11.94 CIEDE2000 in the worst of normal, deuteranopic and protanopic vision.
+  least 11.94 CIEDE2000 in the worst of normal, deuteranopic and protanopic vision - and
+  **byte-identical in `.dark` and `.night`**, which is what makes the safelight safe.
 - Colour never carries meaning on its own: every state is written out as well as coloured.
 - Monospace throughout, so numeric readings align and never jitter.
-- Flat surfaces with visible hairline borders; four tonal surface steps do the work depth
-  usually does.
+- Flat surfaces, four tonal steps, and a hairline border that is faint by design (1.43:1
+  light, 1.34 dark, 1.57 night against the card) rather than a drawn rule.
 - Density over comfort. Cards are compact, the grid is tight, and the shell pins to the
   viewport.
 
 ## Colors
 
-A neutral continuum carrying four saturated marks, in which the chrome deliberately holds no
-hue at all so that anything coloured on screen is an instrument reporting its state.
+A neutral continuum in light and dark and a red one at night, carrying an enumerated set of
+hues: the four instrument states, one action colour, and - on the documentation site only -
+a link cyan.
 
 ### Primary
 
-- **The continuum's extreme** (`#12151a` light, `#dfe4ea` dark, `#aeb6bf` night): identity
-  and emphasis, at zero chroma. It wears the wordmark's icon, the filled default button -
-  which the panel draws only inside a modal, see Buttons - and `text-primary` wherever a
-  string needs to be the loudest thing in its line. It is read both as a fill behind
-  `--primary-foreground` (18.29:1 light, 15.31:1 dark) and as text on the ground
-  (17.81 / 16.45 / 15.01:1 light on background, sidebar and `--accent`; 15.31 / 15.00 / 10.27
-  dark). Its distance from the nearest state colour is 15.72 CIEDE2000 light and 25.61 dark,
-  and **that distance is structural rather than tuned**, because a neutral has no hue to
-  collide with. The documentation site's header is the same value.
+**This is the action colour, and it is the only hue in the panel's chrome.** It fills the Set
+button, the one control that writes to an instrument, and is set as `text-primary` on the
+header's icon, the message log's device name and the link-variant control.
+
+- **Instrument Blue** (`#1543ac` light, `#60a5fa` dark): admitted by measurement. `theme.css`
+  records it at **19.2 CIEDE2000 from the nearest state** in the worst of normal,
+  deuteranopic and protanopic vision, against the 8.3 the rejected orange sat from Busy - and
+  the comparison is the argument: an action and a status are different objects in different
+  places, and at 19 dE neither can be read as the other. As a fill it measures 8.64:1 against
+  the light card and 6.92:1 against the dark one, with its label at 8.64:1 and 7.70:1. As
+  text it is 8.64 / 7.98 / 7.43 / 7.09:1 light on card, background, sidebar and `--accent`.
+  **Its dark values are the one place it does not clear AAA**: 6.92 on the card and 5.17 on
+  `--accent`, both AA. Recorded rather than smoothed, because raising the blue walks it back
+  up the lightness axis toward nothing useful and darkening it costs the label.
+- **Pale Safelight Red** (`#e4afaf` night): the night scheme's action colour, and the palest
+  thing on that screen (L\* 76.2, above the ring's 71.5 and the foreground's 65.2). See the
+  Night Scheme below - being palest is the mechanism, not a compromise.
+
+The reason it exists at all is a measurement of its own. `--secondary`, which used to carry
+the Set button, sits **1.22:1 against the light card** (1.34 dark, 1.05 night). At that
+distance it is not a filled control, it is a label printed on the card, and beside an
+unselected switch segment it read as disabled. Value alone could not carry the hierarchy.
 
 ### Secondary
 
-- **The raised step** (`#e6e9ec` light, `#2b3138` dark, `#1b1e22` night): the action
-  vocabulary - the Set button, and the selected member of a switch vector. It is one step up
-  the same neutral ramp, 15.01:1 light and 10.27:1 dark under `--secondary-foreground`. It
-  was a cyan before this palette, and the cyan before *that* sat only ΔE 5.7 from
-  `--state-idle` under deuteranomaly, which made the one element a client had turned On
-  nearly indistinguishable from an Idle light. With no hue left to separate it, selection is
-  carried by **weight as well as fill** - see the Switch Vector Control.
+- **The raised step** (`#e6e9ec` light, `#2b3138` dark, `#24090b` night): a raised surface
+  and the fill of a **selected switch member**, no longer an action colour. It is one step up
+  the ramp, 15.01:1 light and 10.27:1 dark under `--secondary-foreground` (7.03:1 night). It
+  holds no hue of its own in light or dark - 1.9 and 5.4 Lab chroma - which is the point:
+  a raised surface is not a thing and should not claim a colour. Because it is only 1.22:1
+  from the card, selection is carried by **weight as well as fill** - see the Switch Vector
+  Control.
 
 ### Tertiary
 
-- **Destructive red** (`#a3120f` light, `#c01b1b` dark, `#c72623` night): destructive actions
-  only, and the one place the panel's own chrome is allowed a hue. It is a true red where
-  Alert is a rose, and the two are 22.27 CIEDE2000 apart light and 15.44 dark in the worst of
-  normal, deuteranopic and protanopic vision - related, as danger should be, without being
+- **Destructive red** (`#a3120f` light, `#c2321c` dark, `#c0201b` night): destructive actions
+  only. It is a true red where Alert is a rose, and `theme.css` records them 22.27 CIEDE2000
+  apart in light and 15.44 in dark in the worst of normal, deuteranopic and protanopic
+  vision; the night pair holds at 18.45 - related, as danger should be, without being
   confusable with an instrument in Alert. That separation is what made the token fixable at
   all: under the previous palette every red bright enough to work landed ~1.6 ΔE from the
-  Alert of the day. 7.92:1 light and 6.15:1 dark under the `text-white` the variant hardcodes,
-  on the button that deletes a saved configuration with no undo. Its 3.05:1 against the dark
-  card is deliberate and sufficient - SC 1.4.11 governs a control identified by its
-  *boundary*, and this one is identified by its label.
+  Alert of the day. Under the `text-white` the variant hardcodes it measures 7.92:1 light,
+  5.57:1 dark and 6.06:1 night, on the button that deletes a saved configuration with no undo.
+  Its 3.16:1 against the dark card is deliberate and sufficient - SC 1.4.11 governs a control
+  identified by its *boundary*, and this one is identified by its label. **Destructive is not
+  a seventh hue but the red end of the action slot**: it is the only variant of a button, it
+  never labels a status, and the night scheme absorbs it into the safelight without moving it.
 - **The reserved line** (`#085b6f` light, `#7fd6e8` slate): the documentation site's links
   and accent, and **nothing in the panel**. Documentation earns one hue for a reason the panel
   does not have: a Read surface's primary interaction is following a link, and a link that is
@@ -324,59 +346,72 @@ hue at all so that anything coloured on screen is an instrument reporting its st
   Idle at 9.91 CIEDE2000, and Ok, Busy and Alert are 13.7 to 43.2 away - and native to the
   world, an emission line rather than a decoration. 7.67:1 on white (7.04:1 on the light code
   block) and 9.56:1 on the slate ground (8.38:1 on slate code).
+  **The docs header is not `--primary`.** It is `#12151a`, the panel's `--foreground`, at
+  18.29:1 under white (`docs/stylesheets/palette.css`). The two surfaces share the neutral
+  ground and the type, not the action colour; the panel's blue has no job on a Read surface.
 
 ### Neutral
 
-- **Surface steps**: background (`#fbfcfd` / `#0a0c0f` / `#000000`), card (`#ffffff` /
-  `#101216` / `#050607`), sidebar and muted (`#f1f3f5` / `#1b1f24` / `#121417`; the sidebar
-  darkens further in the two dark schemes), accent (`#e6e9ec` / `#2b3138` / `#1b1e22`). Four
-  tones, used to separate regions that a shadow would otherwise separate.
-- **Secondary text** (`#434a53` / `#b9c2cb` / `#a1a9b2`): the `--muted-foreground` token -
-  labels, the connection strip, log timestamps, group headings. It clears **AAA on every
-  surface it lands on**: 8.96 / 8.06 / 8.06 / 7.35 light on card, sidebar, muted and accent;
-  10.39 / 10.63 / 9.18 / 7.28 dark. That is the bar because this is body-size text and AAA is
-  reachable for it. **The tier belongs to the token, not to every label on screen**: the
-  shadcn sidebar draws its group headings in `text-sidebar-foreground/70`, which is 6.29:1
-  light and 5.61:1 dark - AA and nothing more - so the shell passes `text-muted-foreground`
-  at every group heading it composes. Fixed there rather than in `theme.css`, because `color`
-  is a real property and an unlayered rule on it would beat every state variant the element
-  can be in.
-- **Border** (`#7c8490` / `#737b87` / `#636a74`): applied to every element by the base layer,
-  so a hairline is the default edge in this system rather than an addition. It is genuinely
-  visible now; the palette before this one drew it at 1.24:1, which was not.
-- **Control edge** (`#6d7580` / `#79838f` / `#6f7780`): the `--input` token. The border of an
+- **Surface steps**: background (`#f4f6f8` / `#0a0c0f` / `#000000`), card (`#ffffff` /
+  `#16191f` / `#140708`), muted (`#f1f3f5` / `#1b1f24` / `#200a0b`), sidebar (`#eceef1` /
+  `#0d0f13` / `#050102`, always the darkest or the flattest step), accent (`#e6e9ec` /
+  `#2b3138` / `#24090b`). Four tones, used to separate regions that a shadow would otherwise
+  separate. The card sits only 1.08:1 from the background in light, 1.11 dark, 1.06 night, so
+  the separation is a tone shift read at the edge rather than a contrast step.
+- **Secondary text** (`#434a53` / `#b9c2cb` / `#b06a6a`): the `--muted-foreground` token -
+  labels, the connection strip, log timestamps, group headings. In light and dark it clears
+  **AAA on every surface it lands on**: 8.96 / 7.71 / 8.06 / 7.35 light on card, sidebar,
+  muted and accent; 9.76 / 10.63 / 9.18 / 7.28 dark. That is the bar because this is
+  body-size text and AAA is reachable for it. In night it lands 4.81 / 5.06 / 4.61 / 4.57 -
+  AA, not AAA, which is the recorded consequence of that scheme's exemption rather than a
+  miss. **The tier belongs to the token, not to every label on screen**: the shadcn sidebar
+  draws its group headings in `text-sidebar-foreground/70`, which is AA and nothing more, so
+  the shell passes `text-muted-foreground` at every group heading it composes. Fixed there
+  rather than in `theme.css`, because `color` is a real property and an unlayered rule on it
+  would beat every state variant the element can be in.
+- **Border** (`#d3d8dd` / `#2b3138` / `#5c1f22`): applied to every element by the base layer,
+  so a hairline is the default edge in this system rather than an addition - and it is a
+  **faint** one by design, 1.43:1 against the light card, 1.34 dark, 1.57 night. It reads as
+  the edge of a surface, not as a drawn rule. It is not load-bearing for any state or focus
+  signal, which is why it is allowed to be this quiet; where separation has to be seen, the
+  tone step or `--input` does it.
+- **Control edge** (`#6d7580` / `#79838f` / `#ab5e5c`): the `--input` token. The border of an
   Input and of a switch-vector member, and the whole of the Switch's off-state track. It
-  measures 4.66 light and 4.87 dark on the card, 3.82 / 3.41 on `--accent`, and 3.19 / 3.25
-  against its own `bg-input/30` fill, which renders `#d3d6d9` light and `#30343a` dark.
-  **It is deliberately one token doing two jobs** - it is both the control's border and the
-  30% fill of that same control - and the two pull opposite ways: a value dark enough to edge
-  the control cleanly is too close to its own tinted fill. Splitting it would abandon the
-  Switch entirely, because the Switch's track *is* `bg-input`.
-- **The chart ramp** (`#474c52` → `#c8ccd0` light; `#d9dbde` → `#4c5157` dark; `#6f7780` →
-  `#3d444b` night): five neutral steps, and neutral for the system's own reason. The previous
-  ramp was a designer's palette that collided badly - one step sat 2.1 CIEDE2000 from dark
-  Idle and another 2.5 from dark Ok, on the token the observatory wallboard draws its moon and
-  its daylight band with. Every step here is at least 19.5 ΔE from Ok, Busy and Alert in the
-  worst of normal, deuteranopic and protanopic vision, and adjacent steps stay 9.1 ΔE apart so
-  several series still separate from each other. Neutral costs nothing: what these draw is
-  illumination, and moonlight is colourless. The middle steps sit near Idle by construction
-  (5.9 at the closest), which is acceptable for a chart mark in a figure and never acceptable
-  for a status colour.
+  measures 4.66 light, 4.87 dark and 4.22 night on the card, 3.82 / 3.41 / 4.01 on `--accent`,
+  and 3.19 / 3.02 / 3.06 against its own `bg-input/30` fill, which renders `#d3d6d9` light,
+  `#343941` dark and `#412121` night. **It is deliberately one token doing two jobs** - it is
+  both the control's border and the 30% fill of that same control - and the two pull opposite
+  ways: a value dark enough to edge the control cleanly is too close to its own tinted fill.
+  Splitting it would abandon the Switch entirely, because the Switch's track *is* `bg-input`.
+- **The chart ramp** (`#474c52` → `#c8ccd0` light; `#d9dbde` → `#4c5157` dark; `#8a4442` →
+  `#4a2022` night): five steps, neutral in light and dark for the system's own reason. The
+  previous ramp was a designer's palette that collided badly - one step sat 2.1 CIEDE2000 from
+  dark Idle and another 2.5 from dark Ok, on the token the observatory wallboard draws its moon
+  and its daylight band with. Every step in the two neutral ramps is at least 19.5 ΔE from Ok,
+  Busy and Alert, and adjacent steps stay 9.1 ΔE apart so several series still separate from
+  each other. Neutral costs nothing there: what these draw is illumination, and moonlight is
+  colourless. **The night ramp is red like the rest of that chrome**, and it pays the
+  scheme's price rather than escaping it: measured against the night states, `chart-2`
+  (`#a85f5f`) sits 1.6 ΔE from Alert and `chart-1` 9.5, so a night chart mark is *not* safe to
+  read as a status and must never be placed where one is expected. The middle steps sit near
+  Idle by construction in every scheme, which is acceptable for a chart mark in a figure and
+  never acceptable for a status colour.
 - **Ok as a bare mark** (`--state-ok-ink`, `#215c1f` / `#88dd88` / `#88dd88`): the connection
   dots have no foreground of their own, so the fill is the whole object and SC 1.4.11 asks 3:1
-  of it. **In every scheme this token currently equals `--state-ok`**, and for two different
-  reasons: the light fill is dark enough to serve both roles (8.03 on the card, 7.22 on the
-  sidebar, 6.59 on `--accent`), and against every dark surface the fill already clears
-  (11.38 card, 11.64 sidebar, 10.05 muted, 7.97 accent), so lifting it would darken nothing and
-  put a second green in the palette with no measurement behind it. The token exists in both
-  schemes because the utility that reads it does, and it is kept separate because a mark and a
-  badge are different jobs that only happen to agree here.
+  of it. **In every scheme this token equals `--state-ok`**, and for two different reasons:
+  the light fill is dark enough to serve both roles (8.03 on the card, 6.91 on the sidebar,
+  6.59 on `--accent`), and against every dark or night surface the fill already clears
+  (10.68 / 11.64 / 10.05 / 7.97 dark on card, sidebar, muted and accent; 11.98 / 12.60 /
+  11.49 / 11.39 night), so lifting it would darken nothing and put a second green in the
+  palette with no measurement behind it. The token exists in all three schemes because the
+  utility that reads it does, and it is kept separate because a mark and a badge are different
+  jobs that only happen to agree here.
 - **Alert as type** (`--state-alert-ink`, `#8e0b55` / `#fba7bc` / `#fba7bc`): the one place a
   status hue is set as *type* rather than as a fill - the protocol-mismatch line in
   `ConnectionStatus`, on the sidebar. Light equals the fill and is AAA everywhere it can land
-  (9.02 card, 8.11 sidebar, 7.40 accent); dark lifts to its own value because the dark fill
-  reads 6.77:1 as type on the sidebar, which is AA and not the AAA PRODUCT.md asks for where
-  it is reachable (7.59 on muted, 8.93 on the card). **It is an ink, never a background.**
+  (9.02 card, 7.76 sidebar, 7.40 accent); dark and night lift to their own value because the
+  dark fill as type reads 5.29:1 on the sidebar, where the ink reads 10.37 (9.52 card, 8.95
+  muted). **It is an ink, never a background.**
 
 ### Instrument State
 
@@ -395,9 +430,10 @@ retune. They keep INDI's own names, which PRODUCT.md fixes as terminology rather
 
 Light mode is the absorption spectrum, so these are **dark fills carrying white labels** -
 not the light fills with near-black ink that the two emission schemes use. Every light fill
-also clears 3:1 against the card as a graphic in its own right. The state hues are
-**unchanged between `.dark` and `.night`**, which is the whole reason the night ceiling is a
-luminance rule and not a hue rule.
+also clears 3:1 against the card as a graphic in its own right (4.74 / 8.03 / 4.54 / 9.02).
+The four state tokens are **byte-identical in `.dark` and `.night`**, and that is now the
+load-bearing fact of the whole palette rather than a convenience: it is what lets the night
+scheme spend its entire colour channel on chrome without spending status with it.
 
 The four were derived by search rather than by eye, against one constraint the previous set
 failed: every pair must separate under **both** deuteranopia and protanopia, not only the one
@@ -405,23 +441,79 @@ that was checked. The worst pair in light is 14.88 CIEDE2000 and the floor acros
 is 11.94, where the previous palette put dark Ok and dark Alert 2.3 apart - "fine" and "in
 Alert" nearly one colour for a deuteranope, in the scheme used at night.
 
+### The Night Scheme
+
+`.night` is **not** a dimmed or desaturated version of `.dark`. Its entire chrome is red - an
+observatory safelight - and the four instrument states are untouched. Ground, text, rules,
+fields, focus and the action colour all sit on one red: background `#000000`, card `#140708`,
+foreground `#e08585` (7.39:1 on the card), border `#5c1f22`, `--input` `#ab5e5c`, `--ring`
+`#ff8f8f`, `--primary` `#e4afaf`. A grey Idle and a green connection dot on that field are
+*more* legible as status, not less, because status is the one thing on screen that is still
+itself.
+
+**The action colour is the palest red on screen, and that is the mechanism.** In a scheme
+where hue is spent, tone is the only hierarchy left, so the control that writes to an
+instrument is the brightest thing in the chrome: `#e4afaf` at L\* 76.2, above the ring (71.5),
+the foreground (65.2) and `--input` (48.8). It measures 10.39:1 as a fill against the card
+with its label at 10.58:1. Its position was forced, not chosen: `theme.css` records a search
+over every red at usable brightness finding **10 CIEDE2000 to be the ceiling** for separation
+from all four states, because moving away from the amber Busy walks back toward the rose
+Alert, and `#e4afaf` sits at that ceiling (17.2 from Alert, 22.7 from Busy).
+
+**`.night` is exempt from the AAA/AA contrast commitment, by recorded product decision.** It
+is a dark-site scheme meant to be read with the display dimmed, and forcing 7:1 on it would
+defeat what it exists for, so it is held to a legibility floor instead and to every check that
+is about safety rather than comfort - the state separations are untouched and destructive
+stays 18.45 CIEDE2000 from Alert. In practice the floor lands well above AA on the type that
+matters (foreground 7.86 background / 7.39 card / 7.03 accent) and at AA on secondary text
+(4.57 to 5.12) and on the focus ring's own surfaces. PRODUCT.md carries the decision and its
+**two accepted costs**, and both are costs rather than features:
+
+- A protanope loses about **4.5 L\*** of this chrome that a normal observer sees.
+  MIL-STD-1472F 5.2.1.5.6.2 asks that wavelengths above 650 nm be avoided where users include
+  protanopes, and this scheme does not.
+- The action colour clears the nearest state by **10 CIEDE2000**, where the other two schemes
+  hold 15 and up. Ten is enough to tell a button from a badge in a different place on screen;
+  it is not the margin the rest of the palette works to.
+
+Both are **bounded to chrome**. The four states keep their own hues and their full pairwise
+separation in this scheme, so nothing an instrument says is tinted, dimmed or narrowed. That
+boundary is the trade, and it is the only reason the costs are acceptable at all: widen the
+red past the chrome and neither of them stays bounded.
+
+The luminance ceiling is still met, and still not by CSS. MIL-STD-1472F 5.2.1.5.6.3 caps at
+10 cd/m², which on a 400-nit panel is a relative luminance of 0.025 - so even pure black
+against that ceiling yields 1.5:1, and no stylesheet can reach the cap and stay readable.
+Contrast is relative and survives dimming untouched; the ground is pure black so that almost
+nothing emits, and the operator's brightness control does the rest.
+
 ### Named Rules
 
-**The Brand Spends No Chroma Rule.** `--primary`, `--secondary` and `--ring` are neutrals in
-all three schemes, so hue on the panel only ever means instrument state. A new accent does not
-get measured against the state colours and admitted if it is far enough away; it does not get a
-hue at all. The one reserved non-state hue in the product is the documentation site's link
-cyan, and it never appears in the panel. This supersedes the old "keep the brand far from the
-states" rule, which managed the failure instead of removing it.
+**The Enumerated Hue Rule.** Six hues exist in this product: four instrument states, one
+action colour, and the documentation site's link cyan. **Nothing outside that list may take
+one**, and the list does not grow by measurement - a new candidate is not admitted because it
+measures far enough from the states, it is refused because the list is closed. `--secondary`
+and `--ring` hold no hue in light or dark, because a raised surface and a focus indicator are
+not things. This supersedes both the old "keep the brand far from the states" rule, which
+managed the failure instead of removing it, and its successor "the brand spends no chroma",
+which removed the failure and took the action hierarchy with it.
+
+**The Safelight Tints The Chrome, Never The States Rule.** `.night` is the one scheme where
+`--secondary` and `--ring` are not literally neutral, and that is not an exception to the rule
+above but a property of the ground: the safelight tints everything the interface owns, so no
+token there is claiming a hue of its own. The line it may not cross is the four `--state-*`
+tokens, which are byte-identical to `.dark`. Anything that reports on the instrument keeps its
+own colour; anything that is merely interface takes the red.
 
 **The Measured Value Rule.** A colour token clears its bar on every surface it is used over,
-not on the lightest one, and the bar is AAA wherever AAA is arithmetically reachable. Both
-schemes' `--muted-foreground` broke this in draft and broke it the same way round: `#4a525c`
-cleared AAA on card and sidebar and landed 6.5 on `--accent`, and `#a3adb8` cleared three of
-four and failed `--accent` at 5.77. The check now runs over every surface rather than the
-obvious ones. Two tokens clear their bar by under 10% and each carries a re-measure note in
-`theme.css` beside the value: `--input` against its own `bg-input/30` fill, at 3.19 light
-(6% of headroom) and 3.25 dark (8%). Move `--card`, `--accent` or `--foreground` and those
+not on the lightest one, and the bar is AAA wherever AAA is arithmetically reachable **in
+light and dark**; `.night` is held to its legibility floor instead. Both schemes'
+`--muted-foreground` broke this in draft and broke it the same way round: `#4a525c` cleared
+AAA on card and sidebar and landed 6.5 on `--accent`, and `#a3adb8` cleared three of four and
+failed `--accent` at 5.77. The check now runs over every surface rather than the obvious ones.
+The tightest margins in the palette are `--input` against its own `bg-input/30` fill - 3.19
+light, 3.02 dark, 3.06 night, clearing 3:1 by 6%, 1% and 2% - and each carries a re-measure
+note in `theme.css` beside the value. Move `--card`, `--accent` or `--foreground` and those
 have to be measured again before anything ships.
 
 **The Fill Is Frozen Rule.** The four state fills are tuned for separation from each other, so
@@ -446,21 +538,19 @@ with the fill frozen, the best any foreground can do is pure black or pure white
 | night Idle | `#78848f` | `#000000` | 5.50 | **5.50** (black) | unreachable |
 | night Ok | `#88dd88` | `#032010` | 10.46 | 12.74 (black) | yes |
 | night Busy | `#ffab1f` | `#1c1300` | 9.71 | 11.10 (black) | yes |
-| night Alert | `#fa385f` | `#150303` | 5.54 | **5.80** (black) | unreachable |
+| night Alert | `#fa385f` | `#000000` | 5.80 | **5.80** (black) | unreachable |
 
-All twelve clear AA. The four that cannot reach 7:1 are stopped by arithmetic, not by effort,
-and PRODUCT.md carries the long form of why two labels at AA is the right price for four
-states a colour-blind operator can tell apart. Do not "fix" them by moving a fill. **One row
-is a real gap rather than a ceiling**: night Alert is set to `#150303` where `.dark` uses
-`#000000` on the identical fill, which leaves 0.26 on the table against its own ceiling for
-no stated reason. Taking it to `#000000` costs nothing and matches the scheme it inherits
-from.
+All twelve clear AA, and the night rows are identical to the dark ones because the tokens
+are. The four that cannot reach 7:1 are stopped by arithmetic, not by effort, and PRODUCT.md
+carries the long form of why two labels at AA is the right price for four states a
+colour-blind operator can tell apart. Do not "fix" them by moving a fill.
 
-**The One Reserved Line Rule.** Exactly one non-state hue exists in the product, it is the
-documentation site's link cyan, and it lives on the docs site only. The panel and the docs
-share the header colour, the ground and the type; the cyan is the one thing that does not
-cross, because the panel has no link problem to solve and one exception in the corner of every
-page is not a rule.
+**The One Reserved Line Rule.** Two non-state hues exist, and **each is reserved to one
+surface**: the action blue to the panel, the link cyan to the documentation. Neither crosses.
+The panel has no link problem to solve, and a Read surface has no control that writes to an
+instrument, so a hue admitted for one job on one surface never becomes a general accent. What
+the two surfaces do share is the neutral ground, the type and the header colour - `#12151a`,
+which is the panel's `--foreground` and not its `--primary`.
 
 ## Typography
 
@@ -515,9 +605,12 @@ line under a card title, and only when the operator has asked for them. The wire
 available; it is not the default reading.
 
 **The Wordmark Separates By Weight Rule.** "INDI" is 400 and "kit" is 700, and neither half is
-coloured. `kit` used to be `text-primary`, which worked while the brand had a hue; the theme
-now spends none, so a coloured wordmark would be the single exception to the rule that hue
-means instrument state - in the corner of every page.
+coloured. `kit` used to be `text-primary`, and it stays uncoloured now that `--primary` is a
+hue again: the action colour is on the list because it marks *the control that writes to an
+instrument*, and a wordmark writes to nothing. Colouring it would put a seventh hue in the
+corner of every page and reduce the enumeration to a suggestion. The header's telescope icon
+does take `text-primary`, which is the boundary: a mark that leads the action colour's own
+surface, not the name of the product.
 
 ## Layout
 
@@ -566,12 +659,15 @@ log.
 
 ## Elevation & Depth
 
-**The system is flat, and its separation is border and tone rather than shadow.** That is now
-observable rather than arguable: `--border` is a genuinely visible hairline on every element by
-default (the base layer applies it universally), the palette carries four distinct surface
-tones, and the shadow scale is effectively invisible - light mode tops out at 5% black through
-most of the ramp and reaches 13% only at `2xl`, and dark runs the same shape at roughly double
-the alpha, which on a near-black ground is less perceptible still.
+**The system is flat, and its separation is border and tone rather than shadow.** The base
+layer applies `--border` to every element, so a hairline is the default edge; the palette
+carries four distinct surface tones; and the shadow scale is effectively invisible - light
+mode tops out at 5% black through most of the ramp and reaches 13% only at `2xl`, and dark
+runs the same shape at roughly double the alpha, which on a near-black ground is less
+perceptible still. The hairline itself is deliberately faint (1.43:1 light, 1.34 dark, 1.57
+night against the card): it marks where one surface ends, and the tone step beside it is what
+actually carries the separation. Do not read the border as a drawn rule, and do not darken it
+to make one - nothing in the system depends on seeing it.
 
 What remains undecided is the shadow scale's *purpose*. It arrived with the shadcn theme preset
 and nobody has since decided whether it is vestigial or a deliberate sub-threshold lift. Record
@@ -621,38 +717,39 @@ panel and a dead one.
 ### Buttons
 
 - **Shape:** the shared control radius (10px), 36px tall at default and 32px at `sm`.
-- **Primary:** the continuum's extreme with its inverse text, 8px by 16px of padding. It is
-  worth naming where it appears: **nothing on the panel's own surface is a primary button.**
-  Every button an operator sees without opening something is secondary (a Set button, a pressed
-  switch member) or ghost/outline (the theme toggle, the sidebar trigger). The variant appears
-  inside `DeviceConfigDialog` and nowhere else - "Save" is the modal's primary action, and the
-  Load / Restore confirmations use it for their confirming button. That is the correct reading:
-  a filled neutral marks *the* action of a surface an operator opened deliberately, and a screen
-  of live instrument readings has no such action.
-- **Secondary:** the raised neutral step. This is the action vocabulary and it means "this does
-  something to the instrument": the Set button, and the selected member of a switch vector.
+- **Primary:** the action colour with its inverse text, 8px by 16px of padding. **It means
+  "this writes to the instrument."** The `Set` button on every writable property card is this
+  variant, and so is the primary action of `DeviceConfigDialog` - "Save", and the confirming
+  button of the Load / Restore dialogs. It carries the panel's only chrome hue, and that is
+  the whole reason it exists: the same control drawn in `--secondary` measured 1.22:1 against
+  the light card and read as a disabled label rather than a button. Fill against card 8.64 /
+  6.92 / 10.39:1 with its label at 8.64 / 7.70 / 10.58:1.
+- **Secondary:** the raised neutral step. No longer an action: it is a quiet fill, and its one
+  meaningful appearance is the **selected member of a switch vector**, where it says "this is
+  the live state" rather than "press this".
 - **Destructive:** destructive red with hardcoded white text. `ui/button.tsx` carries one
   marked `DEVIATION` here - the registry's `dark:bg-destructive/60` is dropped, so the dark fill
   is the token itself. That composite is the defect the palette closes: it rendered 2.48:1 under
-  the previous palette and would render 1.75:1 under this one, putting the most dangerous button
-  in the product at its weakest in the scheme an operator uses at night. Not fixable from
-  `theme.css`, because `background-color` is a real property and an unlayered rule would also
-  beat `hover:bg-destructive/90`.
+  the previous palette, putting the most dangerous button in the product at its weakest in the
+  scheme an operator uses at night. Not fixable from `theme.css`, because `background-color` is
+  a real property and an unlayered rule would also beat `hover:bg-destructive/90`.
 - **Ghost / Outline:** chrome only - the theme toggle, the sidebar trigger, secondary dialog
   actions. Where the app owns the box it grows the control for real (`size-11`, 44px), so the
   hover tint and the focus ring grow with the target.
 - **Hover:** primary composites its fill toward the surface at 90%. Light secondary **holds its
   fill** instead, so the cursor and the focus ring are the affordance - the same behaviour the
-  selected switch member has, which keeps the action vocabulary consistent; dark keeps the
-  registry's 80% hover.
+  selected switch member has, which is the right pairing now that both are reporting surfaces
+  rather than actions; dark keeps the registry's 80% hover.
 - **Focus:** a 3px ring at **75%** of the ring colour, held **2px off the control**, plus a
   border shift from `focus-visible:border-ring`. **Focus is never conveyed by the ring alone or
   by the border alone**, and that is not incidental: the corrections raise the ring by setting
   only custom properties, precisely so they cannot disturb the border shift beside them. 75%
-  clears 3:1 on every surface either ring lands on, in all three schemes - 9.04 white / 8.93
-  light background / 8.51 light sidebar / 8.14 light accent; 10.73 dark card / 11.00 dark
-  background / 8.15 dark accent; 9.60 night card / 9.75 night background / 8.47 night accent.
-  The registry's own values do not: `/50` composites to 2.85 light and 2.75 dark, and the
+  clears 3:1 on every surface either ring lands on, in all three schemes - 9.04 white / 8.74
+  light background / 8.39 light sidebar / 8.14 light accent; 10.29 dark card / 11.00 dark
+  background / 8.15 dark accent; 5.41 night card / 5.53 night background / 5.28 night accent.
+  The night figures are lower because that ring is a red (`#ff8f8f`) on a red ground rather
+  than a neutral on a neutral one; they still clear the 3:1 floor by three-quarters. The
+  registry's own values do not: `/50` composites to 2.85 light and 2.75 dark, and the
   destructive `/20` and `/40` to 1.37 and 1.72.
 
 ### Cards
@@ -672,8 +769,8 @@ panel and a dead one.
 
 - **Style:** transparent fill in light mode, 1px control-edge border, 10px radius, 36px tall,
   readout typeface with tabular figures.
-- **Dark fill:** `bg-input/30`, which renders `#30343a` with `--foreground` at 9.79:1 on it and
-  6.89:1 on the `/50` hover. The light equivalent renders `#d3d6d9`, at 12.54:1 and 9.39:1.
+- **Dark fill:** `bg-input/30`, which renders `#343941` with `--foreground` at 9.09:1 on it.
+  The light equivalent renders `#d3d6d9` at 12.54:1, the night one `#412121` at 5.37:1.
 - **Layout:** each element gets two deterministic lines - a header pairing the label with the
   live current value, then a full-width input for the requested new value underneath. Nothing
   competes for a single row, so a long label and a sexagesimal reading both fit.
@@ -696,6 +793,9 @@ hardware, and the markup has to say so.
   close in value, and the type weight plus `aria-pressed` are what actually separate them. The
   stock outline toggle drew selection with the accent tone and hovered to the accent tone too,
   which made a hovered unselected member identical to the selected one.
+- **It does not take the action colour, and that is the boundary.** A selected member reports
+  the instrument's live state; it is not a press target waiting to be used. Filling it with
+  `--primary` beside a `Set` button would say two different things in one colour.
 
 ### State Badge and Status Dot
 
@@ -724,7 +824,7 @@ unreachable by keyboard.
 One icon button cycling **light → dark → night**, in the sidebar footer beside the debug toggle.
 Its label says what pressing it *does* ("Switch to dark", "Switch to dimmed night", "Switch to
 light"), because the control is an action and "Toggle theme" stopped being true at three
-schemes. `night` is named for what it delivers - a luminance-capped scheme meant to be read with
+schemes. `night` is named for what it delivers - a red safelight scheme meant to be read with
 the display dimmed - and never "night vision", which would promise dark adaptation no readable
 screen keeps.
 
@@ -748,15 +848,16 @@ shape carries it, and only the alarm takes space.
 
 **The Ring Stands Off The Control Rule.** A focus ring is measured against **both** its
 neighbours, not just the surface. The published ratios above are the ring against the surface
-around the control; on a filled control the other neighbour is the control's own fill, and with
-a neutral ring on a neutral primary the two are nearly the same value - 1.06:1 light and 1.20:1
-dark on the primary button, 1.00:1 on destructive in both schemes. **Removing the brand's hue
-made this worse, not better, which is exactly why the offset is not optional.** Every ring is
-therefore offset 2px in the surface colour, which puts the surface on both sides of it and
-leaves the fill separated by the control's own edge contrast (18.29 primary light, 15.31 primary
-dark, 7.92 destructive light, 6.15 destructive dark). It costs nothing structurally, because the
-offset is set through custom properties, and Tailwind already grows the ring's spread by the
-offset so the ring itself is still 3px.
+around the control; on a filled control the other neighbour is the control's own fill, and
+there the ring is nearly flush - 1.05:1 light, 1.49 dark and 1.92 night on the primary button,
+1.00:1 on destructive. Giving the action a hue did not fix this and was never going to: the
+ring is neutral in light and dark and red at night, so it collides with whatever the fill is
+doing regardless. Every ring is therefore offset 2px in the surface colour, which puts the
+surface on both sides of it and leaves the fill separated by the control's own edge contrast
+(8.64 primary light, 6.92 primary dark, 10.39 primary night, 7.92 destructive light, 5.57
+destructive dark). It costs nothing structurally, because the offset is set through custom
+properties, and Tailwind already grows the ring's spread by the offset so the ring itself is
+still 3px.
 
 **The destructive ring is the ordinary ring**, and that is a decision rather than an oversight.
 A focus indicator says where the keyboard is; it is not a state and not a warning, and there is
@@ -826,8 +927,12 @@ density.
 
 ### Do:
 
-- **Do** keep the chrome neutral. `--primary`, `--secondary` and `--ring` hold no chroma, so
-  every saturated pixel on the panel is an instrument reporting its state.
+- **Do** keep the hue list at six - four states, one action, one documentation link - and reach
+  for tone, weight or shape when something new needs to stand out.
+- **Do** reserve `--primary` for controls that write to an instrument, and leave a control that
+  merely *reports* one (a selected switch member, a badge) on the neutral ramp.
+- **Do** keep `--secondary` and `--ring` free of hue in light and dark, and let `.night` tint
+  them along with the rest of the chrome.
 - **Do** re-measure a colour on every surface it appears over before changing it, and leave the
   measured ratio in a comment beside the value, as every existing token does.
 - **Do** write every state out in text as well as colouring it, in text a sighted reader can
@@ -845,18 +950,27 @@ density.
 - **Do** grow fixed edges by their safe-area inset, and remember the underscore spacing Tailwind
   needs inside `calc()` around `env()`.
 - **Do** apply `.night` alongside `.dark`, never instead of it.
-- **Do** keep the panel and the documentation on the same neutral identity; they are one product
-  and the values are shared deliberately.
+- **Do** keep the panel and the documentation on the same neutral ground and type; the link
+  cyan and the action blue are each reserved to one surface and do not cross.
 
 ### Don't:
 
-- **Don't** give the brand a hue, however far it measures from the four states. The distance is
-  not the rule; the absence is.
+- **Don't** add a seventh hue, however far it measures from the four states. The list is
+  closed; distance is what got the sixth in, not what keeps the door open.
+- **Don't** put the action colour on anything that does not write to an instrument - not the
+  wordmark, not a selected switch member, not a heading that wants emphasis.
 - **Don't** adjust a `--state-*` fill to fix a contrast problem. Change the foreground, and
   record the shortfall where the ceiling makes AAA unreachable.
-- **Don't** chase the night scheme's luminance ceiling with dim greys. The cap is met by a black
-  ground and the operator's own brightness control; dimming the colours loses the contrast and
-  still misses the ceiling by more than tenfold.
+- **Don't** let the safelight reach the four `--state-*` tokens. `.night`'s red is bounded to
+  chrome, and that boundary is the only thing that makes its two accepted costs - about 4.5 L\*
+  lost to a protanope, and an action colour 10 CIEDE2000 from the nearest state instead of 15 -
+  acceptable at all.
+- **Don't** hold `.night` to the AAA/AA commitment, or "fix" its ratios toward it. The
+  exemption is a recorded product decision in PRODUCT.md, and forcing 7:1 defeats what the
+  scheme exists for. It answers to its legibility floor and to the safety checks instead.
+- **Don't** chase the night scheme's luminance ceiling with dim colours. The cap is met by a
+  black ground and the operator's own brightness control; dimming loses the contrast and still
+  misses the ceiling by more than tenfold.
 - **Don't** animate by fading opacity on anything carrying text. Fading a badge to 0.5 measured
   1.75:1, and no fill colour survives it - solid black at 0.5 over white reaches only 3.95:1.
   Move the motion to a pseudo-element instead.

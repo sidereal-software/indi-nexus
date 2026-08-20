@@ -138,15 +138,20 @@ section used to describe as a sensible default rather than a decision, and `DESI
 records it from the built world.
 
 Its governing rule is one line, and it is a product rule before it is an aesthetic one:
-**the brand spends no chroma, so hue on the panel only ever means instrument state.**
-`--primary`, `--secondary` and `--ring` are neutrals in all three schemes. The one reserved
+**hue is enumerated, and nothing outside the list may take one** - four instrument states,
+one action, and the documentation's link. `--secondary` and `--ring` stay neutral in every
+scheme: a raised surface and a focus indicator are not things and should not claim a hue.
+The action colour is blue, which sits 19.2 CIEDE2000 from the nearest state in the worst of
+normal, deuteranopic and protanopic vision. The rule was briefly "the brand spends no chroma
+at all", which read cleanly and cost more than it bought: with value carrying the whole
+hierarchy, the control that writes to an instrument looked disabled. The one reserved
 non-state hue is the documentation site's link cyan, which never appears in the panel,
 because a Read surface's primary interaction is following a link and an uncoloured,
 un-underlined link is not an affordance.
 
 The world is a spectrum, rendered three ways: light is an absorption spectrum (dark marks on
 a bright continuum), dark is emission (bright marks on a dark one), and `night` is emission
-under the luminance ceiling above. The wordmark separates its halves by weight, never by hue,
+under a red observatory safelight. The wordmark separates its halves by weight, never by hue,
 for the same reason - a coloured wordmark in the corner of every page would be the single
 exception that unmakes the rule.
 
@@ -262,6 +267,18 @@ emitting at all - and the operator's brightness control does the rest; its brigh
 10 cd/m2 at a display peak near 12 cd/m2, roughly 3% of a 400-nit panel. The four state hues
 are unchanged in it, which is the whole reason the ceiling is a luminance rule and not a hue
 one.
+
+**Recorded decision: `night` is not held to the contrast commitment.** It is a dark-site
+scheme meant to be read with the display dimmed, and forcing 7:1 on it would defeat what it
+exists for, so it is held to a legibility floor and to every check that is about safety
+rather than comfort. Two consequences are accepted rather than discovered: its chrome is red,
+which costs a protanope about 4.5 L* of that chrome (MIL-STD-1472F 5.2.1.5.6.2 asks that
+wavelengths above 650 nm be avoided where users include protanopes), and its action colour
+clears the nearest state by 10 CIEDE2000 rather than the 15 the other schemes hold - a
+measured ceiling, because moving a red away from the amber Busy walks it back toward the
+rose Alert. Both risks are bounded to chrome: the four states keep their own hues and their
+full separation in this scheme, so what an instrument is doing is the one thing on screen
+that is never tinted.
 
 **Recorded shortfall: four badge labels reach AA, not AAA.**
 In dark and night, Alert tops out at 5.80:1 and Idle at 5.50:1; in light, Idle tops out at

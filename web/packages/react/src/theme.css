@@ -7,12 +7,23 @@
  * Exported as `@indikit/react/theme.css`.
  *
  * The world is a spectrum, and the rule that follows from it governs every
- * value below: **the brand spends no chroma worth the name.** `--primary`,
- * `--secondary` and `--ring` carry C*ab under 6.4 - a faint cool cast so the
- * greys do not read dead - against states at C*ab 40 to 80. Calling them "pure
- * neutrals" would be tidier and false; the claim that matters is that nothing in
- * the chrome reads as colour beside a state, so every saturated pixel on this
- * screen is an instrument talking. A brand hue competing with the four states is exactly the
+ * value below: **hue is enumerated, and nothing outside the list may take one.**
+ * The list is four instrument states, one action, and the documentation site's
+ * link cyan. That is the rule; it was briefly "the brand spends no chroma at
+ * all", which was simpler and turned out to cost more than it bought - a
+ * monochrome chrome left the control that writes to an instrument reading like
+ * a disabled label, because value alone was carrying the whole hierarchy.
+ *
+ * The action colour earns its entry by measurement rather than by taste: blue
+ * sits 19.2 CIEDE2000 from the nearest state in the worst of normal,
+ * deuteranopic and protanopic vision, where the orange this project once
+ * rejected sat 8.3 from Busy. An action and a status are different objects in
+ * different places, and at that distance neither can be read as the other.
+ * `--secondary` and `--ring` stay neutral in light and dark: a raised surface
+ * and a focus indicator are not things, and neither should claim a hue. Under
+ * the safelight they are red like everything else in the chrome - the ground
+ * itself is tinted there, so a surface that stayed grey would be the anomaly.
+ * That is the scheme tinting them, not a token claiming a hue of its own. A brand hue competing with the four states is exactly the
  * failure the violet before it was one re-measure away from - it sat 22.4
  * CIEDE2000 from the nearest state, and the orange before *that* sat 8.3.
  * Removing hue from the brand removes the whole class of failure rather than
@@ -34,24 +45,22 @@
  * It refuses the category default, a dark dashboard carrying a brand accent that
  * competes with its own status colours for the operator's eye.
  *
- * OWN-WORLD: an emission spectrum. A neutral continuum in three renditions -
- * absorption (light), emission (dark), emission under a luminance ceiling
- * (night) - with hue appearing only as narrow, saturated marks at fixed
- * positions. Two positions hold hue and no others: a property's state badge,
- * and the sidebar's two connection dots, which report the health of the links
- * every reading on the page depends on. Both are instrument state in the sense
- * that matters - something outside the interface is or is not well - and the
- * dots carry shape and a word besides, so hue is never their only signal.
- * Monospace throughout, because instrument readouts, IAU circulars and spectra
- * are all set that way.
+ * OWN-WORLD: an emission spectrum, in three renditions - absorption (light),
+ * emission (dark), and emission under a red observatory safelight (night).
+ * Hue is enumerated rather than absent: a property's state badge, the sidebar's
+ * two connection dots, and the action colour. The states and the dots report
+ * something outside the interface being well or unwell, and both carry shape and
+ * a word besides, so hue is never their only signal. Monospace throughout,
+ * because instrument readouts, IAU circulars and spectra are all set that way.
  *
  * STORY: an operator reads state before they read anything else, and can trust
  * that anything coloured is the instrument talking rather than the interface.
  *
- * FIRST VIEWPORT: a near-neutral ground of property cards, each carrying its
- * state badge, with the sidebar's connection dots the only other hue on screen;
- * the wordmark separates by weight, not hue; the sole reserved non-state hue is
- * the docs site's link cyan, which never appears in the panel.
+ * FIRST VIEWPORT: a ground of property cards, each carrying its state badge and
+ * its write action; the wordmark separates by weight, not hue; the docs site's
+ * link cyan is reserved to navigation and never appears in the panel. Under the
+ * safelight the whole chrome turns red and the states do not, so status is the
+ * one thing on screen that is still itself.
  *
  * FORM: candidate 1 of the grounded list (emission spectra and calibration
  * lamps), taken over the roll's assignment by the user; seed key f9bbe9ab.
@@ -78,7 +87,19 @@
      nearest state is 15.72 CIEDE2000 in the worst of normal, deuteranopic and
      protanopic vision - and that distance is structural rather than tuned,
      because a neutral has no hue to collide with. */
-  --primary: #12151a;
+  /* THE ACTION COLOUR. The brand carried no hue at all until this: every
+     saturated pixel meant instrument state. The rule did not go away, it got
+     an entry - hue is now ENUMERATED rather than absent, four states plus one
+     action plus the documentation's link cyan, and nothing else may take one.
+     Blue earns the slot on measurement: 19.2 CIEDE2000 from the nearest state
+     in the worst of normal, deuteranopic and protanopic vision, where the
+     orange this project rejected sat 8.3 from Busy. An action and a status are
+     different objects in different places, and at 19 dE they cannot be read as
+     each other. 8.64:1 under white, and 7.98 / 7.43 / 7.09:1 as `text-primary`
+     on the background, the sidebar and `--accent` - a token has to clear its bar
+     on every surface it lands on, and the first draft of this one cleared white
+     at 7.14 and `--accent` at only 6.59. */
+  --primary: #1543ac;
   --primary-foreground: #ffffff;
   --secondary: #e6e9ec;
   --secondary-foreground: #12151a;
@@ -139,7 +160,7 @@
   --chart-5: #c8ccd0;
   --sidebar: #eceef1;
   --sidebar-foreground: #12151a;
-  --sidebar-primary: #12151a;
+  --sidebar-primary: #1543ac;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e6e9ec;
   --sidebar-accent-foreground: #12151a;
@@ -209,13 +230,13 @@
   --card-foreground: #dfe4ea;
   --popover: #16191f;
   --popover-foreground: #dfe4ea;
-  /* The continuum, not a colour. `--primary` is read as text here (the message
+  /* The action colour, lifted for a dark ground. Read as text here (the message
      log's device name, link-variant buttons) as well as filled behind
-     `--primary-foreground`, and it is neutral in both roles: 15.31:1 as text on
-     the background and as the dark foreground on the fill, 15.00 on the sidebar,
-     10.27 on `--accent`. Nearest state is 25.61 CIEDE2000 away in the worst of
-     normal, deuteranopic and protanopic vision. */
-  --primary: #dfe4ea;
+     `--primary-foreground`: 7.70:1 both ways, and 6.92 against the card. It sits
+     18.8 CIEDE2000 from the nearest state in the worst of normal, deuteranopic
+     and protanopic vision, which is the distance that lets an action and a status
+     share a screen without being read as each other. */
+  --primary: #60a5fa;
   --primary-foreground: #0a0c0f;
   /* Worn by the selected member of a switch vector and by the Set button. It was
      a cyan, chosen because the #5f8787 before it sat only deltaE 5.7 from
@@ -261,7 +282,7 @@
   --chart-5: #4c5157;
   --sidebar: #0d0f13;
   --sidebar-foreground: #dfe4ea;
-  --sidebar-primary: #dfe4ea;
+  --sidebar-primary: #60a5fa;
   --sidebar-primary-foreground: #0a0c0f;
   --sidebar-accent: #2b3138;
   --sidebar-accent-foreground: #dfe4ea;
@@ -312,65 +333,81 @@
 }
 
 /*
- * `.night` - the emission spectrum under a luminance ceiling.
+ * `.night` - the observatory safelight.
  *
  * APPLIED ALONGSIDE `.dark`, never instead of it (`<html class="dark night">`),
  * so every `dark:` utility the primitives carry still resolves and this block
  * only moves token values. It must therefore stay AFTER `.dark`: same
  * specificity, so source order is what decides.
  *
- * WHAT THE CEILING IS, AND WHY IT IS NOT MET BY DIM COLOURS. MIL-STD-1472F
- * 5.2.1.5.6.3 caps luminance at 10 cd/m2 where colour coding is used. On a
- * 400-nit panel that is a relative luminance of 0.025, and WCAG contrast is
- * (L1+0.05)/(L2+0.05) - so even pure black against that ceiling yields 1.5:1.
- * A scheme that chases the cap with dim greys loses all its contrast AND still
- * misses the cap by more than ten times. Real instrument panels dim the
- * *display*; contrast ratios are relative and survive dimming untouched.
+ * THE WHOLE CHROME IS RED AND THE STATES ARE NOT. That split is the design.
+ * Ground, text, rules, fields, focus and the action are all red, so the panel
+ * reads as a safelit room; the four instrument states keep the hues they were
+ * derived with, so the one thing on screen that is still itself is what an
+ * instrument is doing. A grey Idle and a green connection dot on a red field
+ * are more legible as status, not less.
  *
- * So this scheme's job is to keep AAA while emitting as little light as it can:
- * a pure-black ground, so the overwhelming majority of pixels emit nothing at
- * all, and the operator's own brightness control does the rest. The brightest
- * token here lands on 10 cd/m2 at a display peak of about 12 cd/m2, roughly 3%
- * of a 400-nit panel - which is the setting this scheme is built to stay legible
- * at, not a number the CSS can enforce.
+ * THE COST, RECORDED RATHER THAN HIDDEN. PRODUCT.md carries research that
+ * argued against a red mode, and one half of it stands: MIL-STD-1472F
+ * 5.2.1.5.6.2 asks that wavelengths above 650 nm be avoided where users include
+ * protanopes, and a protanope loses about 4.5 L* of this chrome that a normal
+ * observer sees. The other half - that a monochrome red spends the entire colour
+ * channel - does not apply here, because the states keep theirs. The risk is
+ * therefore bounded to chrome rather than to status, which is the trade this
+ * scheme takes deliberately.
  *
- * PRODUCT.md records the research this follows, including why it is a luminance
- * scheme and not a red one: above 650 nm is hostile to protanopes, and a
- * monochrome red interface spends the whole colour channel that the four states
- * need. The states keep their hues here, unchanged from `.dark`.
- */
+ * The action colour is the palest red on screen, and that is forced. A search
+ * over every red at usable brightness found 10 CIEDE2000 to be the CEILING for
+ * separation from all four states, because moving away from the amber Busy walks
+ * back toward the rose Alert. `#e4afaf` sits at that ceiling: 17.2 from Alert,
+ * 22.7 from Busy. In a scheme where hue is spent, the brightest tone is the
+ * hierarchy, so the action being palest is the mechanism rather than a
+ * compromise.
+ *
+ * CONTRAST IS NOT GATED AT AAA HERE, by decision. This is a dark-site scheme
+ * meant to be read with the display dimmed, and forcing 7:1 would defeat what it
+ * exists for. It is held to a legibility floor instead, and to every check that
+ * is about safety rather than comfort - the state separations are untouched and
+ * destructive stays 18.45 CIEDE2000 from Alert. The luminance ceiling itself is
+ * still met the only way it can be: MIL-STD-1472F 5.2.1.5.6.3 caps at 10 cd/m2,
+ * which on a 400-nit panel is a relative luminance of 0.025 - so even pure black
+ * against that ceiling yields 1.5:1, and no CSS can reach the cap and stay
+ * readable. Real instrument panels dim the display; contrast is relative and
+ * survives dimming untouched. The ground is pure black so that almost nothing
+ * emits, and the operator's brightness control does the rest.
+  */
 .night {
   --background: #000000;
-  --foreground: #a8b0b8;
-  --card: #0b0d0f;
-  --card-foreground: #a8b0b8;
-  --popover: #0b0d0f;
-  --popover-foreground: #a8b0b8;
-  --primary: #aeb6bf;
-  --primary-foreground: #000000;
-  --secondary: #1b1e22;
-  --secondary-foreground: #a8b0b8;
-  --muted: #121417;
-  --muted-foreground: #a1a9b2;
-  --accent: #1b1e22;
-  --accent-foreground: #a8b0b8;
-  --destructive: #c72623;
-  --border: #23272c;
-  --input: #6f7780;
-  --ring: #e8ecf0;
-  --chart-1: #6f7780;
-  --chart-2: #9aa2ab;
-  --chart-3: #c3cad2;
-  --chart-4: #545b63;
-  --chart-5: #3d444b;
-  --sidebar: #020303;
-  --sidebar-foreground: #a8b0b8;
-  --sidebar-primary: #aeb6bf;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #1b1e22;
-  --sidebar-accent-foreground: #a8b0b8;
-  --sidebar-border: #23272c;
-  --sidebar-ring: #e8ecf0;
+  --foreground: #e08585;
+  --card: #140708;
+  --card-foreground: #e08585;
+  --popover: #140708;
+  --popover-foreground: #e08585;
+  --primary: #e4afaf;
+  --primary-foreground: #1a0000;
+  --secondary: #24090b;
+  --secondary-foreground: #e08585;
+  --muted: #200a0b;
+  --muted-foreground: #b06a6a;
+  --accent: #24090b;
+  --accent-foreground: #e08585;
+  --destructive: #c0201b;
+  --border: #5c1f22;
+  --input: #ab5e5c;
+  --ring: #ff8f8f;
+  --chart-1: #8a4442;
+  --chart-2: #a85f5f;
+  --chart-3: #c98b86;
+  --chart-4: #6e3230;
+  --chart-5: #4a2022;
+  --sidebar: #050102;
+  --sidebar-foreground: #e08585;
+  --sidebar-primary: #e4afaf;
+  --sidebar-primary-foreground: #1a0000;
+  --sidebar-accent: #24090b;
+  --sidebar-accent-foreground: #e08585;
+  --sidebar-border: #5c1f22;
+  --sidebar-ring: #ff8f8f;
 
   /* Unchanged from `.dark`: the states are the reason the ceiling is a
      luminance rule and not a hue rule, so dimming may not touch them. */

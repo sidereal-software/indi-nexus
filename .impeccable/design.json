@@ -6,47 +6,47 @@
     "colorMeta": {
       "primary": {
         "role": "primary",
-        "displayName": "The Continuum's Extreme",
-        "canonical": "oklch(19.5% 0.0112 260.7)",
+        "displayName": "Instrument Blue",
+        "canonical": "oklch(42.5% 0.1752 263.1)",
         "tonalRamp": [
-          "oklch(15% 0.0112 260.7)",
-          "oklch(26% 0.0112 260.7)",
-          "oklch(37% 0.0112 260.7)",
-          "oklch(48% 0.0112 260.7)",
-          "oklch(59% 0.0112 260.7)",
-          "oklch(70% 0.0112 260.7)",
-          "oklch(82% 0.0112 260.7)",
-          "oklch(95% 0.0112 260.7)"
+          "oklch(15% 0.0584 263.1)",
+          "oklch(26% 0.1012 263.1)",
+          "oklch(37% 0.1752 263.1)",
+          "oklch(48% 0.1752 263.1)",
+          "oklch(59% 0.1752 263.1)",
+          "oklch(70% 0.1752 263.1)",
+          "oklch(82% 0.1752 263.1)",
+          "oklch(95% 0.0701 263.1)"
         ]
       },
       "primary-dark": {
         "role": "primary",
-        "displayName": "The Continuum's Extreme (dark)",
-        "canonical": "oklch(91.7% 0.0098 252.8)",
+        "displayName": "Instrument Blue (dark)",
+        "canonical": "oklch(71.4% 0.1434 254.6)",
         "tonalRamp": [
-          "oklch(15% 0.0098 252.8)",
-          "oklch(26% 0.0098 252.8)",
-          "oklch(37% 0.0098 252.8)",
-          "oklch(48% 0.0098 252.8)",
-          "oklch(59% 0.0098 252.8)",
-          "oklch(70% 0.0098 252.8)",
-          "oklch(82% 0.0098 252.8)",
-          "oklch(95% 0.0098 252.8)"
+          "oklch(15% 0.0478 254.6)",
+          "oklch(26% 0.0829 254.6)",
+          "oklch(37% 0.1434 254.6)",
+          "oklch(48% 0.1434 254.6)",
+          "oklch(59% 0.1434 254.6)",
+          "oklch(70% 0.1434 254.6)",
+          "oklch(82% 0.1434 254.6)",
+          "oklch(95% 0.0574 254.6)"
         ]
       },
       "primary-night": {
         "role": "primary",
-        "displayName": "The Continuum's Extreme (night)",
-        "canonical": "oklch(77.3% 0.0156 251.2)",
+        "displayName": "Pale Safelight Red",
+        "canonical": "oklch(80.2% 0.0622 18.5)",
         "tonalRamp": [
-          "oklch(15% 0.0156 251.2)",
-          "oklch(26% 0.0156 251.2)",
-          "oklch(37% 0.0156 251.2)",
-          "oklch(48% 0.0156 251.2)",
-          "oklch(59% 0.0156 251.2)",
-          "oklch(70% 0.0156 251.2)",
-          "oklch(82% 0.0156 251.2)",
-          "oklch(95% 0.0156 251.2)"
+          "oklch(15% 0.0207 18.5)",
+          "oklch(26% 0.0359 18.5)",
+          "oklch(37% 0.0622 18.5)",
+          "oklch(48% 0.0622 18.5)",
+          "oklch(59% 0.0622 18.5)",
+          "oklch(70% 0.0622 18.5)",
+          "oklch(82% 0.0622 18.5)",
+          "oklch(95% 0.0249 18.5)"
         ]
       },
       "secondary": {
@@ -81,17 +81,17 @@
       },
       "secondary-night": {
         "role": "secondary",
-        "displayName": "The Raised Step (night)",
-        "canonical": "oklch(23.4% 0.0089 255.6)",
+        "displayName": "The Raised Step (night safelight)",
+        "canonical": "oklch(18.7% 0.0461 18.2)",
         "tonalRamp": [
-          "oklch(15% 0.0089 255.6)",
-          "oklch(26% 0.0089 255.6)",
-          "oklch(37% 0.0089 255.6)",
-          "oklch(48% 0.0089 255.6)",
-          "oklch(59% 0.0089 255.6)",
-          "oklch(70% 0.0089 255.6)",
-          "oklch(82% 0.0089 255.6)",
-          "oklch(95% 0.0089 255.6)"
+          "oklch(15% 0.0154 18.2)",
+          "oklch(26% 0.0266 18.2)",
+          "oklch(37% 0.0461 18.2)",
+          "oklch(48% 0.0461 18.2)",
+          "oklch(59% 0.0461 18.2)",
+          "oklch(70% 0.0461 18.2)",
+          "oklch(82% 0.0461 18.2)",
+          "oklch(95% 0.0184 18.2)"
         ]
       },
       "destructive": {
@@ -112,31 +112,31 @@
       "destructive-dark": {
         "role": "tertiary",
         "displayName": "Destructive Red (dark)",
-        "canonical": "oklch(51.8% 0.1974 27.7)",
+        "canonical": "oklch(53.9% 0.1841 31.6)",
         "tonalRamp": [
-          "oklch(15% 0.0896 27.7)",
-          "oklch(26% 0.1162 27.7)",
-          "oklch(37% 0.1561 27.7)",
-          "oklch(48% 0.1974 27.7)",
-          "oklch(59% 0.1974 27.7)",
-          "oklch(70% 0.1916 27.7)",
-          "oklch(82% 0.1015 27.7)",
-          "oklch(95% 0.0253 27.7)"
+          "oklch(15% 0.0614 31.6)",
+          "oklch(26% 0.1064 31.6)",
+          "oklch(37% 0.1841 31.6)",
+          "oklch(48% 0.1841 31.6)",
+          "oklch(59% 0.1841 31.6)",
+          "oklch(70% 0.1841 31.6)",
+          "oklch(82% 0.1841 31.6)",
+          "oklch(95% 0.0736 31.6)"
         ]
       },
       "destructive-night": {
         "role": "tertiary",
         "displayName": "Destructive Red (night)",
-        "canonical": "oklch(53.8% 0.1965 27.7)",
+        "canonical": "oklch(52.1% 0.1947 28.4)",
         "tonalRamp": [
-          "oklch(15% 0.0896 27.7)",
-          "oklch(26% 0.1162 27.7)",
-          "oklch(37% 0.1561 27.7)",
-          "oklch(48% 0.1965 27.7)",
-          "oklch(59% 0.1965 27.7)",
-          "oklch(70% 0.1916 27.7)",
-          "oklch(82% 0.1015 27.7)",
-          "oklch(95% 0.0253 27.7)"
+          "oklch(15% 0.0649 28.4)",
+          "oklch(26% 0.1125 28.4)",
+          "oklch(37% 0.1947 28.4)",
+          "oklch(48% 0.1947 28.4)",
+          "oklch(59% 0.1947 28.4)",
+          "oklch(70% 0.1947 28.4)",
+          "oklch(82% 0.1947 28.4)",
+          "oklch(95% 0.0779 28.4)"
         ]
       },
       "docs-link": {
@@ -201,17 +201,17 @@
       },
       "foreground-night": {
         "role": "neutral",
-        "displayName": "Foreground (night)",
-        "canonical": "oklch(75.3% 0.0146 248.0)",
+        "displayName": "Foreground (night safelight)",
+        "canonical": "oklch(71.3% 0.1122 20.2)",
         "tonalRamp": [
-          "oklch(15% 0.0146 248.0)",
-          "oklch(26% 0.0146 248.0)",
-          "oklch(37% 0.0146 248.0)",
-          "oklch(48% 0.0146 248.0)",
-          "oklch(59% 0.0146 248.0)",
-          "oklch(70% 0.0146 248.0)",
-          "oklch(82% 0.0146 248.0)",
-          "oklch(95% 0.0146 248.0)"
+          "oklch(15% 0.0374 20.2)",
+          "oklch(26% 0.0648 20.2)",
+          "oklch(37% 0.1122 20.2)",
+          "oklch(48% 0.1122 20.2)",
+          "oklch(59% 0.1122 20.2)",
+          "oklch(70% 0.1122 20.2)",
+          "oklch(82% 0.1122 20.2)",
+          "oklch(95% 0.0449 20.2)"
         ]
       },
       "muted-foreground": {
@@ -246,62 +246,62 @@
       },
       "muted-foreground-night": {
         "role": "neutral",
-        "displayName": "Secondary Text (night)",
-        "canonical": "oklch(73.1% 0.0159 251.2)",
+        "displayName": "Secondary Text (night safelight)",
+        "canonical": "oklch(60.1% 0.0900 20.1)",
         "tonalRamp": [
-          "oklch(15% 0.0159 251.2)",
-          "oklch(26% 0.0159 251.2)",
-          "oklch(37% 0.0159 251.2)",
-          "oklch(48% 0.0159 251.2)",
-          "oklch(59% 0.0159 251.2)",
-          "oklch(70% 0.0159 251.2)",
-          "oklch(82% 0.0159 251.2)",
-          "oklch(95% 0.0159 251.2)"
+          "oklch(15% 0.0300 20.1)",
+          "oklch(26% 0.0520 20.1)",
+          "oklch(37% 0.0900 20.1)",
+          "oklch(48% 0.0900 20.1)",
+          "oklch(59% 0.0900 20.1)",
+          "oklch(70% 0.0900 20.1)",
+          "oklch(82% 0.0900 20.1)",
+          "oklch(95% 0.0360 20.1)"
         ]
       },
       "border": {
         "role": "neutral",
         "displayName": "Hairline",
-        "canonical": "oklch(61.1% 0.0205 258.4)",
+        "canonical": "oklch(88.0% 0.0088 247.9)",
         "tonalRamp": [
-          "oklch(15% 0.0205 258.4)",
-          "oklch(26% 0.0205 258.4)",
-          "oklch(37% 0.0205 258.4)",
-          "oklch(48% 0.0205 258.4)",
-          "oklch(59% 0.0205 258.4)",
-          "oklch(70% 0.0205 258.4)",
-          "oklch(82% 0.0205 258.4)",
-          "oklch(95% 0.0205 258.4)"
+          "oklch(15% 0.0088 247.9)",
+          "oklch(26% 0.0088 247.9)",
+          "oklch(37% 0.0088 247.9)",
+          "oklch(48% 0.0088 247.9)",
+          "oklch(59% 0.0088 247.9)",
+          "oklch(70% 0.0088 247.9)",
+          "oklch(82% 0.0088 247.9)",
+          "oklch(95% 0.0088 247.9)"
         ]
       },
       "border-dark": {
         "role": "neutral",
         "displayName": "Hairline (dark)",
-        "canonical": "oklch(58.0% 0.0208 258.4)",
+        "canonical": "oklch(31.0% 0.0151 252.3)",
         "tonalRamp": [
-          "oklch(15% 0.0208 258.4)",
-          "oklch(26% 0.0208 258.4)",
-          "oklch(37% 0.0208 258.4)",
-          "oklch(48% 0.0208 258.4)",
-          "oklch(59% 0.0208 258.4)",
-          "oklch(70% 0.0208 258.4)",
-          "oklch(82% 0.0208 258.4)",
-          "oklch(95% 0.0208 258.4)"
+          "oklch(15% 0.0151 252.3)",
+          "oklch(26% 0.0151 252.3)",
+          "oklch(37% 0.0151 252.3)",
+          "oklch(48% 0.0151 252.3)",
+          "oklch(59% 0.0151 252.3)",
+          "oklch(70% 0.0151 252.3)",
+          "oklch(82% 0.0151 252.3)",
+          "oklch(95% 0.0151 252.3)"
         ]
       },
       "border-night": {
         "role": "neutral",
-        "displayName": "Hairline (night)",
-        "canonical": "oklch(52.2% 0.0180 257.2)",
+        "displayName": "Hairline (night safelight)",
+        "canonical": "oklch(33.4% 0.0895 20.5)",
         "tonalRamp": [
-          "oklch(15% 0.0180 257.2)",
-          "oklch(26% 0.0180 257.2)",
-          "oklch(37% 0.0180 257.2)",
-          "oklch(48% 0.0180 257.2)",
-          "oklch(59% 0.0180 257.2)",
-          "oklch(70% 0.0180 257.2)",
-          "oklch(82% 0.0180 257.2)",
-          "oklch(95% 0.0180 257.2)"
+          "oklch(15% 0.0298 20.5)",
+          "oklch(26% 0.0517 20.5)",
+          "oklch(37% 0.0895 20.5)",
+          "oklch(48% 0.0895 20.5)",
+          "oklch(59% 0.0895 20.5)",
+          "oklch(70% 0.0895 20.5)",
+          "oklch(82% 0.0895 20.5)",
+          "oklch(95% 0.0358 20.5)"
         ]
       },
       "input": {
@@ -336,17 +336,17 @@
       },
       "input-night": {
         "role": "neutral",
-        "displayName": "Control Edge (night)",
-        "canonical": "oklch(56.6% 0.0169 251.3)",
+        "displayName": "Control Edge (night safelight)",
+        "canonical": "oklch(57.1% 0.1007 22.3)",
         "tonalRamp": [
-          "oklch(15% 0.0169 251.3)",
-          "oklch(26% 0.0169 251.3)",
-          "oklch(37% 0.0169 251.3)",
-          "oklch(48% 0.0169 251.3)",
-          "oklch(59% 0.0169 251.3)",
-          "oklch(70% 0.0169 251.3)",
-          "oklch(82% 0.0169 251.3)",
-          "oklch(95% 0.0169 251.3)"
+          "oklch(15% 0.0336 22.3)",
+          "oklch(26% 0.0582 22.3)",
+          "oklch(37% 0.1007 22.3)",
+          "oklch(48% 0.1007 22.3)",
+          "oklch(59% 0.1007 22.3)",
+          "oklch(70% 0.1007 22.3)",
+          "oklch(82% 0.1007 22.3)",
+          "oklch(95% 0.0403 22.3)"
         ]
       },
       "state-idle": {
@@ -679,23 +679,23 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "A filled neutral, not a brand colour. Sparingly is an understatement: nothing on the panel's own surface is one. It appears inside DeviceConfigDialog and nowhere else, because a filled control marks the action of a surface an operator opened deliberately, and a screen of live instrument readings has no such action.",
-      "html": "<button class=\"ds-btn-primary\">Save</button>",
-      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border: 1px solid transparent; border-radius: 10px; background: var(--primary, #12151a); color: var(--primary-foreground, #ffffff); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; transition: background-color 0.15s, box-shadow 0.15s; cursor: pointer; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, #12151a) 90%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #fbfcfd), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
+      "description": "The action colour, and the only hue in the panel's chrome. It means \"this writes to the instrument\": the Set button on every writable property card, and the primary action of DeviceConfigDialog. It exists because the same control drawn in --secondary measured 1.22:1 against the light card and read as a disabled label rather than a button - value alone could not carry the hierarchy.",
+      "html": "<button class=\"ds-btn-primary\">Set</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border: 1px solid transparent; border-radius: 10px; background: var(--primary, #1543ac); color: var(--primary-foreground, #ffffff); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; transition: background-color 0.15s, box-shadow 0.15s; cursor: pointer; } .ds-btn-primary:hover { background: color-mix(in oklab, var(--primary, #1543ac) 90%, transparent); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #f4f6f8), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
     },
     {
-      "name": "Secondary (Set) Button",
+      "name": "Secondary Button",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "The action vocabulary: this writes to the instrument. One step up the neutral ramp. In light mode the fill is held on hover, so the cursor and the focus ring are the affordance - the same behaviour the selected switch member has.",
-      "html": "<button class=\"ds-btn-secondary\">Set</button>",
-      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 10px; background: var(--secondary, #e6e9ec); color: var(--secondary-foreground, #12151a); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; transition: box-shadow 0.15s; cursor: pointer; } .ds-btn-secondary:hover { background: var(--secondary, #e6e9ec); } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #fbfcfd), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
+      "description": "A quiet raised fill, and no longer the action vocabulary - the Set button moved to --primary. Its one meaningful appearance is the selected member of a switch vector, where it says \"this is the live state\" rather than \"press this\". In light mode the fill is held on hover, so the cursor and the focus ring are the affordance.",
+      "html": "<button class=\"ds-btn-secondary\">Restore first saved</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 10px; background: var(--secondary, #e6e9ec); color: var(--secondary-foreground, #12151a); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; transition: box-shadow 0.15s; cursor: pointer; } .ds-btn-secondary:hover { background: var(--secondary, #e6e9ec); } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #f4f6f8), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
     },
     {
       "name": "Destructive Button",
       "kind": "button",
       "refersTo": "button-destructive",
-      "description": "The one place the panel's chrome carries a hue. A true red where Alert is a rose, 22.27 CIEDE2000 apart in light and 15.44 in dark, so danger is never confusable with an instrument in Alert. Its focus ring is the ordinary neutral ring, and its ring gap is white rather than the surface, which makes the indicator two-tone against the fill.",
+      "description": "The red end of the action slot: the only button variant that carries it, never a status. A true red where Alert is a rose, 22.27 CIEDE2000 apart in light, 15.44 in dark and 18.45 in night, so danger is never confusable with an instrument in Alert. Its focus ring is the ordinary ring, and its ring gap is white rather than the surface, which makes the indicator two-tone against the fill.",
       "html": "<button class=\"ds-btn-destructive\">Delete saved config</button>",
       "css": ".ds-btn-destructive { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border: 1px solid transparent; border-radius: 10px; background: var(--destructive, #a3120f); color: #ffffff; font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; transition: background-color 0.15s, box-shadow 0.15s; cursor: pointer; } .ds-btn-destructive:hover { background: color-mix(in oklab, var(--destructive, #a3120f) 90%, transparent); } .ds-btn-destructive:focus-visible { outline: none; box-shadow: 0 0 0 2px #ffffff, 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); }"
     },
@@ -703,7 +703,7 @@
       "name": "State Badge",
       "kind": "custom",
       "refersTo": "badge-state-alert",
-      "description": "The only saturated element on the panel, and the reason the chrome holds no hue. The state-to-colour mapping lives once, on a data-indi-state attribute the theme resolves to a pair of custom properties, so the badge, the status dots, the wallboard's bars and its drawn figures cannot drift apart. Busy is the only state that animates, by a ring on a pseudo-element rather than by fading the badge.",
+      "description": "The four hues the whole palette is arranged around, and the only ones .night leaves untouched. The state-to-colour mapping lives once, on a data-indi-state attribute the theme resolves to a pair of custom properties, so the badge, the status dots, the wallboard's bars and its drawn figures cannot drift apart. Busy is the only state that animates, by a ring on a pseudo-element rather than by fading the badge.",
       "html": "<span class=\"ds-badge ds-badge-ok\">Ok</span> <span class=\"ds-badge ds-badge-busy\" data-pulse>Busy</span> <span class=\"ds-badge ds-badge-alert\">Alert</span> <span class=\"ds-badge ds-badge-idle\">Idle</span>",
       "css": ".ds-badge { display: inline-flex; align-items: center; justify-content: center; position: relative; margin-right: 6px; padding: 2px 8px; border: 1px solid transparent; border-radius: 9999px; font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.75rem; font-weight: 500; letter-spacing: 0.025em; font-variant-numeric: tabular-nums; } .ds-badge-idle { background: var(--state-idle, #6b7480); color: var(--state-idle-foreground, #ffffff); } .ds-badge-ok { background: var(--state-ok, #215c1f); color: var(--state-ok-foreground, #ffffff); } .ds-badge-busy { background: var(--state-busy, #947100); color: var(--state-busy-foreground, #ffffff); } .ds-badge-alert { background: var(--state-alert, #8e0b55); color: var(--state-alert-foreground, #ffffff); } @media (prefers-reduced-motion: no-preference) { .ds-badge[data-pulse]::after { content: \"\"; position: absolute; inset: 0; outline: 2px solid var(--state-busy, #947100); border-radius: inherit; pointer-events: none; animation: ds-state-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } } @keyframes ds-state-pulse { 0% { transform: scale(1); opacity: 0.6; } 70%, 100% { transform: scale(1.5); opacity: 0; } }"
     },
@@ -713,7 +713,7 @@
       "refersTo": "card-property",
       "description": "The unit the panel is built from: one INDI property vector, drawn from whatever the driver declared. 16px corners, a hairline border doing the separation a shadow would elsewhere, and 16px of padding tightened from the primitive's default because a device can publish thirty of these. Its accessible name is the title and the state badge together, so it arrives as \"Exposure, Alert\".",
       "html": "<div class=\"ds-card\"><div class=\"ds-card-head\"><h3 class=\"ds-card-title\">Shutter</h3><span class=\"ds-badge ds-badge-ok\">Ok</span></div><p class=\"ds-card-desc\">DOME_SHUTTER</p><div class=\"ds-card-body\">Open</div></div>",
-      "css": ".ds-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border, #7c8490); border-radius: 16px; background: var(--card, #ffffff); color: var(--foreground, #12151a); box-shadow: 0px 1px 4px 0px rgb(0 0 0 / 0.05), 0px 1px 2px -1px rgb(0 0 0 / 0.05); font-family: var(--font-sans, ui-monospace, monospace); } .ds-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; } .ds-card-title { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1; } .ds-card-desc { margin: 2px 0 0; font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--muted-foreground, #434a53); } .ds-card-body { font-size: 0.875rem; }"
+      "css": ".ds-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--border, #d3d8dd); border-radius: 16px; background: var(--card, #ffffff); color: var(--foreground, #12151a); box-shadow: 0px 1px 4px 0px rgb(0 0 0 / 0.05), 0px 1px 2px -1px rgb(0 0 0 / 0.05); font-family: var(--font-sans, ui-monospace, monospace); } .ds-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; } .ds-card-title { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1; } .ds-card-desc { margin: 2px 0 0; font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--muted-foreground, #434a53); } .ds-card-body { font-size: 0.875rem; }"
     },
     {
       "name": "Switch Vector Control",
@@ -721,7 +721,7 @@
       "refersTo": "toggle-switch-member",
       "description": "A fieldset of independent toggle buttons styled to look joined, and deliberately not a radio group: the ARIA radio pattern is selection-follows-focus, so arrowing would announce that the selection moved while nothing had gone on the wire. Selection is carried by weight as well as fill, because with no hue in the chrome the hovered and selected fills are adjacent steps on one neutral ramp.",
       "html": "<fieldset class=\"ds-switch\"><button class=\"ds-switch-member\" aria-pressed=\"false\">Disconnect</button><button class=\"ds-switch-member\" aria-pressed=\"true\" data-state=\"on\">Connect</button></fieldset>",
-      "css": ".ds-switch { display: inline-flex; margin: 0; padding: 0; border: 0; } .ds-switch-member { height: 32px; padding: 0 12px; border: 1px solid var(--input, #6d7580); border-left: 0; border-radius: 0; background: transparent; color: var(--foreground, #12151a); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background-color 0.15s, box-shadow 0.15s; } .ds-switch-member:first-child { border-left: 1px solid var(--input, #6d7580); border-top-left-radius: 10px; border-bottom-left-radius: 10px; } .ds-switch-member:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; } .ds-switch-member:hover { background: var(--muted, #f1f3f5); } .ds-switch-member[data-state=\"on\"], .ds-switch-member[data-state=\"on\"]:hover { background: var(--secondary, #e6e9ec); color: var(--secondary-foreground, #12151a); font-weight: 600; } .ds-switch-member:focus-visible { position: relative; z-index: 10; outline: none; box-shadow: 0 0 0 2px var(--background, #fbfcfd), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
+      "css": ".ds-switch { display: inline-flex; margin: 0; padding: 0; border: 0; } .ds-switch-member { height: 32px; padding: 0 12px; border: 1px solid var(--input, #6d7580); border-left: 0; border-radius: 0; background: transparent; color: var(--foreground, #12151a); font-family: var(--font-sans, ui-monospace, monospace); font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background-color 0.15s, box-shadow 0.15s; } .ds-switch-member:first-child { border-left: 1px solid var(--input, #6d7580); border-top-left-radius: 10px; border-bottom-left-radius: 10px; } .ds-switch-member:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; } .ds-switch-member:hover { background: var(--muted, #f1f3f5); } .ds-switch-member[data-state=\"on\"], .ds-switch-member[data-state=\"on\"]:hover { background: var(--secondary, #e6e9ec); color: var(--secondary-foreground, #12151a); font-weight: 600; } .ds-switch-member:focus-visible { position: relative; z-index: 10; outline: none; box-shadow: 0 0 0 2px var(--background, #f4f6f8), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
     },
     {
       "name": "Value Input Field",
@@ -729,7 +729,7 @@
       "refersTo": "input-value",
       "description": "Two deterministic lines per element: a header pairing the label with the live current value, then a full-width input for the requested new value underneath. Nothing competes for a single row, so a long label and a sexagesimal reading both fit. The border is the --input token, which is simultaneously this control's edge, its 30% fill in the dark schemes, and the whole of the Switch's off-state track.",
       "html": "<div class=\"ds-field\"><div class=\"ds-field-head\"><label class=\"ds-field-label\" for=\"ds-az\">Azimuth</label><span class=\"ds-field-value\">184.30</span></div><input class=\"ds-input\" id=\"ds-az\" value=\"184.30\" /></div>",
-      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; font-family: var(--font-sans, ui-monospace, monospace); } .ds-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; } .ds-field-label { font-size: 0.75rem; color: var(--muted-foreground, #434a53); } .ds-field-value { font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; } .ds-input { width: 100%; height: 36px; padding: 4px 12px; border: 1px solid var(--input, #6d7580); border-radius: 10px; background: transparent; color: var(--foreground, #12151a); font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; box-shadow: 0px 1px 4px 0px rgb(0 0 0 / 0.03); transition: box-shadow 0.15s, border-color 0.15s; } .ds-input:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #fbfcfd), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; font-family: var(--font-sans, ui-monospace, monospace); } .ds-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; } .ds-field-label { font-size: 0.75rem; color: var(--muted-foreground, #434a53); } .ds-field-value { font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; } .ds-input { width: 100%; height: 36px; padding: 4px 12px; border: 1px solid var(--input, #6d7580); border-radius: 10px; background: transparent; color: var(--foreground, #12151a); font-family: var(--font-mono, monospace); font-size: 0.875rem; font-variant-numeric: tabular-nums; box-shadow: 0px 1px 4px 0px rgb(0 0 0 / 0.03); transition: box-shadow 0.15s, border-color 0.15s; } .ds-input:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #f4f6f8), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
     },
     {
       "name": "Connection Status",
@@ -743,45 +743,50 @@
       "name": "Message Log Entry",
       "kind": "custom",
       "refersTo": "input-value",
-      "description": "A docked terminal tail: readout typeface at 0.75rem, newest at the bottom. Each entry stacks a timestamp and device name over the message body so wrapped lines start at the margin rather than mid-row. The scrolling viewport is a polite additions-only live region and carries a tab stop, without which the history above the tail is unreachable by keyboard.",
+      "description": "A docked terminal tail: readout typeface at 0.75rem, newest at the bottom. Each entry stacks a timestamp and device name over the message body so wrapped lines start at the margin rather than mid-row. The scrolling viewport is a polite additions-only live region and carries a tab stop, without which the history above the tail is unreachable by keyboard. The device name is text-primary, one of the three places the action colour is set as type rather than as a fill.",
       "html": "<div class=\"ds-log\"><div class=\"ds-log-entry\"><div class=\"ds-log-head\"><span class=\"ds-log-time\">03:14:07</span><span class=\"ds-log-device\">Dome Simulator</span></div><div class=\"ds-log-body\">Shutter opening.</div></div><div class=\"ds-log-entry\"><div class=\"ds-log-head\"><span class=\"ds-log-time\">03:14:21</span><span class=\"ds-log-device\">Dome Simulator</span></div><div class=\"ds-log-body\">Shutter open.</div></div></div>",
-      "css": ".ds-log { display: flex; flex-direction: column; gap: 10px; padding: 12px; font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--foreground, #12151a); } .ds-log-head { display: flex; gap: 8px; } .ds-log-time { font-variant-numeric: tabular-nums; color: var(--muted-foreground, #434a53); } .ds-log-device { color: var(--primary, #12151a); font-weight: 600; } .ds-log-body { margin-top: 2px; }"
+      "css": ".ds-log { display: flex; flex-direction: column; gap: 10px; padding: 12px; font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--foreground, #12151a); } .ds-log-head { display: flex; gap: 8px; } .ds-log-time { font-variant-numeric: tabular-nums; color: var(--muted-foreground, #434a53); } .ds-log-device { color: var(--primary, #1543ac); font-weight: 600; } .ds-log-body { margin-top: 2px; }"
     },
     {
       "name": "Theme Control",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "One icon button cycling light -> dark -> night. Its label says what pressing it does, because the control is an action and \"Toggle theme\" stopped being true at three schemes. Grown to 44x44 for real in className rather than by an overlay, so the hover tint and the focus ring grow with the target.",
+      "description": "One icon button cycling light -> dark -> night. Its label says what pressing it does, because the control is an action and \"Toggle theme\" stopped being true at three schemes. night is named for what it delivers - a red safelight scheme meant to be read with the display dimmed - never \"night vision\". Grown to 44x44 for real in className rather than by an overlay, so the hover tint and the focus ring grow with the target.",
       "html": "<button class=\"ds-btn-ghost\" aria-label=\"Switch to dimmed night\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 5h4\"/><path d=\"M20 3v4\"/><path d=\"M21.5 12A9 9 0 1 1 12 2.5\"/></svg></button>",
-      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--foreground, #12151a); cursor: pointer; transition: background-color 0.15s, box-shadow 0.15s; } .ds-btn-ghost:hover { background: var(--accent, #e6e9ec); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #fbfcfd), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--foreground, #12151a); cursor: pointer; transition: background-color 0.15s, box-shadow 0.15s; } .ds-btn-ghost:hover { background: var(--accent, #e6e9ec); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #f4f6f8), 0 0 0 5px color-mix(in oklab, var(--ring, #0a0c0f) 75%, transparent); border-color: var(--ring, #0a0c0f); }"
     }
   ],
   "narrative": {
     "northStar": "The Emission Spectrum",
-    "overview": "An operator is alone at 3am, a hundred miles from the instrument, and this interface is the only thing that will tell them what is happening. That is the brief. What the system does with it is narrower than \"be legible\": it spends its entire colour channel on one question. Colour on this surface means what an instrument is doing, and nothing else. The chrome is a neutral continuum in three renditions - light is an absorption spectrum, dark marks on a bright ground; dark is an emission spectrum, bright marks on a dark one; night is emission under a luminance ceiling - and hue appears only as narrow saturated marks at fixed positions, which are the four INDI state badges.\n\nThat is why the brand has no colour at all. --primary, --secondary and --ring are pure neutrals in all three schemes, and the wordmark separates its halves by weight rather than by hue. This is a correction, not a starting position: the palette before this one carried a violet that sat 22.4 CIEDE2000 from the nearest state colour, and the one before that an orange at 8.3. Both were the same mistake at different distances - an identity colour with a hue is a near-miss for a status colour - and removing the hue removes the class of failure instead of managing it. The only reserved non-state hue in the whole product is the documentation site's link cyan, and it never appears in the panel.\n\nThe register is instrument-grade, dense and professional, closer to a control desk than to a consumer app. Information density is a feature: the operator is an expert and slowing them down for breathing room costs them the night. The whole interface is monospace, so a column of readings aligns by default and a value never shifts as its digits change. And the palette was not chosen by eye. Nearly every colour token in theme.css carries its measured contrast ratio, composited against the real ancestor surface, plus a note on the value it replaced and why that one failed. A value is defended by measurement, and taste does not overrule a ratio.",
+    "overview": "An operator is alone at 3am, a hundred miles from the instrument, and this interface is the only thing that will tell them what is happening. That is the brief. What the system does with it is narrower than \"be legible\": hue is enumerated. Six hues exist in the whole product - four instrument states, one action, and the documentation site's link cyan - and nothing outside that list may take one. Everything else is a continuum, in three renditions: light is an absorption spectrum, dark marks on a bright ground; dark is an emission spectrum, bright marks on a dark one; night is that same emission seen under a red observatory safelight, where the continuum itself turns red and the four states do not.\n\nThe list is short because it was arrived at by subtraction. The palette before this one carried a violet that sat 22.4 CIEDE2000 from the nearest state colour, and the one before that an orange at 8.3 from Busy - the same mistake at two distances, an identity colour that is a near-miss for a status colour. The answer was briefly to spend no chroma at all, which read cleanly and cost more than it bought: with value carrying the whole hierarchy, the Set button - the one control that writes to an instrument - measured 1.22:1 against the card in light and read as a label rather than a control, disabled-looking beside an unselected switch segment. So the rule became enumeration rather than absence. One hue was admitted, on measurement rather than taste, and the door closed behind it. --secondary and --ring took no hue and still hold none in light and dark: a raised surface and a focus indicator are not things, and neither should claim a colour.\n\nThe register is instrument-grade, dense and professional, closer to a control desk than to a consumer app. Information density is a feature: the operator is an expert and slowing them down for breathing room costs them the night. The whole interface is monospace, so a column of readings aligns by default and a value never shifts as its digits change. And the palette was not chosen by eye. Nearly every colour token in theme.css carries its measured contrast ratio, composited against the real ancestor surface, plus a note on the value it replaced and why that one failed. A value is defended by measurement, and taste does not overrule a ratio.",
     "keyCharacteristics": [
-      "Three schemes, each measured independently: light (absorption), dark (emission), and night (emission under MIL-STD-1472F's 10 cd/m2 dark-adaptation ceiling).",
-      "The brand spends no chroma. Every saturated pixel on the panel is an instrument talking.",
-      "Four state hues (Idle / Ok / Busy / Alert), derived by search so every pair separates by at least 11.94 CIEDE2000 in the worst of normal, deuteranopic and protanopic vision.",
+      "Three schemes, each measured independently: light (absorption), dark (emission), and night (emission under a red observatory safelight, on a pure-black ground).",
+      "Hue is enumerated: four states, one action, one documentation link. Nothing else may take one, and --secondary and --ring hold none in light or dark.",
+      "Four state hues (Idle / Ok / Busy / Alert), derived by search so every pair separates by at least 11.94 CIEDE2000 in the worst of normal, deuteranopic and protanopic vision - and byte-identical in .dark and .night, which is what makes the safelight safe.",
       "Colour never carries meaning on its own: every state is written out as well as coloured.",
       "Monospace throughout, so numeric readings align and never jitter.",
-      "Flat surfaces with visible hairline borders; four tonal surface steps do the work depth usually does.",
+      "Flat surfaces, four tonal steps, and a hairline border that is faint by design (1.43:1 light, 1.34 dark, 1.57 night against the card) rather than a drawn rule.",
       "Density over comfort. Cards are compact, the grid is tight, and the shell pins to the viewport."
     ],
     "rules": [
       {
-        "name": "The Brand Spends No Chroma Rule",
-        "body": "--primary, --secondary and --ring are neutrals in all three schemes, so hue on the panel only ever means instrument state. A new accent does not get measured against the state colours and admitted if it is far enough away; it does not get a hue at all. The one reserved non-state hue in the product is the documentation site's link cyan, and it never appears in the panel.",
+        "name": "The Enumerated Hue Rule",
+        "body": "Six hues exist in this product: four instrument states, one action colour, and the documentation site's link cyan. Nothing outside that list may take one, and the list does not grow by measurement - a new candidate is not admitted because it measures far enough from the states, it is refused because the list is closed. --secondary and --ring hold no hue in light or dark, because a raised surface and a focus indicator are not things. This supersedes both the old \"keep the brand far from the states\" rule, which managed the failure instead of removing it, and its successor \"the brand spends no chroma\", which removed the failure and took the action hierarchy with it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Safelight Tints The Chrome, Never The States Rule",
+        "body": ".night is the one scheme where --secondary and --ring are not literally neutral, and that is not an exception to the rule above but a property of the ground: the safelight tints everything the interface owns, so no token there is claiming a hue of its own. The line it may not cross is the four --state-* tokens, which are byte-identical to .dark. Anything that reports on the instrument keeps its own colour; anything that is merely interface takes the red. Two costs are accepted rather than discovered: a protanope loses about 4.5 L* of this chrome, and the action colour clears the nearest state by 10 CIEDE2000 where the other schemes hold 15 and up. Both are bounded to chrome, and that boundary is the trade.",
         "section": "colors"
       },
       {
         "name": "The Measured Value Rule",
-        "body": "A colour token clears its bar on every surface it is used over, not on the lightest one, and the bar is AAA wherever AAA is arithmetically reachable. Two tokens clear their bar by under 10% and each carries a re-measure note in theme.css beside the value: --input against its own bg-input/30 fill, at 3.19 light and 3.25 dark.",
+        "body": "A colour token clears its bar on every surface it is used over, not on the lightest one, and the bar is AAA wherever AAA is arithmetically reachable in light and dark; .night is held to its legibility floor instead, by recorded product decision. The tightest margins in the palette are --input against its own bg-input/30 fill - 3.19 light, 3.02 dark, 3.06 night, clearing 3:1 by 6%, 1% and 2% - and each carries a re-measure note in theme.css beside the value.",
         "section": "colors"
       },
       {
         "name": "The Fill Is Frozen Rule",
-        "body": "The four state fills are tuned for separation from each other, so contrast is fixed on the foreground and never on the fill. Compressing a fill down the lightness axis to carry a darker label is exactly what collapsed the previous set to CIEDE2000 2.3. Four of the twelve state badges cannot reach AAA at any foreground, and that is recorded rather than smoothed.",
+        "body": "The four state fills are tuned for separation from each other, so contrast is fixed on the foreground and never on the fill. Compressing a fill down the lightness axis to carry a darker label is exactly what collapsed the previous set to CIEDE2000 2.3. Four of the twelve state badges cannot reach AAA at any foreground, and that is recorded rather than smoothed. The night rows are identical to the dark ones because the tokens are.",
         "section": "colors"
       },
       {
@@ -801,7 +806,7 @@
       },
       {
         "name": "The Wordmark Separates By Weight Rule",
-        "body": "\"INDI\" is 400 and \"kit\" is 700, and neither half is coloured. A coloured wordmark would be the single exception to the rule that hue means instrument state - in the corner of every page.",
+        "body": "\"INDI\" is 400 and \"kit\" is 700, and neither half is coloured. It stays uncoloured now that --primary is a hue again: the action colour is on the list because it marks the control that writes to an instrument, and a wordmark writes to nothing. Colouring it would put a seventh hue in the corner of every page and reduce the enumeration to a suggestion.",
         "section": "typography"
       },
       {
@@ -836,7 +841,7 @@
       },
       {
         "name": "The Ring Stands Off The Control Rule",
-        "body": "A focus ring is measured against both its neighbours, not just the surface. With a neutral ring on a neutral primary the ring and the fill are nearly the same value - 1.06:1 light, 1.20:1 dark, 1.00:1 on destructive - so removing the brand's hue made this worse, not better, and the 2px offset is not optional.",
+        "body": "A focus ring is measured against both its neighbours, not just the surface. On a filled control the ring is nearly flush against the fill - 1.05:1 light, 1.49 dark, 1.92 night on the primary button, 1.00:1 on destructive - and giving the action a hue did not fix that and was never going to. Every ring is therefore offset 2px in the surface colour, set through custom properties so the offset costs nothing structurally.",
         "section": "components"
       },
       {
@@ -851,7 +856,9 @@
       }
     ],
     "dos": [
-      "Do keep the chrome neutral. --primary, --secondary and --ring hold no chroma, so every saturated pixel on the panel is an instrument reporting its state.",
+      "Do keep the hue list at six - four states, one action, one documentation link - and reach for tone, weight or shape when something new needs to stand out.",
+      "Do reserve --primary for controls that write to an instrument, and leave a control that merely reports one (a selected switch member, a badge) on the neutral ramp.",
+      "Do keep --secondary and --ring free of hue in light and dark, and let .night tint them along with the rest of the chrome.",
       "Do re-measure a colour on every surface it appears over before changing it, and leave the measured ratio in a comment beside the value, as every existing token does.",
       "Do write every state out in text as well as colouring it, in text a sighted reader can see, and give a bare mark a shape as well as a hue.",
       "Do use tabular figures for anything numeric that updates live.",
@@ -862,12 +869,16 @@
       "Do correct a vendored primitive from theme.css, unlayered and hooked on the utility class it emits, rather than by editing src/ui/.",
       "Do grow fixed edges by their safe-area inset, and remember the underscore spacing Tailwind needs inside calc() around env().",
       "Do apply .night alongside .dark, never instead of it.",
-      "Do keep the panel and the documentation on the same neutral identity; they are one product and the values are shared deliberately."
+      "Do keep the panel and the documentation on the same neutral ground and type; the link cyan and the action blue are each reserved to one surface and do not cross."
     ],
     "donts": [
-      "Don't give the brand a hue, however far it measures from the four states. The distance is not the rule; the absence is.",
+      "Don't add a seventh hue, however far it measures from the four states. The list is closed; distance is what got the sixth in, not what keeps the door open.",
+      "Don't put the action colour on anything that does not write to an instrument - not the wordmark, not a selected switch member, not a heading that wants emphasis.",
       "Don't adjust a --state-* fill to fix a contrast problem. Change the foreground, and record the shortfall where the ceiling makes AAA unreachable.",
-      "Don't chase the night scheme's luminance ceiling with dim greys. The cap is met by a black ground and the operator's own brightness control; dimming the colours loses the contrast and still misses the ceiling by more than tenfold.",
+      "Don't let the safelight reach the four --state-* tokens. .night's red is bounded to chrome, and that boundary is the only thing that makes its two accepted costs - about 4.5 L* lost to a protanope, and an action colour 10 CIEDE2000 from the nearest state instead of 15 - acceptable at all.",
+      "Don't hold .night to the AAA/AA commitment, or \"fix\" its ratios toward it. The exemption is a recorded product decision in PRODUCT.md, and forcing 7:1 defeats what the scheme exists for.",
+      "Don't chase the night scheme's luminance ceiling with dim colours. The cap is met by a black ground and the operator's own brightness control; dimming loses the contrast and still misses the ceiling by more than tenfold.",
+      "Don't read a night chart mark as a status. That ramp is red like the rest of the night chrome and chart-2 sits 1.6 CIEDE2000 from Alert; the two neutral ramps hold 19.5 and up.",
       "Don't animate by fading opacity on anything carrying text. Fading a badge to 0.5 measured 1.75:1, and no fill colour survives it. Move the motion to a pseudo-element instead.",
       "Don't write an unlayered rule that sets a real property - border-color, position, background-color - without restating every state that property can be in, or narrowing the selector to something that cannot be in them. Custom properties are the safe case.",
       "Don't turn the switch control back into a radio group, or let an unselected member reach the selected member's appearance on hover.",
