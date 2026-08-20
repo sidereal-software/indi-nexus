@@ -237,6 +237,13 @@ describe("the device menu's markup", () => {
     return screen.getByRole("navigation", { name: "Devices" });
   }
 
+  /** The text of every sidebar group heading currently on screen. */
+  function groupLabels(): (string | null)[] {
+    return [...document.querySelectorAll('[data-slot="sidebar-group-label"]')].map(
+      (el) => el.textContent,
+    );
+  }
+
   it("keeps the empty state out of the list entirely", () => {
     // This was a real axe violation, serious: "No devices connected." was a `<p>`
     // sitting directly inside `SidebarMenu`'s `<ul>`, where the only legal child
@@ -263,38 +270,59 @@ describe("the device menu's markup", () => {
     expect(illegalListChildren(nav())).toEqual([]);
   });
 
-  it("keeps configuration out of the devices landmark", () => {
-    // Configuration acts *on* a device and is not one. It used to be the last
-    // `<li>` of this menu, which put it inside `nav aria-label="Devices"` - so a
-    // screen reader walking that landmark was told it was a third device, and a
-    // sighted operator read it as one. The assertion is deliberately in two
-    // halves: present on the page, absent from the landmark. Asserting only the
-    // first is what let it live in the wrong place.
+  it("nests configuration under its device rather than beside it", () => {
+    // Configuration acts *on* a device and is not one, and this menu has now
+    // said that two wrong ways. As a sibling `<li>` of the device buttons it was
+    // announced as a third device inside the landmark. Moved out to its own
+    // `SidebarGroup` it left the landmark but kept the device's indent and grew
+    // a heading repeating the device's name directly under the row that already
+    // carried it. Nesting is the answer to both: inside the device's own item,
+    // in a sub-list named for it.
     const { socket } = renderApp();
     defineProperty(socket, "CCD Simulator", "EXPOSURE");
     defineConfigProcess(socket, "CCD Simulator");
 
-    expect(screen.getByRole("button", { name: /Configuration/ })).toBeInTheDocument();
-    expect(within(nav()).queryByRole("button", { name: /Configuration/ })).toBeNull();
+    const entry = screen.getByRole("button", { name: /Configuration/ });
+    const device = screen.getByRole("button", { name: "CCD Simulator" });
+
+    // Inside the landmark is right now, but only as a child of its device: the
+    // assertion that matters is that it is not a sibling of the device buttons,
+    // which is what "another device" looked like in the markup.
+    expect(within(nav()).getByRole("button", { name: /Configuration/ })).toBe(entry);
+    expect(device.closest("li")).toContainElement(entry);
+    expect(entry.closest("ul")).not.toBe(device.closest("ul"));
     expect(illegalListChildren(nav())).toEqual([]);
+    // And no heading anywhere is spending a row to repeat the device's name.
+    expect(groupLabels()).toEqual(["Devices"]);
   });
 
-  it("shows no configuration section for a device that has none", () => {
-    // `DeviceConfigDialog` declines to render without CONFIG_PROCESS, so a group
-    // wrapped around it unconditionally would leave a labelled, empty section.
-    // The demo's dome is exactly that case, and every libindi driver is not.
+  it("offers configuration only for the selected device", () => {
+    // The panel shows one device at a time, so an entry under every device would
+    // be a second row each for a dialog that can only ever act on the selection.
+    const { socket } = renderApp();
+    defineProperty(socket, "CCD Simulator", "EXPOSURE");
+    defineProperty(socket, "Dome Simulator", "SHUTTER");
+    defineConfigProcess(socket, "CCD Simulator");
+    defineConfigProcess(socket, "Dome Simulator");
+
+    // The first device to arrive is the one auto-selected.
+    expect(screen.getAllByRole("button", { name: /Configuration/ })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "CCD Simulator" }).closest("li")).toContainElement(
+      screen.getByRole("button", { name: /Configuration/ }),
+    );
+  });
+
+  it("shows nothing at all for a device with no configuration", () => {
+    // `DeviceConfigDialog` renders nothing without CONFIG_PROCESS, and nothing
+    // now means nothing: it owns the sub-list as well as the item, so there is
+    // no indented rule left hanging under the device's row. The demo's dome is
+    // exactly that case, and every libindi driver is not.
     const { socket } = renderApp();
     defineProperty(socket, "CCD Simulator", "EXPOSURE");
 
     expect(screen.queryByRole("button", { name: /Configuration/ })).toBeNull();
-    // "Absent, not empty" is the claim, and the name alone cannot test it: the
-    // device legitimately appears twice already, in the sidebar list and as the
-    // panel's own heading. What must not exist is a *group label* carrying it,
-    // which is the section that would otherwise stand there with nothing in it.
-    const groupLabels = [...document.querySelectorAll('[data-slot="sidebar-group-label"]')].map(
-      (el) => el.textContent,
-    );
-    expect(groupLabels).toEqual(["Devices"]);
+    expect(within(nav()).queryAllByRole("list")).toHaveLength(1);
+    expect(groupLabels()).toEqual(["Devices"]);
   });
 });
 

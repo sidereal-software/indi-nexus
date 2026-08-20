@@ -152,6 +152,43 @@ describe("DeviceConfigDialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("nests the default entry in a sub-list named for its device", () => {
+    // There is no server-wide configuration in INDI, so this entry always
+    // belongs to exactly one device and the markup has to say so. Drawn flat it
+    // was read as another device, twice over: first as a sibling `<li>` of the
+    // device buttons, then as its own group under a heading repeating the
+    // device's name. The nesting is what carries ownership now, and the list's
+    // name is what a reader hears in place of that heading.
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+
+    const sub = screen.getByRole("list", { name: "CCD" });
+    expect(sub).toContainElement(trigger());
+    expect(sub.tagName).toBe("UL");
+    // Every child of a list is a list item, which is the rule the flat version
+    // broke when the entry was a bare button in a `SidebarMenu`.
+    expect([...sub.children].every((child) => child.tagName === "LI")).toBe(true);
+  });
+
+  it("makes the default entry a real button rather than the primitive's anchor", () => {
+    // `SidebarMenuSubButton` renders an `<a>`, and this trigger carries no href,
+    // so taking the primitive as it comes would leave the only way into a
+    // device's configuration out of the tab order entirely.
+    const { socket } = renderEntry();
+    receive(socket, { tag: "def", vector: configVec() });
+
+    expect(trigger().tagName).toBe("BUTTON");
+  });
+
+  it("takes the whole sub-list with it when there is nothing to configure", () => {
+    // Absent, not empty. The component owns the `<ul>` as well as the `<li>`, so
+    // a device with no CONFIG_PROCESS leaves no indented rule hanging under its
+    // row. The demo's dome is exactly that case; every libindi driver is not.
+    renderEntry();
+
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
   it("sends nothing when the dialog is opened and closed again", () => {
     const { socket } = renderEntry();
     receive(socket, { tag: "def", vector: configVec() });

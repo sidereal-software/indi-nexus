@@ -194,6 +194,36 @@ operator turns off. Losing the socket is the strongest case for interrupting - e
 screen has stopped being true - and it is still not a frequent event, so it can wait its turn.
 Decided rather than defaulted.
 
+### A momentary command is a push button, not a toggle
+
+`SwitchVectorControl` draws a **one-member `AtMostOne`** vector as a `Button` rather than a
+`Toggle`, and that shape test is the whole rule - no list of property names. INDI has one
+switch type for two different objects, a selection the driver reports back and a command
+that fires once, and only the second can have a lone member under the rule that permits
+none-on: there is nothing to select instead of it, so "on" is not a position a driver leaves
+it in. libindi's stop commands are all built that way, this project's SDK puts
+`CONFIG_PROCESS` straight back to Off (`Device._handle_config`), and `dome-sim.ts` does the
+same with `ABORT`. A lone `OneOfMany` member is on for ever by definition and a lone
+`AnyOfMany` one is a checkbox, so neither is caught.
+
+Drawn as a toggle it was wrong twice over. `aria-pressed="false"` claims a second position
+the control does not have, which is the same false claim the radio group made below. And the
+appearance that goes with it is an *unselected* member's transparent outline, so on the
+dome's Main Control the one control that stops the instrument sat beside the genuinely
+unpressed `Connect` and `Park`, indistinguishable from them and the palest thing on the tab,
+while `--primary` went to `Unpark` reporting that nothing was happening.
+
+The variant is the split `DeviceConfigDialog` already makes over `CONFIG_PROCESS`:
+`destructive` for the press that destroys something, `default` for the press that writes.
+**Element `ABORT` is the destructive case**, which is libindi's own name for the stop command
+on a telescope, a dome, a focuser and a camera alike - and not destructive by analogy, since
+aborting a shutter move is exactly what leaves `DOME_SHUTTER` in Alert with "Status:
+unknown". Feedback stays the card's state badge; a push button has no on-state and needs
+none.
+
+The button keeps the vector's `fieldset aria-label`, so two instruments with a stop command
+do not offer a reader two controls both called "Abort".
+
 ### The switch control is a group of toggle buttons, not a radio group
 
 `SwitchVectorControl` deliberately does **not** use `ToggleGroup`. `type="single"` is a
@@ -240,13 +270,33 @@ not belong permanently on screen beside live instrument readings. It lives in th
 which is also what owns device selection, and opens in a `Dialog`. So the component takes
 `device: string | null` and renders **nothing at all** when nothing is selected or the
 selected device has no `CONFIG_PROCESS` - an entry that opens an empty modal is worse than
-no entry. With no `children` the trigger is a `SidebarMenuButton` inside its own
-`SidebarMenuItem` (it brings the `<li>` so it can vanish without leaving a gap in its menu,
-and it therefore needs a `SidebarProvider` and a `TooltipProvider` above it, which its tests
-supply); pass `children` and that element becomes the trigger, for a consumer's own shell.
+no entry. Pass `children` and that element becomes the trigger, for a consumer's own shell.
 The purge confirmation is now an `AlertDialog` **inside** the `Dialog`: Radix stacks
 dismissable layers, so Escape takes the confirmation and leaves the configuration modal
 standing, and a test asserts exactly that in both directions.
+
+**The default trigger is nested under its device, and the placement has been wrong twice.**
+There is no server-wide configuration in INDI - `indiserver` publishes no properties at all,
+and every driver saves its own file - so this entry always belongs to exactly one device.
+It began as a sibling `<li>` of the device buttons, inside `nav aria-label="Devices"`, where
+it was announced as a third device and read as one. Moving it to its own `SidebarGroup`
+under a heading carrying the device's name left the landmark but kept the devices' indent
+and printed that name a second time directly under the row that already had it. It is now a
+`SidebarMenuSubButton` inside a `SidebarMenuSub` that the component brings itself, dropped
+into the device's own `SidebarMenuItem` by the shell: the indent, its guide line and the list
+nesting carry ownership, and the heading goes away. Three things about that are load bearing:
+
+- **It owns the `<ul>` as well as the `<li>`.** A device with no `CONFIG_PROCESS` has to
+  leave no indented rule hanging under its row, and only the component knows there is
+  nothing to show. The demo's dome is exactly that case; every libindi driver is not.
+- **The sub-list is `aria-label`led with the device**, which is what a reader hears in place
+  of the heading it replaced: "Open-Meteo, list, one item, Configuration".
+- **`asChild` down to a real `<button>`**, because `SidebarMenuSubButton` renders an `<a>`
+  and this trigger carries no href - taking the primitive as it comes puts the only way into
+  a device's configuration outside the tab order. `h-8` restores the 32px of the device rows
+  over the primitive's own 28px.
+
+It still needs a `SidebarProvider` and a `TooltipProvider` above it, which its tests supply.
 
 `DevicePanel` excludes `CONFIG_PROCESS` from the generic grid entirely, so it is neither
 pinned nor drawn as four anonymous switches, puts `Main Control` first, then the remaining
@@ -450,14 +500,13 @@ nothing else reaches - `indikit serve` with no `--device`:
   secondary text on the AAA tier, so the shell passes `text-muted-foreground` (7.63 / 8.64).
   Not corrected in `theme.css`: `color` is a real property and an unlayered rule on it would
   beat every state variant the element can be in.
-- **Configuration is outside the `Devices` landmark.** `DeviceConfigDialog` was the last
-  `<li>` of the device menu, so it sat inside `nav aria-label="Devices"` - announced as a
-  device to anyone walking that landmark, and read as one by anyone looking at it, since it
-  carries the same `SidebarMenuButton` the devices do. It now has its own `SidebarGroup`
-  under a "Selected device" heading. The shell asks `useProperty(active, "CONFIG_PROCESS")`
-  itself so the group is *absent* rather than empty: the dialog already declines to render
-  without that property, and a labelled section wrapped round nothing is worse than the
-  entry it replaced. The demo's dome is exactly that case; every libindi driver is not.
+- **Configuration is nested inside its device's menu item**, rendered only for the selected
+  device, since the panel shows one device at a time and an entry under every device would
+  be a second row each. The shell no longer asks `useProperty(active, "CONFIG_PROCESS")` for
+  itself: `DeviceConfigDialog` brings its own `SidebarMenuSub`, so "renders nothing" now
+  covers the wrapper too and there is no group left that could stand there empty. See the
+  `@indikit/react` section above for why this is the third placement and what each of the
+  first two got wrong.
 
 **The docked message strip is `h-auto max-h-56`, and the `h-auto` is load bearing.** It was
 `h-56`, which charged the strip 224px whether it held two lines or two hundred - and the

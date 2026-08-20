@@ -100,7 +100,7 @@ happens, rather than hidden behind a setter that looks like local state.
 | Component | Renders |
 |---|---|
 | `DevicePanel` | every property of a device, grouped |
-| `DeviceConfigDialog` | a sidebar entry opening one device's `CONFIG_PROCESS` |
+| `DeviceConfigDialog` | a sidebar entry nested under one device, opening its `CONFIG_PROCESS` |
 | `PropertyVectorCard` | one property as a card, titled and badged |
 | `VectorControl` | the right control for any vector, whatever its kind |
 | `ValueVectorControl`, `SwitchVectorControl`, `LightVectorControl`, `BlobVectorControl` | one kind each, when you already know which |
@@ -123,7 +123,10 @@ failure has. Leaving it out leaves a user watching a control that never moves.
 
 `DeviceConfigDialog` is the one that is more than a rendering of a property. It offers
 `CONFIG_PROCESS`, which every libindi driver carries, from a sidebar entry that opens a
-modal. It also names what those members really do:
+modal. INDI has no server-wide configuration - `indiserver` publishes no properties, and
+every driver saves its own file - so the entry arrives as a nested sub-menu meant to sit
+inside that device's own `SidebarMenuItem`, where the indent says whose configuration it is.
+It also names what those members really do:
 
 - Purging a saved configuration is behind a confirmation, because libindi deletes the file
   with no backup.
@@ -133,8 +136,14 @@ modal. It also names what those members really do:
   file holds.
 
 The component takes the selected device, or `null`, and renders nothing when that device
-has no `CONFIG_PROCESS`. Give it a child element to open the same modal from your own shell
-instead of the sidebar entry.
+has no `CONFIG_PROCESS` - the sub-menu included, so no indented rule hangs under the row.
+Give it a child element to open the same modal from your own shell instead of the sidebar
+entry.
+
+`SwitchVectorControl` has one shape rule worth knowing about too: a **single-member
+`AtMostOne`** vector is INDI's momentary command, not a selection, so it renders as one push
+button rather than as a toggle stuck in its off position. libindi's stop commands are all
+built that way, and the one whose element is named `ABORT` gets the destructive variant.
 
 `DevicePanel` therefore leaves `CONFIG_PROCESS` out, and folds the driver's own machinery
 (`DRIVER_MACHINERY`: debug plumbing, snooping) into a collapsed section at the bottom.

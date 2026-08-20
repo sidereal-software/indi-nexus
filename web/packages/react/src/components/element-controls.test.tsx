@@ -52,6 +52,31 @@ function switchVec(rule: SwitchVector["rule"], on: string[] = [], perm = "rw"): 
   };
 }
 
+/**
+ * Build a one-member switch vector: libindi's shape for a momentary command.
+ *
+ * @param name - The element name, `ABORT` for the stop commands.
+ * @param rule - The selection rule; only `AtMostOne` makes this a command.
+ * @param perm - The permission, `ro` for a vector nothing may write.
+ * @returns The vector.
+ */
+function commandVec(
+  name = "ABORT",
+  rule: SwitchVector["rule"] = "AtMostOne",
+  perm = "rw",
+): SwitchVector {
+  return {
+    kind: "switch",
+    device: "Dome",
+    name: "DOME_ABORT_MOTION",
+    label: "Abort Motion",
+    state: "Idle",
+    perm: perm as SwitchVector["perm"],
+    rule,
+    elements: [{ kind: "switch", name, label: "Abort", value: "Off" }],
+  };
+}
+
 /** Submit the form containing `element`. */
 function submitFormOf(element: HTMLElement) {
   const form = element.closest("form");
@@ -279,6 +304,73 @@ describe("SwitchVectorControl", () => {
     const toggle = screen.getByText("b").closest("button");
     expect(toggle).toBeDisabled();
     if (toggle) fireEvent.click(toggle);
+    expect(socket.sent).toHaveLength(0);
+  });
+});
+
+describe("SwitchVectorControl: the momentary command shape", () => {
+  it("draws a one-member AtMostOne vector as a push button, not a toggle", () => {
+    renderConnected(<SwitchVectorControl vector={commandVec()} />);
+    const button = screen.getByRole("button", { name: "Abort" });
+
+    // The whole point. As a toggle this rendered `aria-pressed="false"`, which
+    // claims a second position the control does not have: the member is not
+    // "off", it has not been pressed. Visually that claim was a transparent
+    // outline sitting beside the genuinely unpressed halves of Connection and
+    // Parking, which made the control that stops the dome the palest thing on
+    // the tab.
+    expect(button).not.toHaveAttribute("aria-pressed");
+    expect(button).not.toHaveAttribute("data-state");
+    // Still inside the vector's own named group, so two instruments with a stop
+    // command do not offer a reader two controls both called "Abort".
+    expect(screen.getByRole("group", { name: "Abort Motion" })).toContainElement(button);
+  });
+
+  it("sends the member On when pressed", () => {
+    const { socket } = renderConnected(<SwitchVectorControl vector={commandVec()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Abort" }));
+
+    const frame = socket.lastSent<NewVector>();
+    expect(frame.vector.elements).toEqual([{ kind: "switch", name: "ABORT", value: "On" }]);
+  });
+
+  it("gives a stop command the destructive fill and any other command the action fill", () => {
+    // `ABORT` is the element name libindi gives every stop command, on four
+    // different kinds of hardware, so the element is the check and no list of
+    // property names is needed. The two fills are the same split
+    // `DeviceConfigDialog` makes over CONFIG_PROCESS: destructive for the press
+    // that discards something, primary for the press that writes.
+    renderConnected(<SwitchVectorControl vector={commandVec()} />);
+    expect(screen.getByRole("button", { name: "Abort" }).className).toContain("bg-destructive");
+
+    cleanup();
+    renderConnected(<SwitchVectorControl vector={commandVec("HOME")} />);
+    const home = screen.getByRole("button", { name: "Abort" });
+    expect(home.className).toContain("bg-primary");
+    expect(home.className).not.toContain("bg-destructive");
+  });
+
+  it("leaves the other one-member rules as toggles", () => {
+    // `AtMostOne` is the rule that permits none-on, which is what makes a lone
+    // member a command rather than a selection. A lone `OneOfMany` member is on
+    // for ever by definition and a lone `AnyOfMany` one is a checkbox, so
+    // neither may lose its pressed state.
+    renderConnected(<SwitchVectorControl vector={commandVec("ABORT", "AnyOfMany")} />);
+    expect(screen.getByRole("button", { name: "Abort" })).toHaveAttribute("aria-pressed", "false");
+
+    cleanup();
+    renderConnected(<SwitchVectorControl vector={commandVec("ABORT", "OneOfMany")} />);
+    expect(screen.getByRole("button", { name: "Abort" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("disables the command and sends nothing when read-only", () => {
+    const { socket } = renderConnected(
+      <SwitchVectorControl vector={commandVec("ABORT", "AtMostOne", "ro")} />,
+    );
+    const button = screen.getByRole("button", { name: "Abort" });
+    expect(button).toBeDisabled();
+
+    fireEvent.click(button);
     expect(socket.sent).toHaveLength(0);
   });
 });

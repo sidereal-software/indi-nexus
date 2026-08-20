@@ -8,6 +8,16 @@
  * It lives in the sidebar next to the device list - the same place that owns
  * which device is selected - and opens in a dialog.
  *
+ * It lives there **nested under its own device**, and that is the only shape
+ * that says what `CONFIG_PROCESS` is. There is no server-wide configuration in
+ * INDI: `indiserver` publishes no properties at all, and every driver saves its
+ * own file, so a configuration entry always belongs to exactly one device. Drawn
+ * flat beside the device list it read as another device instead - same indent,
+ * same button, and a group heading repeating the device's name directly under
+ * the row that already carried it. A nested list under the selected device's
+ * item is one statement rather than two: the indent and its guide line say whose
+ * configuration this is, and the heading that used to say it goes away.
+ *
  * Rendered as a generic switch vector the property is four anonymous buttons.
  * This names what each one really does:
  *
@@ -55,7 +65,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/ui/dialog";
-import { SidebarMenuButton, SidebarMenuItem } from "@/ui/sidebar";
+import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from "@/ui/sidebar";
 import { useIndiClient } from "../context";
 import { useDevice, useProperty } from "../hooks";
 import { StateBadge } from "./state-badge";
@@ -301,9 +311,9 @@ export interface DeviceConfigDialogProps {
    */
   device: string | null;
   /**
-   * An element to open the dialog with, replacing the default sidebar entry.
-   * It is rendered as the trigger itself (`asChild`), so it has to forward its
-   * props and accept a ref - any of this package's primitives will.
+   * An element to open the dialog with, replacing the default nested sidebar
+   * entry. It is rendered as the trigger itself (`asChild`), so it has to
+   * forward its props and accept a ref - any of this package's primitives will.
    */
   children?: ReactNode;
 }
@@ -311,16 +321,19 @@ export interface DeviceConfigDialogProps {
 /**
  * Offer one device's configuration actions, with the guards libindi lacks.
  *
- * Renders a sidebar entry that opens the actions in a modal. Renders nothing at
- * all when no device is selected or the selected device has no
+ * Renders a nested sidebar entry that opens the actions in a modal. Renders
+ * nothing at all when no device is selected or the selected device has no
  * `CONFIG_PROCESS`, since a device that cannot be configured must not offer a
  * button that opens an empty dialog, and only the members the vector carries
  * when it does.
  *
- * With no `children` the trigger is a `SidebarMenuButton` wrapped in its own
- * `SidebarMenuItem`, so it drops straight into a `SidebarMenu` and disappears
- * with its list item rather than leaving an empty row behind. Pass `children`
- * to open the same dialog from your own shell.
+ * With no `children` the trigger is a `SidebarMenuSubButton` inside its own
+ * `SidebarMenuSub`, so it drops straight into the device's own `SidebarMenuItem`
+ * and takes the whole nested list with it when there is nothing to configure,
+ * rather than leaving an indented rule hanging under the row. The sub-list is
+ * named for the device, which is what a reader walking the device menu hears in
+ * place of the group heading this replaced: "Open-Meteo, list, one item,
+ * Configuration". Pass `children` to open the same dialog from your own shell.
  *
  * @param props - The selected device, and an optional trigger element.
  * @returns The trigger and its dialog, or `null` when there is nothing to configure.
@@ -349,10 +362,17 @@ export function DeviceConfigDialog({ device, children }: DeviceConfigDialogProps
           button inside it. */}
       <DialogTrigger asChild>
         {children ?? (
-          <SidebarMenuButton tooltip="Configuration">
-            <Settings2 />
-            <span>Configuration</span>
-          </SidebarMenuButton>
+          // `asChild` down to a real `<button>`: the primitive renders an `<a>`
+          // by default and this trigger carries no href, which would leave the
+          // only way into a device's configuration out of the tab order.
+          // `h-8` restores the 32px of the device rows above it, over the
+          // primitive's own 28px - DESIGN.md enumerates this control at 32.
+          <SidebarMenuSubButton asChild className="h-8">
+            <button type="button">
+              <Settings2 />
+              <span>Configuration</span>
+            </button>
+          </SidebarMenuSubButton>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -383,7 +403,15 @@ export function DeviceConfigDialog({ device, children }: DeviceConfigDialogProps
     </Dialog>
   );
 
-  // The default trigger is a sidebar entry, so it brings its own list item; a
-  // caller-supplied one is placed wherever the caller already is.
-  return children ? dialog : <SidebarMenuItem>{dialog}</SidebarMenuItem>;
+  // The default trigger is a nested sidebar entry, so it brings the whole
+  // sub-list and its item; a caller-supplied one is placed wherever the caller
+  // already is. The list is labelled with the device rather than with
+  // "Configuration", so the nesting reads as ownership on the way in.
+  return children ? (
+    dialog
+  ) : (
+    <SidebarMenuSub aria-label={vector.device}>
+      <SidebarMenuSubItem>{dialog}</SidebarMenuSubItem>
+    </SidebarMenuSub>
+  );
 }

@@ -104,6 +104,23 @@ export const MANIFEST = [
     snippets: [
       { name: "frontend-app", match: "export function App() {" },
       {
+        name: "frontend-config-nesting",
+        match: "<DeviceConfigDialog device={device} />",
+        imports: [
+          'import { DeviceConfigDialog, SidebarMenuButton, SidebarMenuItem } from "@indikit/react";',
+        ],
+        // A fragment, not a module: it is the body of one device's menu item, so
+        // it needs the `device` and `select` the surrounding list would supply.
+        wrap: {
+          before: [
+            "export function DeviceRow({ device, select }:",
+            "  { device: string; select: (name: string) => void }) {",
+            "  return (",
+          ],
+          after: ["  );", "}"],
+        },
+      },
+      {
         name: "frontend-observatory",
         match: "function Observatory() {",
         imports: ['import { DevicePanel, useDevices } from "@indikit/react";'],

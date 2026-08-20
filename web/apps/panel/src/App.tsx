@@ -45,7 +45,6 @@ import {
   TooltipTrigger,
   useDevices,
   useIndiClient,
-  useProperty,
 } from "@indikit/react";
 import { MessageSquareText, Moon, MoonStar, Radio, Sun, Telescope } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -131,11 +130,6 @@ function DeviceSidebar({
   debug: boolean;
   onDebugChange: (on: boolean) => void;
 }) {
-  // Asked here as well as inside the dialog, so the group around it can be
-  // absent rather than empty. `useProperty` is a hook and cannot be called
-  // conditionally, so a null selection is asked about as the empty device -
-  // which no device answers to.
-  const hasConfig = useProperty(active ?? "", "CONFIG_PROCESS") !== undefined;
   return (
     <Sidebar>
       <SidebarHeader className="gap-3 p-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))]">
@@ -194,6 +188,25 @@ function DeviceSidebar({
                         <Radio />
                         <span>{device}</span>
                       </SidebarMenuButton>
+                      {/* Configuration acts *on* a device and is not one, and
+                          nesting is what says so. It was a sibling `<li>` of the
+                          device buttons first, which announced it as a third
+                          device; then its own `SidebarGroup` headed by the
+                          device's name, which printed that name twice in one
+                          column and still drew the entry at the devices' own
+                          indent. Inside the device's item it is a sub-list: the
+                          indent, its guide line and the list nesting all carry
+                          ownership, and no heading has to repeat the name.
+
+                          Only under the selected device, because the panel shows
+                          one device at a time and an entry per device would be a
+                          second row each. `DeviceConfigDialog` renders nothing
+                          at all when that device has no CONFIG_PROCESS - and
+                          nothing now means nothing, since it owns the sub-list
+                          as well as the item. Every libindi driver publishes the
+                          property; the demo's dome does not, which is the case
+                          that would show a hanging rule. */}
+                      {device === active ? <DeviceConfigDialog device={device} /> : null}
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
@@ -201,35 +214,6 @@ function DeviceSidebar({
             </nav>
           </SidebarGroupContent>
         </SidebarGroup>
-        {/* Configuration acts *on* the selected device; it is not one. It used to
-            be the last `<li>` of the menu above, which put it inside
-            `nav aria-label="Devices"` - so it read as a third device to a sighted
-            operator and was announced as one inside the Devices landmark. Its own
-            group, with its own heading, says what it is in both directions.
-
-            The group is rendered only when the selected device actually has
-            CONFIG_PROCESS. `DeviceConfigDialog` already declines to render
-            without it, but an absent dialog inside a present group leaves a
-            labelled, empty section - which is worse than the entry it replaced.
-            Every libindi driver publishes the property; the demo's dome does not,
-            which is exactly the case that would show the hole. */}
-        {hasConfig ? (
-          <SidebarGroup>
-            {/* The heading is the device's own name rather than "Configuration"
-                or "Selected device": what an operator needs to know before
-                pressing anything here is *whose* configuration this is, and
-                every action behind it writes one device's file. It truncates
-                because a device name is the driver's to choose. */}
-            <SidebarGroupLabel className="truncate text-muted-foreground">
-              {active}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <DeviceConfigDialog device={active} />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ) : null}
       </SidebarContent>
       {/* Both footer rows are 44px tall for SC 2.5.5. The Switch's own track stays
           32x18.4 - that is the control's design - and the theme gives it a 44px

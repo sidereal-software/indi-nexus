@@ -83,11 +83,22 @@ moves it in and out on its own.
 `$HOME/.indi/<device>_config.xml` for a libindi driver, to JSON under `~/.indikit` for
 an INDIkit one.
 
-`DeviceConfigDialog` is what offers it. Give it the selected device and it renders a
-sidebar item that opens the actions in a modal. It renders nothing at all when no device
-is selected, or when the selected one has no `CONFIG_PROCESS`. Give it a child element and
-that becomes the trigger instead, so a screen with its own shell opens the same modal from
-wherever suits it.
+`DeviceConfigDialog` is what offers it. Give it the selected device and it renders a sidebar
+entry that opens the actions in a modal. The entry arrives as a whole nested sub-menu, meant
+to be dropped inside that device's own `SidebarMenuItem`: there is no server-wide
+configuration in INDI, so this always belongs to exactly one device and nesting is what says
+so. It renders nothing at all - the sub-menu included, so no indented rule is left hanging -
+when no device is selected, or when the selected one has no `CONFIG_PROCESS`.
+
+```tsx
+<SidebarMenuItem>
+  <SidebarMenuButton onClick={() => select(device)}>{device}</SidebarMenuButton>
+  <DeviceConfigDialog device={device} />
+</SidebarMenuItem>
+```
+
+Give it a child element and that becomes the trigger instead, with no sub-menu around it, so
+a screen with its own shell opens the same modal from wherever suits it.
 
 Three things about the property are not what the INDI names suggest, and the dialog says
 so on screen rather than in a manual nobody has open at 2am:
@@ -274,11 +285,11 @@ while the connection is down and the operator pressed the button either way.
 | Component | Renders |
 |---|---|
 | `DevicePanel` | every property of a device, grouped |
-| `DeviceConfigDialog` | a sidebar entry opening one device's `CONFIG_PROCESS`, with the guards libindi lacks |
+| `DeviceConfigDialog` | a sidebar entry nested under one device, opening its `CONFIG_PROCESS` with the guards libindi lacks |
 | `PropertyVectorCard` | one property as a card: title, state badge and the control below |
 | `VectorControl` | the control alone, picked from the vector's kind |
 | `ValueVectorControl` | a number or text vector, as editable fields or read-only values |
-| `SwitchVectorControl` | a switch vector, as a group of toggle buttons honouring its INDI rule |
+| `SwitchVectorControl` | a switch vector, as a group of toggle buttons honouring its INDI rule - or as one push button when it is a momentary command |
 | `LightVectorControl` | a light vector, as labelled state dots |
 | `BlobVectorControl` | a BLOB vector, as format and size per element, with a download link once a payload has arrived |
 | `StateBadge` | the Idle/Ok/Busy/Alert badge |

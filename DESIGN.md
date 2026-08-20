@@ -225,9 +225,24 @@ components:
     padding: "0 12px"
     height: "32px"
   toggle-switch-member-on:
-    backgroundColor: "{colors.secondary}"
-    textColor: "{colors.secondary-foreground}"
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
     typography: "{typography.body}"
+    fontWeight: 600
+    padding: "0 12px"
+    height: "32px"
+  button-command:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
+    padding: "0 12px"
+    height: "32px"
+  button-command-stop:
+    backgroundColor: "{colors.destructive}"
+    textColor: "#ffffff"
+    typography: "{typography.body}"
+    rounded: "{rounded.md}"
     padding: "0 12px"
     height: "32px"
 ---
@@ -293,8 +308,19 @@ a link cyan.
 ### Primary
 
 **This is the action colour, and it is the only hue in the panel's chrome.** It fills the Set
-button, the one control that writes to an instrument, and is set as `text-primary` on the
-header's icon, the message log's device name and the link-variant control.
+button, the momentary command button, and the selected member of a switch vector; it is set
+as `text-primary` on the header's icon, the message log's device name and the link-variant
+control.
+
+Those three fills are the whole of the control vocabulary, and **shape is what separates
+acting from reporting inside it**. A selected switch member is a *segment*: square corners,
+edges shared with its neighbours, semibold, and it says "this is the live state". A button
+is *standalone*, at the 10px control radius, and it says "press this and something goes on
+the wire". One colour, two jobs, told apart by the same distinction the shape scale already
+carries - which is what makes the pair legible where a second hue would have cost the
+enumeration. What the *instrument* is doing is neither of them: that is the badge at the top
+of the card, in one of the four state hues, and this blue clears the nearest of them by 19.2
+CIEDE2000.
 
 - **Instrument Blue** (`#1543ac` light, `#60a5fa` dark): admitted by measurement. `theme.css`
   records it at **19.2 CIEDE2000 from the nearest state** in the worst of normal,
@@ -317,13 +343,12 @@ unselected switch segment it read as disabled. Value alone could not carry the h
 
 ### Secondary
 
-- **The raised step** (`#e6e9ec` light, `#2b3138` dark, `#24090b` night): a raised surface
-  and the fill of a **selected switch member**, no longer an action colour. It is one step up
-  the ramp, 15.01:1 light and 10.27:1 dark under `--secondary-foreground` (7.03:1 night). It
-  holds no hue of its own in light or dark - 1.9 and 5.4 Lab chroma - which is the point:
-  a raised surface is not a thing and should not claim a colour. Because it is only 1.22:1
-  from the card, selection is carried by **weight as well as fill** - see the Switch Vector
-  Control.
+- **The raised step** (`#e6e9ec` light, `#2b3138` dark, `#24090b` night): a raised surface,
+  and nothing more than that. It is one step up the ramp, 15.01:1 light and 10.27:1 dark
+  under `--secondary-foreground` (7.03:1 night). It holds no hue of its own in light or dark
+  - 1.9 and 5.4 Lab chroma - which is the point: a raised surface is not a thing and should
+  not claim a colour. It **used** to fill the selected switch member, and 1.22:1 from the
+  card is why it does not any more: see the Switch Vector Control.
 
 ### Tertiary
 
@@ -565,13 +590,17 @@ column of numbers aligns without anyone asking it to. The two stacks divide by i
 stack carries labels, titles and prose, the readout stack carries values that are compared
 against each other: telemetry, log lines, the raw wire names behind the debug toggle.
 
-> **Neither family is actually loaded.** There is no `@font-face`, no font package and no CDN
-> link anywhere in the repository, so both stacks fall through to their fallbacks today: the UI
-> resolves to the platform's `ui-monospace` (SF Mono, Cascadia, or the system default) and the
-> readouts to generic `monospace`. On most platforms those are two different faces for what the
-> tokens describe as one system. Ship the fonts or change the tokens; do not leave the file
-> claiming a typeface the page never receives. The wordmark's 400/700 split is deliberately
-> coarse for the same reason - a fallback face may have to synthesise the weight it lacks.
+> **Both families are self-hosted, and that was a decision rather than a default.** They were
+> named and not shipped at first, so both stacks fell through to whatever mono the machine
+> had and the tokens described a system the page never received. They now ship as latin
+> subsets in `packages/react/src/fonts/` - four weights of Geist Mono, one of JetBrains Mono
+> - behind the opt-in `@indikit/react/fonts.css`, which the reference panel imports because
+> the panel is an application and the one bundled into the wheel. Not a CDN link:
+> PRODUCT.md's operating context has instruments at a dark site where connectivity is not
+> guaranteed, and a `<link>` to a font host would make the typeface the only thing on that
+> page needing the public internet. Both are OFL 1.1 and their licences travel beside the
+> files. The wordmark's 400/700 split stays deliberately coarse anyway, since the fallback
+> stack is still what a consumer who skips that import gets.
 
 > **Open decision.** The monospace UI is deliberate and stays. Whether the prose surfaces -
 > empty-state copy, the configuration dialog's explanations - move to a proportional face is
@@ -618,6 +647,16 @@ The shell is pinned to the viewport (`h-svh`) rather than allowed to grow: the s
 device selection on the left, the property area scrolls in its own region, and the message
 strip stays docked below it. An operator should never lose the log by scrolling.
 
+**The sidebar has one list, and everything that belongs to a device hangs off that device.**
+There is no server-wide anything in INDI - `indiserver` publishes no properties at all - so
+a second flat group beside the device list has nothing true to be. Configuration is the case
+that proved it: as a sibling of the device rows it was read as a third device, and moved out
+to its own group it printed the selected device's name a second time as a heading while
+still drawing the entry at the devices' own indent. It now sits in a `SidebarMenuSub` inside
+its device's item, where the indent, the guide line and the list nesting say whose it is and
+no heading has to. Anything the panel grows next that acts on one device goes in the same
+place.
+
 The property grid is one column, widening to two and then three. Those breaks are **container
 queries, not viewport queries** (`@xl` at 36rem, `@4xl` at 56rem), measured against the panel's
 own width. Docked siblings shrink that width, so a viewport query would promise a third column
@@ -628,7 +667,13 @@ Density is deliberate and tight. The spacing scale runs 6px inside a field, 8px 
 12px between cards and between a group heading and its grid, 16px of card padding and shell
 padding, and 24px between property groups. The header bar is 56px (as a `min-h`, so 200% text
 zoom grows it rather than clipping it), the sidebar 16rem on desktop and 18rem in its mobile
-drawer, collapsing to a 3rem icon rail.
+drawer. A nested entry is 32px like the device row above it, over the primitive's own 28px,
+so one column of rows keeps one rhythm.
+
+The sidebar collapses **off-canvas**, not to the 3rem icon rail the primitive also offers,
+and that is a decision rather than a default left standing: a rail can show a device's icon
+but not the entries nested under it, and the registry hides a `SidebarMenuSub` outright in
+that mode. Switching to the rail would silently take a device's configuration off screen.
 
 The sidebar becomes an off-canvas drawer below 768px, and every fixed edge grows by its
 safe-area inset so the header clears a notch and the message strip clears a home indicator.
@@ -696,6 +741,12 @@ left border, and the group restores the outer corners at the two ends. The resul
 segmented control built out of individually pressable buttons, which is the honest shape for a
 control where each member is independently pressed and focus alone changes nothing.
 
+**A momentary command does not take that exception, and the difference is load bearing.** It
+is one button standing alone at the full 10px, because it belongs to no group and reports no
+position - and because it shares the action colour with a selected member, the corners are
+what keep "press this" and "this is the live state" apart. Squaring one off or rounding the
+other collapses the distinction.
+
 Borders do the work elsewhere: a 1px hairline is the default edge on every element, and the
 sidebar, header, message strip and driver-internals disclosure are all separated by a single
 rule rather than by a gap or a shadow.
@@ -724,22 +775,25 @@ panel and a dead one.
   the whole reason it exists: the same control drawn in `--secondary` measured 1.22:1 against
   the light card and read as a disabled label rather than a button. Fill against card 8.64 /
   6.92 / 10.39:1 with its label at 8.64 / 7.70 / 10.58:1.
-- **Secondary:** the raised neutral step. No longer an action: it is a quiet fill, and its one
-  meaningful appearance is the **selected member of a switch vector**, where it says "this is
-  the live state" rather than "press this".
+- **Secondary:** the raised neutral step. Not an action, and since the selected switch member
+  moved to the action colour, not a control fill at all - it is a surface.
 - **Destructive:** destructive red with hardcoded white text. `ui/button.tsx` carries one
   marked `DEVIATION` here - the registry's `dark:bg-destructive/60` is dropped, so the dark fill
   is the token itself. That composite is the defect the palette closes: it rendered 2.48:1 under
   the previous palette, putting the most dangerous button in the product at its weakest in the
   scheme an operator uses at night. Not fixable from `theme.css`, because `background-color` is
   a real property and an unlayered rule would also beat `hover:bg-destructive/90`.
+  Two controls wear it: `Purge` in the configuration dialog, and **`Abort` on the instrument
+  panel**. Label on fill 7.92 / 5.57 / 6.06:1; fill against the card 7.92 / 3.16 / 3.26:1,
+  which clears SC 1.4.11's 3:1 for the graphic in all three schemes.
 - **Ghost / Outline:** chrome only - the theme toggle, the sidebar trigger, secondary dialog
   actions. Where the app owns the box it grows the control for real (`size-11`, 44px), so the
   hover tint and the focus ring grow with the target.
-- **Hover:** primary composites its fill toward the surface at 90%. Light secondary **holds its
-  fill** instead, so the cursor and the focus ring are the affordance - the same behaviour the
-  selected switch member has, which is the right pairing now that both are reporting surfaces
-  rather than actions; dark keeps the registry's 80% hover.
+- **Hover:** primary composites its fill toward the surface at 90%; dark secondary keeps the
+  registry's 80%. Light secondary and the **selected switch member** both hold their fill
+  instead, so the cursor and the focus ring are the affordance. That is the right pairing for
+  a different reason in each case: light secondary is a surface, and the selected member is
+  already reporting the instrument's position, so neither has a press to acknowledge.
 - **Focus:** a 3px ring at **75%** of the ring colour, held **2px off the control**, plus a
   border shift from `focus-visible:border-ring`. **Focus is never conveyed by the ring alone or
   by the border alone**, and that is not incidental: the corrections raise the ring by setting
@@ -786,16 +840,47 @@ Connect would announce that the selection had moved while nothing had gone on th
 is sent until a member is pressed, which is the right behaviour for a control that connects
 hardware, and the markup has to say so.
 
-- **Unselected:** transparent with the control border; hovers to the muted tone.
-- **Selected:** the raised neutral step at **semibold**, and it holds that appearance under the
-  pointer. The weight is load bearing here in a way it was not when this fill was a cyan: muted
-  and secondary are adjacent steps on one neutral ramp, so hovered-unselected and selected are
-  close in value, and the type weight plus `aria-pressed` are what actually separate them. The
-  stock outline toggle drew selection with the accent tone and hovered to the accent tone too,
-  which made a hovered unselected member identical to the selected one.
-- **It does not take the action colour, and that is the boundary.** A selected member reports
-  the instrument's live state; it is not a press target waiting to be used. Filling it with
-  `--primary` beside a `Set` button would say two different things in one colour.
+- **Unselected:** transparent with the control border; hovers to the muted tone, which the
+  selected member can never reach. The stock outline toggle drew selection with the accent
+  tone and hovered to the accent tone too, so a hovered unselected member was identical to
+  the selected one.
+- **Selected:** the action colour at **semibold**, and it holds that appearance under the
+  pointer. It wore `--secondary` while the palette spent no chroma at all, and at 1.22:1 from
+  the card "which member is the instrument actually on" was a question you leaned in to
+  answer. Labels measure 8.64 / 7.70 / 10.58:1 on the fill, and the fill stays clear of all
+  four states: 18.18 CIEDE2000 in light and 18.75 in dark at the worst of normal,
+  deuteranopic and protanopic vision, and 9.96 under the safelight, which is the ceiling that
+  scheme is recorded as accepting rather than a slack threshold.
+- **A segment is not a button, and the shape is what says so.** Sharing the action colour
+  with the `Set` button beside it is safe because the two never share a shape: this one is a
+  square-cornered segment welded to its neighbours, that one stands alone at the 10px control
+  radius. Keep both halves - a segmented group that regains its corners, or a standalone
+  control that loses them, collapses the only distinction holding the two meanings apart.
+
+### Command Button
+
+**A switch vector that is a command and not a selection is a push button.** INDI has one
+switch type and uses it for two different objects, and the second has a shape the first
+cannot take: a single member under `AtMostOne`, the rule that permits none-on. libindi's
+stop commands are all built that way, and so is this panel's own `CONFIG_PROCESS`.
+
+Drawn as a toggle it is a lie with a look to match. `aria-pressed="false"` claims a second
+position the control does not have, and the appearance that goes with it is the transparent
+outline of an *unselected* member - so on the dome's Main Control tab the one button that
+stops the instrument sat beside the genuinely unpressed halves of `Connect` and `Park`,
+identical to them and the palest thing on the tab, while the action colour was spent on
+`Unpark` reporting that nothing was happening.
+
+- **Stop commands are destructive**, on the element name libindi gives all four of them
+  (`ABORT`, on telescope, dome, focuser and camera). Not by analogy: stopping a moving dome
+  is what leaves `DOME_SHUTTER` in Alert reporting "Status: unknown", so the press really
+  does discard the instrument's position with nothing to undo it, and it is also the one
+  control that has to be found first at 3am.
+- **Every other command is primary**, the same split `DeviceConfigDialog` already makes over
+  `CONFIG_PROCESS`: `Save` primary, `Purge` destructive.
+- **Feedback is the card's state badge, not the button.** A push button has no on-state and
+  needs none - the driver answering Busy and then Ok is what says the command landed, which
+  is the same channel every other control on this panel reports through.
 
 ### State Badge and Status Dot
 
@@ -929,8 +1014,13 @@ density.
 
 - **Do** keep the hue list at six - four states, one action, one documentation link - and reach
   for tone, weight or shape when something new needs to stand out.
-- **Do** reserve `--primary` for controls that write to an instrument, and leave a control that
-  merely *reports* one (a selected switch member, a badge) on the neutral ramp.
+- **Do** keep `--primary` to the control vocabulary - what writes to an instrument and what
+  reports its live position - and separate those two by shape, standalone against segment,
+  never by reaching for a seventh hue.
+- **Do** leave a state badge on the four state hues and never on `--primary`; a badge is not
+  a control.
+- **Do** draw a one-member `AtMostOne` switch as a push button, and a stop command
+  (element `ABORT`) as the destructive one.
 - **Do** keep `--secondary` and `--ring` free of hue in light and dark, and let `.night` tint
   them along with the rest of the chrome.
 - **Do** re-measure a colour on every surface it appears over before changing it, and leave the
@@ -957,8 +1047,11 @@ density.
 
 - **Don't** add a seventh hue, however far it measures from the four states. The list is
   closed; distance is what got the sixth in, not what keeps the door open.
-- **Don't** put the action colour on anything that does not write to an instrument - not the
-  wordmark, not a selected switch member, not a heading that wants emphasis.
+- **Don't** put the action colour on anything outside the control vocabulary - not the
+  wordmark, not a state badge, not a heading that wants emphasis.
+- **Don't** draw a momentary command as a toggle. `aria-pressed` on a control with one
+  position is the same false claim the radio group made, and the look that comes with it is
+  an unselected member's.
 - **Don't** adjust a `--state-*` fill to fix a contrast problem. Change the foreground, and
   record the shortfall where the ceiling makes AAA unreachable.
 - **Don't** let the safelight reach the four `--state-*` tokens. `.night`'s red is bounded to

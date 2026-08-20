@@ -7,7 +7,7 @@
  * - number/text: editable inputs plus a Set button (read-only vectors show values);
  * - switch: a group of toggle buttons honouring the vector's rule
  *   (OneOfMany/AtMostOne are single-select, AnyOfMany is multi-select), sending
- *   on each toggle;
+ *   on each toggle - except the momentary-command shape, which is a push button;
  * - light: read-only coloured status dots;
  * - blob: read-only size/format with a download link when a payload is present.
  *
@@ -212,6 +212,90 @@ const SWITCH_MEMBER_CLASSES =
   "data-[state=on]:hover:bg-primary data-[state=on]:hover:text-primary-foreground";
 
 /**
+ * The element name libindi gives every command that stops an instrument.
+ *
+ * `TELESCOPE_ABORT_MOTION`, `DOME_ABORT_MOTION`, `FOCUS_ABORT_MOTION` and
+ * `CCD_ABORT_EXPOSURE` are four different properties on four kinds of hardware
+ * and all four name their member `ABORT`, so the element is the check and no
+ * list of property names is needed.
+ */
+const ABORT = "ABORT";
+
+/**
+ * Whether a switch vector is a momentary command rather than a reported state.
+ *
+ * INDI has one switch type and uses it for two different objects: a selection
+ * the driver reports back (`CONNECTION`, `DOME_PARK`) and a command that fires
+ * once and leaves nothing on (`DOME_ABORT_MOTION`, `CONFIG_PROCESS`). Nothing on
+ * the wire flags which, but the second has a shape the first cannot take: a
+ * single member under `AtMostOne`. `AtMostOne` is the rule that permits *none*
+ * on, and with one member there is no alternative to select, so "on" is not a
+ * position the driver can leave it in. libindi's own drivers answer these by
+ * putting the member straight back to Off, and so does this project's SDK
+ * (`Device._handle_config`).
+ *
+ * A `OneOfMany` single member is on for ever by definition, and an `AnyOfMany`
+ * one is a checkbox, so neither is caught here.
+ *
+ * @param vector - The switch vector to classify.
+ * @returns Whether to draw it as a push button rather than as a toggle.
+ */
+function isCommand(vector: SwitchVector): boolean {
+  return vector.rule === "AtMostOne" && vector.elements.length === 1;
+}
+
+/**
+ * A momentary command: one push button, not a toggle stuck in its off position.
+ *
+ * Drawn as a toggle, `Abort` was transparent with a hairline border, which is
+ * exactly the appearance an *unselected* member of a two-state control has. On
+ * the dome's Main Control tab that put it beside `Connect` and `Park`, which
+ * really are the unpressed halves of a pair, and made the one control that stops
+ * the instrument the palest thing on the card. There is no other half here: the
+ * member is not off, it has not been pressed.
+ *
+ * The variant follows the same two-way split {@link DeviceConfigDialog} makes
+ * over `CONFIG_PROCESS`, which is the other momentary command on this panel:
+ * `--primary` for a command that writes, `--destructive` for one that destroys
+ * something. Abort is the destructive case, and not by analogy - stopping a
+ * moving dome mid-travel is what leaves `DOME_SHUTTER` in Alert reporting
+ * "Status: unknown", so the press really does discard the instrument's position
+ * with nothing to undo it. It also has to be the thing an operator finds first
+ * at 3am, which no other member of this control ever is.
+ *
+ * Feedback is the vector's own state badge, as everywhere else in this package.
+ * A push button has no on-state to show, and it needs none: the driver answering
+ * Busy and then Ok is what says the command landed, and that is already at the
+ * top of the card.
+ *
+ * @param props - The command vector, whose one member this draws.
+ * @returns The button, inside the vector's own named group.
+ */
+function CommandSwitchControl({ vector }: { vector: SwitchVector }) {
+  const client = useIndiClient();
+  const writable = isWritable(vector.perm);
+  const element = vector.elements[0];
+  if (element === undefined) return null;
+
+  return (
+    // The same `fieldset` the toggle group uses, and for the same reason: the
+    // button says "Abort" and the group says which "Abort", so two instruments
+    // with a stop command do not offer a reader two identically named controls.
+    <fieldset aria-label={displayLabel(vector)} className="flex w-fit min-w-0">
+      <Button
+        type="button"
+        size="sm"
+        variant={element.name === ABORT ? "destructive" : "default"}
+        disabled={!writable}
+        onClick={() => client.setSwitch(vector.device, vector.name, { [element.name]: "On" })}
+      >
+        {displayLabel(element)}
+      </Button>
+    </fieldset>
+  );
+}
+
+/**
  * Switch vector: a group of toggle buttons honouring the selection rule.
  *
  * Deliberately **not** a `ToggleGroup`, and the reason is a promise the group
@@ -224,12 +308,18 @@ const SWITCH_MEMBER_CLASSES =
  * buttons says what actually happens: each member is pressed or not, focus
  * changes nothing, and pressing sends.
  *
+ * A vector {@link isCommand} recognises is not a selection at all and is drawn
+ * by {@link CommandSwitchControl} instead, where `aria-pressed` would be the
+ * same kind of false claim the radio group made.
+ *
  * @param props - The switch vector to render.
  * @returns The group element.
  */
 export function SwitchVectorControl({ vector }: { vector: SwitchVector }) {
   const client = useIndiClient();
   const writable = isWritable(vector.perm);
+
+  if (isCommand(vector)) return <CommandSwitchControl vector={vector} />;
 
   function onPressed(name: string, pressed: boolean) {
     if (!writable) return;
